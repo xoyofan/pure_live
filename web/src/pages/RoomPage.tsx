@@ -101,6 +101,10 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
   const [danmakuMuted, setDanmakuMuted] = useState(false);
   /** CDN line index within the current play.urls list (0-based). */
   const [line, setLine] = useState(0);
+  /** Mirrors the video element state for the custom transport bar. */
+  const [videoPaused, setVideoPaused] = useState(false);
+  const [videoMuted, setVideoMuted] = useState(true);
+  const [videoVolume, setVideoVolume] = useState(1);
 
   const playSeqRef = useRef(0);
   const resolveSeqRef = useRef(0);
@@ -300,6 +304,50 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
 
   const reloadStream = () => setNonce((n) => n + 1);
 
+  const videoOf = () => stageRef.current?.querySelector('video') ?? null;
+
+  // Mirror the media element's play/pause + volume state so the transport
+  // bar reflects reality even when the browser flips muted-autoplay.
+  useEffect(() => {
+    if (!source) return;
+    const video = videoOf();
+    if (!video) return;
+    const sync = () => {
+      setVideoPaused(video.paused);
+      setVideoMuted(video.muted);
+      setVideoVolume(video.volume);
+    };
+    sync();
+    video.addEventListener('play', sync);
+    video.addEventListener('pause', sync);
+    video.addEventListener('volumechange', sync);
+    return () => {
+      video.removeEventListener('play', sync);
+      video.removeEventListener('pause', sync);
+      video.removeEventListener('volumechange', sync);
+    };
+  }, [source]);
+
+  const togglePlay = () => {
+    const video = videoOf();
+    if (!video) return;
+    if (video.paused) void video.play().catch(() => {});
+    else video.pause();
+  };
+
+  const changeVolume = (value: number) => {
+    const video = videoOf();
+    if (!video) return;
+    video.volume = value;
+    video.muted = value === 0;
+  };
+
+  const toggleMute = () => {
+    const video = videoOf();
+    if (!video) return;
+    video.muted = !video.muted;
+  };
+
   const toggleFollow = () => {
     if (followed) setFollows(followStore.removeFollow(platform, roomId));
     else if (room) setFollows(followStore.addFollow({ ...room, platform, roomId }));
@@ -391,6 +439,26 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
               {playable && source && (
                 <div className="player-controls">
                   <div className="controls-group">
+                    <button type="button" className="ctrl-btn" title={videoPaused ? '播放' : '暂停'} onClick={togglePlay}>
+                      {videoPaused ? '▶' : '⏸'}
+                    </button>
+                    <button type="button" className="ctrl-btn" title={videoMuted ? '取消静音' : '静音'} onClick={toggleMute}>
+                      {videoMuted || videoVolume === 0 ? '🔇' : '🔊'}
+                    </button>
+                    <input
+                      type="range"
+                      className="volume-slider"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={videoMuted ? 0 : videoVolume}
+                      onChange={(e) => changeVolume(Number(e.target.value))}
+                      title="音量"
+                    />
+                    <span className="live-mini-badge">直播</span>
+                  </div>
+                  <div className="controls-group controls-spacer" />
+                  <div className="controls-group">
                     <button type="button" className="ctrl-btn" title="刷新播放" onClick={reloadStream}>
                       ↻
                     </button>
@@ -402,9 +470,6 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
                     >
                       弹
                     </button>
-                  </div>
-                  <div className="controls-group controls-spacer" />
-                  <div className="controls-group">
                     <button type="button" className="ctrl-btn" title="画中画" onClick={() => void togglePip()}>
                       画
                     </button>

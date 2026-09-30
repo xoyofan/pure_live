@@ -152,7 +152,7 @@ export default function Player({ source, onError, onStall, onPlaying }: Props) {
   if (!source) return null;
   return (
     <div className="player-box">
-      <video ref={videoRef} controls autoPlay playsInline className="player-video" />
+      <video ref={videoRef} autoPlay playsInline className="player-video" />
     </div>
   );
 }

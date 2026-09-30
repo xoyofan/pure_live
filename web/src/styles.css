@@ -916,6 +916,33 @@ select {
   gap: 4px;
 }
 
+.volume-slider {
+  width: 76px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.live-mini-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 1;
+  color: #fff;
+  background: rgba(229, 80, 80, 0.9);
+  border-radius: var(--radius-sm);
+  padding: 4px 7px;
+  margin-left: 4px;
+}
+
+.live-mini-badge::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fff;
+}
+
 .controls-group.qualities {
   flex: 1;
   justify-content: center;
