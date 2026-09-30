@@ -494,9 +494,9 @@ async function resolveByWebRidApi(webRid: string): Promise<DouyinResolution> {
     is_need_double_stream: 'false',
   });
   const result = await getJson<DouyinEnvelope>(url, { headers: await apiHeaders() });
-  if (result && typeof result === 'object' && Number(result.status_code ?? 0) !== 0) {
-    throw upstreamError(`douyin enter API rejected request: status_code=${result.status_code}`);
-  }
+  // Aligned with Dart: no status_code gate here — read data.data[0] directly
+  // and let a missing room fall to the HTML path (douyin returns non-zero
+  // status codes together with usable payloads in some states).
   const data = asStringMap(result?.data);
   const rooms = Array.isArray(data?.['data']) ? (data['data'] as unknown[]) : [];
   const room = asStringMap(rooms[0]);

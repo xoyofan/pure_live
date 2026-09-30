@@ -87,6 +87,11 @@ interface NodeError extends Error {
   code?: string;
 }
 
+/** True for IPv4/IPv6 literal hosts (CDN load balancers redirect to these). */
+function isIpLiteralHost(host: string): boolean {
+  return /^[0-9.]+$/.test(host) || host.includes(':');
+}
+
 export function registerProxyRoute(app: Express): void {
   app.get('/api/v1/proxy', (req: Request, res: Response) => {
     const rawUrl = typeof req.query.u === 'string' ? req.query.u.trim() : '';
@@ -106,9 +111,14 @@ export function registerProxyRoute(app: Express): void {
     }
 
     const headers = decodeHeaders(typeof req.query.h === 'string' ? req.query.h : undefined);
-    // The browser player may forward Range even when h omits it.
-    const range = req.header('range');
-    if (range && !headers['range']) headers['range'] = range;
+    // Deliberately NOT forwarding the client's Range header: M1 sources are
+    // live FLV/HLS streams and live CDNs (e.g. douyin) stall on Range probes,
+    // which mpegts.js sends and then starves on. Live playback never seeks.
+    void req.header('range');
+
+    // The initial host passed the allowlist above, so the redirect chain is
+    // trusted to reach IP-literal load balancers.
+    let trustedChain = true;
 
     let settled = false;
     let upstreamRequest: http.ClientRequest | null = null;
@@ -148,13 +158,17 @@ export function registerProxyRoute(app: Express): void {
           failBeforeStream(Object.assign(new Error('redirect to non-http target'), { code: 'EBADREDIRECT' }));
           return;
         }
-        if (!registry.isAllowedProxyHost(next.host)) {
+        // Douyin/Bilibili CDNs load-balance by redirecting to bare IP hosts.
+        // Once the chain started from an allowlisted CDN host, an IP literal
+        // redirect belongs to the same delivery path and is accepted.
+        if (!registry.isAllowedProxyHost(next.host) && !(isIpLiteralHost(next.host) && trustedChain)) {
           failBeforeStream(
             Object.assign(new Error(`redirect host "${next.host}" is not a known CDN host`), { code: 'EBADHOST' }),
           );
           return;
         }
         target = next;
+        trustedChain = true;
         upstreamRequest = requestOnce(target, headers, (u2, r2) => handleResponse(u2, r2, redirects + 1), failBeforeStream);
         return;
       }
