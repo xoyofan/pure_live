@@ -157,6 +157,8 @@ export default function DiscoverPage({
 
   return (
     <div className="discover">
+      {/* 页标题与分类索引/关注/我的分类三页同款 h2,保持四个列表页一致 */}
+      <h2 className="category-index-title">发现</h2>
       {mode === 'search' && keyword !== null && (
         <p className="discover-heading">
           “{keyword}” 的搜索结果

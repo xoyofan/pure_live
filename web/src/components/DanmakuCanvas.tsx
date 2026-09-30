@@ -105,11 +105,11 @@ export default function DanmakuCanvas({
     // effect (which would wipe in-flight messages).
     const activeTrackCount = () =>
       Math.max(1, Math.floor((height * areaRatioRef.current) / ROW_HEIGHT));
-    // Right edge of the newest item per track; a track is free when there is
-    // room for a new message between it and the right side of the canvas.
+    // Right edge of the newest (rightmost) item per track; NEGATIVE_INFINITY
+    // marks an empty track, which the spawn check below treats as always free.
     const trackTailX: number[] = [];
     trackTailX.length = activeTrackCount();
-    trackTailX.fill(Number.POSITIVE_INFINITY);
+    trackTailX.fill(Number.NEGATIVE_INFINITY);
 
     const spawn = (item: DanmakuChatItem) => {
       const label =
@@ -121,7 +121,7 @@ export default function DanmakuCanvas({
       const freeTracks: number[] = [];
       for (let t = 0; t < trackCount; t++) {
         // Free if the previous message has already cleared enough of the right side.
-        if ((trackTailX[t] ?? Number.POSITIVE_INFINITY) + TRACK_GAP_PX <= width) freeTracks.push(t);
+        if ((trackTailX[t] ?? Number.NEGATIVE_INFINITY) + TRACK_GAP_PX <= width) freeTracks.push(t);
       }
       if (freeTracks.length === 0) return; // all tracks busy -> drop this message
       const track = freeTracks[Math.floor(Math.random() * freeTracks.length)];
@@ -179,10 +179,10 @@ export default function DanmakuCanvas({
       // Recompute track tails from live items for accurate spawn decisions.
       const trackCount = activeTrackCount();
       trackTailX.length = trackCount;
-      trackTailX.fill(Number.POSITIVE_INFINITY);
+      trackTailX.fill(Number.NEGATIVE_INFINITY);
       for (const item of items) {
         const track = Math.min(trackCount - 1, Math.max(0, Math.floor((item.y - 6 - ROW_HEIGHT / 2) / ROW_HEIGHT)));
-        trackTailX[track] = Math.min(trackTailX[track], item.x + item.width);
+        trackTailX[track] = Math.max(trackTailX[track], item.x + item.width);
       }
 
       raf = requestAnimationFrame(frame);
