@@ -1,7 +1,8 @@
 /**
- * Danmaku display preferences (font size / opacity / speed), persisted in
- * localStorage. Defaults mirror the fixed behaviour before the settings
- * panel existed: scale 1, full opacity, 9s crossing time.
+ * Danmaku display preferences (font size / opacity / speed / display area /
+ * stroke), persisted in localStorage. Defaults mirror the fixed behaviour
+ * before the settings panel existed: scale 1, full opacity, 9s crossing time,
+ * full-screen area, outlined text.
  */
 
 export interface DanmakuPrefs {
@@ -11,6 +12,10 @@ export interface DanmakuPrefs {
   opacity: number;
   /** Seconds for a message to cross the canvas (5 ~ 15; smaller = faster). */
   durationSec: number;
+  /** Fraction of the canvas height used by danmaku tracks (0.25 / 0.5 / 0.75 / 1). */
+  areaRatio: number;
+  /** Dark text outline on/off (false = plain colored text). */
+  stroke: boolean;
 }
 
 const KEY = 'purelive.danmakuPrefs.v1';
@@ -20,12 +25,18 @@ export const DANMAKU_PREFS_LIMITS = {
   fontSizeScale: { min: 0.7, max: 1.5, step: 0.05, default: 1 },
   opacity: { min: 0.2, max: 1, step: 0.05, default: 1 },
   durationSec: { min: 5, max: 15, step: 1, default: 9 },
+  areaRatio: { min: 0.25, max: 1, step: 0.25, default: 1 },
 } as const;
+
+/** The four display-area levels offered by the settings panel. */
+export const DANMAKU_AREA_OPTIONS = [0.25, 0.5, 0.75, 1] as const;
 
 const DEFAULTS: DanmakuPrefs = {
   fontSizeScale: DANMAKU_PREFS_LIMITS.fontSizeScale.default,
   opacity: DANMAKU_PREFS_LIMITS.opacity.default,
   durationSec: DANMAKU_PREFS_LIMITS.durationSec.default,
+  areaRatio: DANMAKU_PREFS_LIMITS.areaRatio.default,
+  stroke: true,
 };
 
 function clampPref(value: unknown, key: keyof typeof DANMAKU_PREFS_LIMITS): number {
@@ -51,6 +62,8 @@ export function loadDanmakuPrefs(): DanmakuPrefs {
       fontSizeScale: clampPref(data.fontSizeScale, 'fontSizeScale'),
       opacity: clampPref(data.opacity, 'opacity'),
       durationSec: clampPref(data.durationSec, 'durationSec'),
+      areaRatio: clampPref(data.areaRatio, 'areaRatio'),
+      stroke: typeof data.stroke === 'boolean' ? data.stroke : DEFAULTS.stroke,
     };
   } catch {
     return { ...DEFAULTS };
@@ -62,5 +75,28 @@ export function saveDanmakuPrefs(prefs: DanmakuPrefs): void {
     localStorage.setItem(KEY, JSON.stringify(prefs));
   } catch {
     // storage unavailable (private mode) — prefs stay session-local
+  }
+}
+
+/**
+ * App-level default danmaku switch (top-bar settings dialog in App.tsx),
+ * persisted separately from the display prefs: true = rooms open with
+ * danmaku shown (RoomPage seeds its per-session mute state from it).
+ */
+const DANMAKU_DEFAULT_KEY = 'purelive.danmakuDefault.v1';
+
+export function loadDanmakuDefault(): boolean {
+  try {
+    return localStorage.getItem(DANMAKU_DEFAULT_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function saveDanmakuDefault(on: boolean): void {
+  try {
+    localStorage.setItem(DANMAKU_DEFAULT_KEY, on ? 'on' : 'off');
+  } catch {
+    // storage unavailable (private mode) — default stays session-local
   }
 }

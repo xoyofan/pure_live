@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import DiscoverPage, { type CategorySelection } from './pages/DiscoverPage';
 import CategoryIndexPage from './pages/CategoryIndexPage';
 import FollowPage from './pages/FollowPage';
 import MyCategoriesPage from './pages/MyCategoriesPage';
-import { readTheme, toggleTheme, type ThemeMode } from './lib/theme';
+import { applyTheme, readTheme, toggleTheme, type ThemeMode } from './lib/theme';
+import { loadDanmakuDefault, saveDanmakuDefault } from './lib/danmakuPrefs';
 import { listMyCategories, subscribeMyCategories, type MyCategoryEntry } from './lib/myCategories';
 import RoomPage from './pages/RoomPage';
 import { getCategories, getPlatforms } from './api/client';
@@ -106,10 +107,69 @@ export default function App() {
   const [hotCollapsed, setHotCollapsed] = useState(false);
   const [myCategories, setMyCategories] = useState<MyCategoryEntry[]>(listMyCategories);
   const [theme, setTheme] = useState<ThemeMode>(readTheme);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const [danmakuDefault, setDanmakuDefault] = useState<boolean>(loadDanmakuDefault);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  // Top-bar settings dialog behaviour while open: initial focus, ESC to
+  // close, and a Tab loop so keyboard focus cannot reach the background
+  // through the modal mask (aria-modal).
+  useEffect(() => {
+    if (!settingsOpen) return;
+    dialogRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSettingsOpen(false);
+        return;
+      }
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+      const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button, input, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !dialogRef.current.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [settingsOpen]);
+
+  // Modal mask locks background scrolling; restored on close/unmount.
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [settingsOpen]);
+
+  // Segmented dark/light pick in the dialog — writes the picked mode straight
+  // through applyTheme (same store the top-bar toggle uses) instead of
+  // relying on toggleTheme's two-value inversion.
+  const pickTheme = (mode: ThemeMode) => {
+    if (mode === theme) return;
+    applyTheme(mode);
+    setTheme(mode);
+  };
+
+  const toggleDanmakuDefault = () => {
+    const next = !danmakuDefault;
+    setDanmakuDefault(next);
+    saveDanmakuDefault(next);
+  };
 
   // Canonical home URL for the bare "/" root.
   useEffect(() => {
@@ -389,6 +449,15 @@ export default function App() {
           >
             {theme === 'dark' ? '🌙' : '☀️'}
           </button>
+          <button
+            type="button"
+            className="settings-toggle"
+            title="设置"
+            aria-haspopup="dialog"
+            onClick={() => setSettingsOpen(true)}
+          >
+            ⚙
+          </button>
         </header>
         <main className="app-main">
           {route.page === 'discover' ? (
@@ -427,6 +496,74 @@ export default function App() {
           )}
         </main>
       </div>
+      {settingsOpen && (
+        <div className="settings-dialog-mask" onClick={() => setSettingsOpen(false)}>
+          <div
+            ref={dialogRef}
+            className="settings-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="设置"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="settings-dialog-head">
+              <span>设置</span>
+              <button
+                type="button"
+                className="settings-dialog-close"
+                aria-label="关闭"
+                onClick={() => setSettingsOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="settings-dialog-body">
+              <section className="settings-dialog-section">
+                <h3 className="settings-dialog-label">外观</h3>
+                <div className="settings-row">
+                  <span>主题</span>
+                  <div className="settings-segments" role="group" aria-label="主题模式">
+                    <button
+                      type="button"
+                      className={theme === 'dark' ? 'active' : ''}
+                      aria-pressed={theme === 'dark'}
+                      onClick={() => pickTheme('dark')}
+                    >
+                      深色
+                    </button>
+                    <button
+                      type="button"
+                      className={theme === 'light' ? 'active' : ''}
+                      aria-pressed={theme === 'light'}
+                      onClick={() => pickTheme('light')}
+                    >
+                      浅色
+                    </button>
+                  </div>
+                </div>
+              </section>
+              <section className="settings-dialog-section">
+                <h3 className="settings-dialog-label">弹幕</h3>
+                <label className="settings-row">
+                  <span>默认弹幕</span>
+                  <button
+                    type="button"
+                    className={`switch${danmakuDefault ? '' : ' off'}`}
+                    onClick={toggleDanmakuDefault}
+                  >
+                    {danmakuDefault ? '开启' : '关闭'}
+                  </button>
+                </label>
+                <p className="settings-hint">
+                  打开播放页设置:进入直播间后,在右侧栏「设置」标签中可调弹幕字号 / 不透明度 /
+                  速度 / 显示区域 / 描边,以及当次播放的弹幕显隐。
+                </p>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { useDanmaku } from '../hooks/useDanmaku';
 import DanmakuCanvas from '../components/DanmakuCanvas';
 import Player, { type PlaybackSource } from '../components/Player';
 import * as followStore from '../lib/followStore';
-import { DANMAKU_PREFS_LIMITS, loadDanmakuPrefs, saveDanmakuPrefs } from '../lib/danmakuPrefs';
+import { DANMAKU_AREA_OPTIONS, DANMAKU_PREFS_LIMITS, loadDanmakuDefault, loadDanmakuPrefs, saveDanmakuPrefs } from '../lib/danmakuPrefs';
 import type { DanmakuPrefs } from '../lib/danmakuPrefs';
 import { categoryStyle } from '../lib/categoryColor';
 import type { FollowEntry } from '../lib/followStore';
@@ -213,8 +213,9 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
   const [playError, setPlayError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
-  const [danmakuMuted, setDanmakuMuted] = useState(false);
-  /** Danmaku display prefs (font size / opacity / speed), persisted locally. */
+  /** Muted starts from the app-level default (top-bar settings dialog); the settings tab still toggles per session. */
+  const [danmakuMuted, setDanmakuMuted] = useState(() => !loadDanmakuDefault());
+  /** Danmaku display prefs (font size / opacity / speed / area / stroke), persisted locally. */
   const [danmakuPrefs, setDanmakuPrefs] = useState<DanmakuPrefs>(() => loadDanmakuPrefs());
   /** CDN line index within the current play.urls list (0-based). */
   const [line, setLine] = useState(0);
@@ -362,7 +363,7 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
   // --- danmaku --------------------------------------------------------------
   const danmaku = useDanmaku(playable ? platform : null, playable ? roomId : null);
 
-  const updateDanmakuPref = (key: keyof DanmakuPrefs, value: number) => {
+  const updateDanmakuPref = (key: keyof DanmakuPrefs, value: number | boolean) => {
     // Persist on change only (not on mount); slider events are discrete so
     // building `next` from the current closure state is safe.
     const next = { ...danmakuPrefs, [key]: value };
@@ -589,6 +590,8 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
                   fontSizeScale={danmakuPrefs.fontSizeScale}
                   opacity={danmakuPrefs.opacity}
                   durationSec={danmakuPrefs.durationSec}
+                  areaRatio={danmakuPrefs.areaRatio}
+                  stroke={danmakuPrefs.stroke}
                 />
               )}
               {room && !playable && (
@@ -932,6 +935,34 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
                     }
                   />
                 </div>
+                <div className="settings-slider">
+                  <div className="settings-slider-head">
+                    <span>显示区域</span>
+                  </div>
+                  <div className="settings-segments" role="group" aria-label="弹幕显示区域">
+                    {DANMAKU_AREA_OPTIONS.map((ratio) => (
+                      <button
+                        key={ratio}
+                        type="button"
+                        className={danmakuPrefs.areaRatio === ratio ? 'active' : ''}
+                        aria-pressed={danmakuPrefs.areaRatio === ratio}
+                        onClick={() => updateDanmakuPref('areaRatio', ratio)}
+                      >
+                        {Math.round(ratio * 100)}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <label className="settings-row">
+                  <span>弹幕描边</span>
+                  <button
+                    type="button"
+                    className={`switch${danmakuPrefs.stroke ? '' : ' off'}`}
+                    onClick={() => updateDanmakuPref('stroke', !danmakuPrefs.stroke)}
+                  >
+                    {danmakuPrefs.stroke ? '开启' : '关闭'}
+                  </button>
+                </label>
                 <p className="settings-hint">弹幕状态:{danmakuStatusText(danmaku.status) ?? '未连接'}</p>
               </div>
             )}

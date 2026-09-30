@@ -24,6 +24,10 @@ interface Props {
   fontSizeScale?: number;
   /** Overall overlay opacity, 0.2 ~ 1 (1 = unchanged). */
   opacity?: number;
+  /** Fraction of the canvas height used by tracks (0.25 ~ 1); messages render in the top band only. */
+  areaRatio?: number;
+  /** Dark text outline; false renders plain colored text. */
+  stroke?: boolean;
 }
 
 const ROW_HEIGHT = 34;
@@ -45,6 +49,8 @@ export default function DanmakuCanvas({
   durationSec = 9,
   fontSizeScale = 1,
   opacity = 1,
+  areaRatio = 1,
+  stroke = true,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -60,6 +66,10 @@ export default function DanmakuCanvas({
   fontScaleRef.current = fontSizeScale;
   const opacityRef = useRef(opacity);
   opacityRef.current = opacity;
+  const areaRatioRef = useRef(areaRatio);
+  areaRatioRef.current = areaRatio;
+  const strokeRef = useRef(stroke);
+  strokeRef.current = stroke;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -90,10 +100,16 @@ export default function DanmakuCanvas({
     let last = performance.now();
     let colorIndex = 0;
 
-    const trackCount = Math.max(1, Math.floor(height / ROW_HEIGHT));
+    // Track count follows the visible band (canvas height x areaRatio) and is
+    // read per frame, so the area slider takes effect without restarting the
+    // effect (which would wipe in-flight messages).
+    const activeTrackCount = () =>
+      Math.max(1, Math.floor((height * areaRatioRef.current) / ROW_HEIGHT));
     // Right edge of the newest item per track; a track is free when there is
     // room for a new message between it and the right side of the canvas.
-    const trackTailX = new Array<number>(trackCount).fill(Number.POSITIVE_INFINITY);
+    const trackTailX: number[] = [];
+    trackTailX.length = activeTrackCount();
+    trackTailX.fill(Number.POSITIVE_INFINITY);
 
     const spawn = (item: DanmakuChatItem) => {
       const label =
@@ -101,10 +117,11 @@ export default function DanmakuCanvas({
       const fontSize = 20 * fontScaleRef.current;
       ctx.font = `${fontSize}px system-ui, "Microsoft YaHei", sans-serif`;
       const textWidth = ctx.measureText(label).width;
+      const trackCount = activeTrackCount();
       const freeTracks: number[] = [];
       for (let t = 0; t < trackCount; t++) {
         // Free if the previous message has already cleared enough of the right side.
-        if (trackTailX[t] + TRACK_GAP_PX <= width) freeTracks.push(t);
+        if ((trackTailX[t] ?? Number.POSITIVE_INFINITY) + TRACK_GAP_PX <= width) freeTracks.push(t);
       }
       if (freeTracks.length === 0) return; // all tracks busy -> drop this message
       const track = freeTracks[Math.floor(Math.random() * freeTracks.length)];
@@ -149,12 +166,19 @@ export default function DanmakuCanvas({
           items.splice(i, 1);
           continue;
         }
-        ctx.strokeText(item.text, item.x, item.y);
+        // Shrinking the area retires in-flight messages below the new band.
+        if (item.y > height * areaRatioRef.current) {
+          items.splice(i, 1);
+          continue;
+        }
+        if (strokeRef.current) ctx.strokeText(item.text, item.x, item.y);
         ctx.fillStyle = item.color;
         ctx.fillText(item.text, item.x, item.y);
       }
 
       // Recompute track tails from live items for accurate spawn decisions.
+      const trackCount = activeTrackCount();
+      trackTailX.length = trackCount;
       trackTailX.fill(Number.POSITIVE_INFINITY);
       for (const item of items) {
         const track = Math.min(trackCount - 1, Math.max(0, Math.floor((item.y - 6 - ROW_HEIGHT / 2) / ROW_HEIGHT)));

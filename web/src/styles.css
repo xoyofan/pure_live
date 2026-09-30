@@ -409,6 +409,19 @@ select {
   background: var(--bg-hover);
 }
 
+/* gear beside the theme toggle; opens the top-bar settings dialog */
+.settings-toggle {
+  border: none;
+  background: none;
+  font-size: 16px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.settings-toggle:hover {
+  background: var(--bg-hover);
+}
+
 /* ---- discover (recommend / category / search) ---- */
 
 .discover {
@@ -1785,6 +1798,102 @@ select {
   border: none;
   border-radius: 50%;
   background: var(--accent);
+}
+
+/* display-area segmented picker — pill language of .switch, one row of four */
+
+.settings-segments {
+  display: flex;
+  gap: 6px;
+}
+
+.settings-segments button {
+  flex: 1;
+  padding: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.settings-segments button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---- top-bar settings dialog (zishu settings dialog: centered card on a
+   click-to-close mask; rows reuse .settings-row / .switch / .settings-segments /
+   .settings-hint from the play-page settings tab) ---- */
+
+.settings-dialog-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.settings-dialog {
+  width: min(92vw, 480px);
+  max-height: min(80vh, 560px);
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+}
+
+/* the card itself takes programmatic focus for the Tab loop; keep it ring-free */
+.settings-dialog:focus {
+  outline: none;
+}
+
+.settings-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-dialog-close {
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.settings-dialog-close:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.settings-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 16px 16px;
+}
+
+.settings-dialog-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-dialog-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
 }
 
 .room-state {
