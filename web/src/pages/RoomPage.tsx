@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getPlayUrls, getQualities, getRecommendRooms, protocolOfUrl, resolveRoom, toPlaybackUrl } from '../api/client';
+import { getPlayUrls, getQualities, getRecommendRooms, resolveRoom, toPlaybackUrl } from '../api/client';
 import { formatWatching } from '../lib/format';
 import { isApiError } from '../api/types';
 import type { PlayUrls, Quality, Room, RoomListItem } from '../api/types';
@@ -88,6 +88,64 @@ function danmakuStatusText(status: ReturnType<typeof useDanmaku>['status']): str
     default:
       return null;
   }
+}
+
+/** On-video select box (zishu _QualitySelectBox/_LineSelectBox shape):
+ * current value + ▾, menu with a gold check on the active entry. */
+function CtrlSelect<T extends string>({
+  value,
+  placeholder,
+  options,
+  onSelect,
+}: {
+  value: T | null;
+  placeholder: string;
+  options: readonly T[];
+  onSelect: (next: T) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  return (
+    <div className="ctrl-select" ref={boxRef}>
+      <button
+        type="button"
+        className="ctrl-select-box"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="ctrl-select-value">{value ?? placeholder}</span>
+        <span className="ctrl-select-caret">▾</span>
+      </button>
+      {open && (
+        <div className="ctrl-select-menu" role="menu">
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`ctrl-select-item${option === value ? ' active' : ''}`}
+              role="menuitem"
+              onClick={() => {
+                onSelect(option);
+                setOpen(false);
+              }}
+            >
+              {option === value ? <span className="ctrl-check">✓</span> : null}
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Props) {
@@ -440,13 +498,28 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
               {playable && source && (
                 <div className="player-controls">
                   <div className="controls-group">
-                    <button type="button" className="ctrl-btn" title={videoPaused ? '播放' : '暂停'} onClick={togglePlay}>
+                    <button type="button" className="ctrl-btn" title={videoPaused ? '播放 (Space)' : '暂停 (Space)'} onClick={togglePlay}>
                       {videoPaused ? '▶' : '❚❚'}
                     </button>
                     <button
                       type="button"
+                      className={`ctrl-mark${danmakuMuted ? ' off' : ''}`}
+                      title={danmakuMuted ? '显示弹幕' : '隐藏弹幕'}
+                      onClick={() => setDanmakuMuted((m) => !m)}
+                    >
+                      <span className="ctrl-mark-char">弹</span>
+                      {!danmakuMuted && <span className="ctrl-mark-corner">✓</span>}
+                    </button>
+                    <button type="button" className="ctrl-btn" title="刷新视频" onClick={reloadStream}>
+                      ↻
+                    </button>
+                  </div>
+                  <div className="controls-spacer" />
+                  <div className="controls-group">
+                    <button
+                      type="button"
                       className={`ctrl-btn${videoMuted || videoVolume === 0 ? ' off' : ''}`}
-                      title={videoMuted || videoVolume === 0 ? '取消静音' : '静音'}
+                      title={videoMuted ? '取消静音 (M)' : '静音 (M)'}
                       onClick={toggleMute}
                     >
                       声
@@ -461,60 +534,35 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
                       onChange={(e) => changeVolume(Number(e.target.value))}
                       title="音量"
                     />
-                    <span className="live-mini-badge">直播</span>
-                  </div>
-                  <div className="controls-group controls-spacer" />
-                  <div className="controls-group">
-                    <button type="button" className="ctrl-btn" title="刷新播放" onClick={reloadStream}>
-                      ↻
-                    </button>
-                    <button
-                      type="button"
-                      className={`ctrl-btn${danmakuMuted ? ' off' : ''}`}
-                      title={danmakuMuted ? '开启弹幕' : '关闭弹幕'}
-                      onClick={() => setDanmakuMuted((m) => !m)}
-                    >
-                      弹
-                    </button>
+                    {qualities.length > 0 && (
+                      <CtrlSelect
+                        value={qualities.some((q) => q.label === currentQuality) ? currentQuality : null}
+                        placeholder="画质"
+                        options={qualities.map((q) => q.label)}
+                        onSelect={(label) => {
+                          const hit = qualities.find((q) => q.label === label);
+                          if (hit) selectQuality(hit.selectionId);
+                        }}
+                      />
+                    )}
+                    {(play?.urls.length ?? 0) > 1 && (
+                      <CtrlSelect
+                        value={`线路${line + 1}`}
+                        placeholder="线路"
+                        options={(play?.urls ?? []).map((_, index) => `线路${index + 1}`)}
+                        onSelect={(label) => setLine(Number(label.replace('线路', '')) - 1)}
+                      />
+                    )}
                     <button type="button" className="ctrl-btn" title="画中画" onClick={() => void togglePip()}>
                       画
                     </button>
                     <button type="button" className="ctrl-btn" title="网页全屏" onClick={toggleFullscreen}>
-                      全
+                      全屏
                     </button>
                   </div>
                 </div>
               )}
             </div>
-
-            {playable && (qualities.length > 0 || (play?.urls.length ?? 0) > 1) && (
-              <div className="play-chips-row">
-                {qualities.map((q) => (
-                  <button
-                    key={q.selectionId}
-                    type="button"
-                    className={`ctrl-chip${q.selectionId === currentQuality ? ' active' : ''}`}
-                    onClick={() => selectQuality(q.selectionId)}
-                  >
-                    {q.label}
-                  </button>
-                ))}
-                {(play?.urls ?? []).length > 1 &&
-                  (play?.urls ?? []).map((_, index) => (
-                    <button
-                      key={`line${index}`}
-                      type="button"
-                      className={`ctrl-chip${index === line ? ' active' : ''}`}
-                      onClick={() => setLine(index)}
-                    >
-                      {`线路${index + 1}${(() => {
-                        const proto = protocolOfUrl(play?.urls[index] ?? '');
-                        return proto === 'unknown' ? '' : ` ${proto.toUpperCase()}`;
-                      })()}`}
-                    </button>
-                  ))}
-              </div>
-            )}
 
             {playLoading && <p className="banner">正在获取播放地址…</p>}
             {playError && (

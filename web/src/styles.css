@@ -799,34 +799,112 @@ select {
   flex: 1;
 }
 
-/* quality/line chips row below the player (zishu position) */
-
-.play-chips-row {
-  display: flex;
+/* 「弹」 mark (zishu _DanmakuMark): 32x32 tile, amber + ✓ corner when active */
+.ctrl-mark {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.14);
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #ffb020;
 }
 
-.play-chips-row .ctrl-chip {
+.ctrl-mark.off {
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ctrl-mark-char {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.ctrl-mark-corner {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+/* on-video select box (zishu _QualitySelectBox/_LineSelectBox) */
+.ctrl-select {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ctrl-select-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  height: 30px;
+  padding: 0 6px 0 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.ctrl-select-box:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.ctrl-select-value {
+  font-size: 13px;
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctrl-select-caret {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.ctrl-select-menu {
+  position: absolute;
+  right: 0;
+  bottom: 38px;
+  min-width: 120px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: rgba(24, 24, 24, 0.97);
   border: 1px solid var(--border);
-  background: var(--bg-raised);
-  color: var(--text-mid);
-  padding: 5px 14px;
+  border-radius: var(--radius);
+  padding: 4px;
+  z-index: 10;
+}
+
+.ctrl-select-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.82);
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
 }
 
-.play-chips-row .ctrl-chip:hover {
-  color: var(--text);
-  border-color: var(--text-dim);
+.ctrl-select-item:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
-.play-chips-row .ctrl-chip.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
+.ctrl-check {
+  color: var(--accent);
+  font-size: 12px;
+  width: 12px;
+  flex-shrink: 0;
 }
 
 .platform-chip {
@@ -986,7 +1064,8 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 26px 10px 8px;
+  height: 48px;
+  padding: 0 8px 4px;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
   z-index: 3;
   opacity: 0;
@@ -1016,7 +1095,7 @@ select {
 .volume-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 76px;
+  width: 96px;
   height: 30px;
   background: transparent;
   cursor: pointer;
@@ -1052,27 +1131,6 @@ select {
   background: var(--accent);
 }
 
-.live-mini-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  line-height: 1;
-  color: #fff;
-  background: rgba(229, 80, 80, 0.9);
-  border-radius: var(--radius-sm);
-  padding: 4px 7px;
-  margin-left: 4px;
-}
-
-.live-mini-badge::before {
-  content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #fff;
-}
-
 .controls-group.qualities {
   flex: 1;
   justify-content: center;
@@ -1100,7 +1158,7 @@ select {
 }
 
 .ctrl-btn.off {
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .ctrl-chip {
