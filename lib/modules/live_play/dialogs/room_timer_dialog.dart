@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/services/settings/app_settings_controller.dart';
 import 'package:pure_live/modules/live_play/controllers/live_play_controller.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
 
 class RoomTimerDialog {
   const RoomTimerDialog._();
@@ -65,6 +66,14 @@ class _RoomTimerEditorState extends State<_RoomTimerEditor> {
     minutes ??= _initialMinutes;
     if (minutes < 1 || minutes > AppSettingsController.maxSleepMinutes) minutes = _initialMinutes;
     widget.controller.applyRoomPlaybackTimer(enabled: _enabled, minutes: minutes);
+    // Operation feedback lands in the play stage overlay (ZishuStageHint,
+    // still mounted under this dialog route): set/cancel use the 2s default,
+    // matching the zishu sleep-timer SnackBar duration.
+    if (_enabled) {
+      ZishuStageHint.show(i18n('room_playback_timer_set', args: {'minutes': '$minutes'}));
+    } else {
+      ZishuStageHint.show(i18n('room_playback_timer_cancelled'));
+    }
     Navigator.of(context).pop();
   }
 

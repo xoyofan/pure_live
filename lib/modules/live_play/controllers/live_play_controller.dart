@@ -29,6 +29,7 @@ import 'package:pure_live/modules/live_play/widgets/video_player/video_controlle
 import 'package:pure_live/modules/live_play/controllers/danmaku_presentation_recovery.dart';
 import 'package:pure_live/modules/live_play/widgets/local_interaction/local_interaction_controller.dart';
 import 'package:pure_live/modules/live_play/widgets/local_interaction/local_message_delivery_queue.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
 
 // live_play_controller.dart
 
@@ -523,7 +524,10 @@ class LivePlayController extends GetxController
     updateUI(closeTimeFlag: false);
     await GlobalPlayerService.instance.player.pause();
     await LiveAudioService.stop();
-    ToastUtil.show(i18n('room_playback_timer_finished'));
+    ZishuStageHint.show(
+      i18n('room_playback_timer_finished'),
+      duration: const Duration(seconds: 3),
+    );
   }
 
   @override
