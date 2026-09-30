@@ -21,7 +21,7 @@ import 'package:pure_live/common/utils/hive_pref_util.dart';
 import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/core/sites.dart';
 import 'package:pure_live/get/get.dart';
-import 'package:pure_live/player/core/playback_header_resolver.dart';
+import 'package:pure_live/core/common/playback_header_resolver.dart';
 
 const _siteTimeout = Duration(seconds: 90);
 const _mediaTimeout = Duration(seconds: 15);

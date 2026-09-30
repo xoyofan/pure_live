@@ -7,7 +7,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/services/settings/log_controller.dart';
 import 'package:pure_live/core/common/log.dart';
-import 'package:pure_live/modules/search/web_search_room_parser.dart';
+import 'package:pure_live/core/common/web_search_room_parser.dart';
 import 'package:pure_live/plugins/utils.dart';
 import 'package:pure_live/routes/app_navigation.dart';
 import 'package:url_launcher/url_launcher.dart';

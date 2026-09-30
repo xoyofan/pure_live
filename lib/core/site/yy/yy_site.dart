@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/model/live_category.dart';
 import 'package:pure_live/core/common/core_log.dart';
@@ -9,8 +10,7 @@ import 'package:pure_live/model/live_play_quality.dart';
 import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/utils/live_quality_label.dart';
-import 'package:pure_live/modules/live_play/controllers/player_controller.dart';
-
+import 'package:pure_live/core/interface/live_room_context.dart';
 
 class YYSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResolver {
   static const String _streamSdkVersion = '5.23.0-beta.2';
@@ -635,12 +635,9 @@ class YYSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResol
       return await _fetchRoomDetail(platform: platform, roomId: roomId);
     } catch (e) {
       CoreLog.error(e);
-      if (Get.isRegistered<PlayerController>()) {
-        final PlayerController playerController = Get.find<PlayerController>();
-        final currentRoom = playerController.currentRoom;
-        if (currentRoom?.hasIdentity(platform: platform, roomId: roomId) == true) {
-          return currentRoom!.getLiveRoomWithError();
-        }
+      final fallbackRoom = LiveCurrentRoomContext.provider?.currentRoomMatching(platform: platform, roomId: roomId);
+      if (fallbackRoom != null) {
+        return fallbackRoom.getLiveRoomWithError();
       }
       return LiveRoom(roomId: roomId, platform: platform).getLiveRoomWithError();
     }

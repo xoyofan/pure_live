@@ -13,7 +13,7 @@ import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/core/danmaku/kuaishou_danmaku.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
-import 'package:pure_live/modules/live_play/controllers/player_controller.dart';
+import 'package:pure_live/core/interface/live_room_context.dart';
 import 'package:pure_live/core/utils/live_quality_label.dart';
 
 class KuaishowSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResolver {
@@ -407,10 +407,7 @@ class KuaishowSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
   }
 
   LiveRoom? _matchingCurrentRoom({required String platform, required String roomId}) {
-    if (!Get.isRegistered<PlayerController>()) return null;
-    final current = Get.find<PlayerController>().currentRoom;
-    if (current?.hasIdentity(platform: platform, roomId: roomId) == true) return current;
-    return null;
+    return LiveCurrentRoomContext.provider?.currentRoomMatching(platform: platform, roomId: roomId);
   }
 
   @override

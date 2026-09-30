@@ -22,7 +22,7 @@ import 'package:pure_live/core/tars/get_cdn_token_ex_resp.dart';
 import 'package:pure_live/core/site/huya/huya_request_params.dart';
 import 'package:pure_live/core/site/huya/huya_transport_policy.dart';
 import 'package:pure_live/core/site/huya/huya_utils.dart' as huya_utils;
-import 'package:pure_live/modules/live_play/controllers/player_controller.dart';
+import 'package:pure_live/core/interface/live_room_context.dart';
 import 'package:pure_live/core/utils/live_quality_label.dart';
 
 class HuyaSite
@@ -32,7 +32,8 @@ class HuyaSite
         LiveSiteRecordRoomResolver,
         LivePlayUrlCursorResolver,
         LivePlayRecoveryResolver,
-        LivePlayLeaseMetadata {
+        LivePlayLeaseMetadata,
+        LiveSiteWarmUp {
   @override
   String id = Sites.huyaSite;
   static const baseUrl = HuyaRequestParams.baseUrl;
@@ -357,6 +358,9 @@ class HuyaSite
       appliedQualityData: quality.selectionId,
     );
   }
+
+  @override
+  Future<String> warmUp() => getHuYaUA();
 
   Future<String> getHuYaUA() async {
     if (playUserAgent != null) {
@@ -731,12 +735,9 @@ class HuyaSite
       if (!allowUiFallback) {
         throw const FormatException('Huya room playback metadata is unavailable');
       }
-      if (Get.isRegistered<PlayerController>()) {
-        final PlayerController playerController = Get.find<PlayerController>();
-        final currentRoom = playerController.currentRoom;
-        if (currentRoom?.hasIdentity(platform: platform, roomId: roomId) == true) {
-          return currentRoom!.getLiveRoomWithError();
-        }
+      final fallbackRoom = LiveCurrentRoomContext.provider?.currentRoomMatching(platform: platform, roomId: roomId);
+      if (fallbackRoom != null) {
+        return fallbackRoom.getLiveRoomWithError();
       }
       return LiveRoom(roomId: roomId, platform: platform).getLiveRoomWithError();
     }

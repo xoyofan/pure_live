@@ -9,7 +9,7 @@ import 'package:pure_live/model/live_play_quality.dart';
 import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/core/danmaku/empty_danmaku.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
-import 'package:pure_live/modules/live_play/controllers/player_controller.dart';
+import 'package:pure_live/core/interface/live_room_context.dart';
 import 'package:pure_live/core/utils/live_quality_label.dart';
 import 'package:pure_live/core/interface/live_directory.dart';
 
@@ -263,12 +263,9 @@ class CCSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResol
     try {
       return await _loadRoomDetail(roomId);
     } catch (e) {
-      if (Get.isRegistered<PlayerController>()) {
-        final PlayerController playerController = Get.find<PlayerController>();
-        final currentRoom = playerController.currentRoom;
-        if (currentRoom?.hasIdentity(platform: platform, roomId: roomId) == true) {
-          return currentRoom!.getLiveRoomWithError();
-        }
+      final fallbackRoom = LiveCurrentRoomContext.provider?.currentRoomMatching(platform: platform, roomId: roomId);
+      if (fallbackRoom != null) {
+        return fallbackRoom.getLiveRoomWithError();
       }
       return LiveRoom(roomId: roomId, platform: platform).getLiveRoomWithError();
     }

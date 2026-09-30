@@ -1,4 +1,5 @@
 import 'site/yy/yy_site.dart';
+import 'common/playback_header_resolver.dart';
 import 'site/bigo/bigo_site.dart';
 import 'site/inke/inke_site.dart';
 import 'site/soop/soop_site.dart';
@@ -458,6 +459,18 @@ class Site {
   final LiveSite liveSite;
 
   Site({required this.id, required this.liveSite, required this.logo, required String name}) : _fallbackName = name;
+
+  /// Playback request headers for this platform (Cookie/UA/Referer policy).
+  ///
+  /// Player, multiview, audio-only playback and recording must take headers
+  /// from this single entry so the policy can move to a native/remote core
+  /// without touching consumer layers.
+  Future<Map<String, String>> playbackHeaders({
+    String roomId = '',
+    Map<String, String> roomHeaders = const <String, String>{},
+  }) {
+    return PlaybackHeaderResolver.resolve(platform: id, roomId: roomId, roomHeaders: roomHeaders);
+  }
 
   /// Resolve registry labels when they are painted instead of freezing the
   /// locale that happened to be active when an adapter was constructed.

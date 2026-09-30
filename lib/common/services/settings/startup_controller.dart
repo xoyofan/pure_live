@@ -3,7 +3,8 @@ import 'dart:developer' as dev;
 
 import 'package:pure_live/common/global/win_auto_start.dart';
 import 'package:pure_live/common/services/utils/hive_rx.dart';
-import 'package:pure_live/core/site/huya/huya_site.dart';
+import 'package:pure_live/core/interface/live_site.dart';
+import 'package:pure_live/core/sites.dart';
 import 'package:pure_live/get/get.dart';
 
 typedef StartupStateReader = FutureOr<bool> Function();
@@ -47,7 +48,10 @@ class StartupController extends GetxController {
   }
 
   Future<void> loadHuyaUa() async {
-    await HuyaSite().getHuYaUA();
+    final site = Sites.of(Sites.huyaSite).liveSite;
+    if (site case LiveSiteWarmUp warmUpSite) {
+      await warmUpSite.warmUp();
+    }
   }
 
   Future<bool> setupLaunchAtStartup() => setStartupEnabled(enableStartUp.v);

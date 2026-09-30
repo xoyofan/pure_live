@@ -11,7 +11,7 @@ import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/core/site/xiaohongshu/xiaohongshu_api.dart';
 import 'package:pure_live/core/site/xiaohongshu/xiaohongshu_site.dart';
 import 'package:pure_live/core/sites.dart';
-import 'package:pure_live/player/core/playback_header_resolver.dart';
+import 'package:pure_live/core/common/playback_header_resolver.dart';
 import 'package:pure_live/recorder/services/stream_resolver_service.dart';
 
 void main() {

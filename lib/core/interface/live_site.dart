@@ -192,6 +192,13 @@ abstract interface class LivePlayLeaseMetadata {
   DateTime? getPlayUrlInvalidAt(String url, {DateTime? now});
 }
 
+/// Optional start-time warm-up (e.g. prefetching signing material such as a
+/// user agent). Implementations must stay best-effort and offline-safe; the
+/// app reads them through the registry, never through concrete site imports.
+abstract interface class LiveSiteWarmUp {
+  Future<void> warmUp();
+}
+
 class LiveSite {
   String id = "";
   String name = "";

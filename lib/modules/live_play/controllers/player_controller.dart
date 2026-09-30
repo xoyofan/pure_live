@@ -11,7 +11,6 @@ import 'dart:developer' as developer;
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/model/live_play_quality.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:pure_live/player/core/playback_header_resolver.dart';
 import 'package:pure_live/player/utils/player_consts.dart';
 import 'package:pure_live/player/core/player_manager.dart';
 import 'package:pure_live/player/models/player_exception.dart';
@@ -286,11 +285,7 @@ class PlayerController extends GetxController {
   /// 主房间路径（[getHeaders]）与 multiview 每格解析器共用此入口，
   /// 保证 Cookie/UA/Referer 等鉴权头逻辑不发生漂移。
   static Future<Map<String, String>> resolvePlaybackHeaders({required Site site, required LiveRoom? room}) async {
-    return PlaybackHeaderResolver.resolve(
-      platform: site.id,
-      roomId: room?.roomId ?? '',
-      roomHeaders: room?.httpHeaders ?? const <String, String>{},
-    );
+    return site.playbackHeaders(roomId: room?.roomId ?? '', roomHeaders: room?.httpHeaders ?? const <String, String>{});
   }
 
   Future<Map<String, String>> getHeaders({Site? expectedSite, LiveRoom? expectedRoom}) {

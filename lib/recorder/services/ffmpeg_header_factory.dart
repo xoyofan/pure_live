@@ -1,4 +1,4 @@
-import 'package:pure_live/player/core/playback_header_resolver.dart';
+import 'package:pure_live/core/common/playback_header_resolver.dart';
 
 class FFmpegHeaderFactory {
   static Future<Map<String, String>> build({
