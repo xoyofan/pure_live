@@ -3,7 +3,12 @@
 /// 同构(主题 / IPTV / 刷新 / 视频 / 播放内核 / 网络代理 / 本地互动 / 通用 /
 /// 数据 / 备份)。每行仅做导航(`Get.to` 跳既有设置子页),**不自建任何设置
 /// 逻辑**;图标与文案 1:1 映射自 settings_page.dart 对应入口。
+///
+/// 统一入口:外壳经 [openZishuSettingsDialog] 以对话框形态打开本视图
+/// (对齐 zishu `openSettingsDialog` 口径,不再推整页)。
 library;
+
+import 'dart:math' as math;
 
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/modules/backup/backup_page.dart';
@@ -26,6 +31,13 @@ import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 
 /// 缺失的 i18n key(仅有 `config_preview`,无描述 key),中文常量兜底。
 const String _kConfigPreviewDesc = '查看本地已保存的配置内容';
+
+/// 缺失的 i18n key(zh.json 无 translate/翻译 相关键,见交付报告),中文常量兜底;
+/// 建议补 `title_translation` / `title_translation_desc`。
+const String _kTitleTranslationLabel = '标题自动翻译';
+
+/// 开关行的 caption 描述:说明走免费在线接口、失败回原文。
+const String _kTitleTranslationDesc = '开启后直播间标题经免费在线接口译为中文,失败时显示原文';
 
 /// zishu 设置索引:可嵌入任意宿主(Shell 选项卡 / 对话框)。
 ///
@@ -163,6 +175,14 @@ class ZishuSettingsView extends StatelessWidget {
                     subtitle: i18n('platform_settings_desc'),
                     onTap: () => Get.to(() => const PlatformSettingsPage()),
                   ),
+                  // 标题自动翻译开关:绑 SettingsService.to.app.enableTitleTranslation
+                  // (RxBool,hiveBool 默认 false),ZishuRoomCard 的 TranslatedText 消费。
+                  _SettingsSwitchRow(
+                    icon: Icons.translate_rounded,
+                    title: _kTitleTranslationLabel,
+                    subtitle: _kTitleTranslationDesc,
+                    rx: SettingsService.to.app.enableTitleTranslation,
+                  ),
                 ],
               ),
               _SettingsGroup(
@@ -284,6 +304,125 @@ class _SettingsRow extends StatelessWidget {
             ),
             const SizedBox(width: AppSpacing.lg),
             Icon(Icons.chevron_right_rounded, size: 18, color: tokens.textSecondary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 一行开关设置:图标块 + 标题 + 描述同 [_SettingsRow],尾部以 Switch 替代
+/// chevron。值绑定外部 RxBool(写入即经 HiveRx 自动持久化),内部 Obx 即时刷新。
+class _SettingsSwitchRow extends StatelessWidget {
+  const _SettingsSwitchRow({required this.icon, required this.title, required this.subtitle, required this.rx});
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  /// 开关绑定的响应式布尔(如 `SettingsService.to.app.enableTitleTranslation`)。
+  final RxBool rx;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Obx(
+      () => Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(color: tokens.surfaceRaised, borderRadius: AppRadius.allSm),
+              child: Icon(icon, size: 18, color: tokens.textSecondary),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.textBody.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.textCaption),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpacing.lg),
+            Switch(value: rx.v, onChanged: (value) => rx.v = value),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 设置对话框宽度/高度上限(对齐 zishu settings_view 的 760×840,math.min 需 double)。
+const double _kSettingsDialogWidth = 760;
+const double _kSettingsDialogMaxHeight = 840;
+
+/// 打开 zishu 设置弹窗(外壳顶栏设置钮 / 用户菜单「设置」/ 窄屏底栏设置项共用)。
+///
+/// 对齐 zishu `openSettingsDialog` 口径:showDialog + Dialog 框(宽高取
+/// min(视口, 760×840)、surface 底、allLg 圆角、barrier 用 tokens.barrier),
+/// 内嵌 [ZishuSettingsView](embedded 隐藏页顶大标题,弹窗自画标题行)。
+Future<void> openZishuSettingsDialog(BuildContext context) async {
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierColor: context.tokens.barrier,
+    builder: (_) => const _ZishuSettingsDialogFrame(),
+  );
+}
+
+/// 设置弹窗外框:标题行(设置 + 关闭)+ 内嵌设置视图。
+class _ZishuSettingsDialogFrame extends StatelessWidget {
+  const _ZishuSettingsDialogFrame();
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final viewport = MediaQuery.sizeOf(context);
+    final width = math.min(viewport.width * 0.92, _kSettingsDialogWidth);
+    final height = math.min(viewport.height * 0.82, _kSettingsDialogMaxHeight);
+    return Dialog(
+      key: const Key('zishu-settings-dialog'),
+      backgroundColor: tokens.surface,
+      insetPadding: const EdgeInsets.all(AppSpacing.lg),
+      shape: RoundedRectangleBorder(borderRadius: AppRadius.allLg),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.sm, 0),
+              child: Row(
+                children: [
+                  Text(
+                    i18n('settings_title'),
+                    style: context.textTitle.copyWith(fontSize: AppFontSize.subtitle, color: tokens.textPrimary),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    key: const Key('zishu-settings-dialog-close'),
+                    tooltip: i18n('cancel'),
+                    onPressed: () => Navigator.of(context).pop(),
+                    iconSize: 18,
+                    color: tokens.textSecondary,
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            const Expanded(child: ZishuSettingsView(embedded: true)),
           ],
         ),
       ),

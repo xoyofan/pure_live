@@ -505,8 +505,11 @@ class DanmakuItem extends StatelessWidget {
                     child: Text.rich(
                       TextSpan(
                         children: [
-                          // 徽章在用户名前内联(顺序按轨道口径:粉丝牌 → 等级牌);
-                          // 两字段皆空时集合 if 均不命中,段落与旧渲染零差异。
+                          // 徽章在用户名前内联(顺序对齐真源 chat_row.dart:107-119:
+                          // 等级牌在前、粉丝牌在后);两字段皆空时集合 if 均不命中,
+                          // 段落与旧渲染零差异。
+                          if (danmaku.userLevel.trim().isNotEmpty)
+                            zishuInlineBadge(ZishuChatUserLevelBadge(level: danmaku.userLevel)),
                           if (danmaku.badgeName?.trim().isNotEmpty == true)
                             zishuInlineBadge(
                               ZishuChatFanBadge(
@@ -517,8 +520,6 @@ class DanmakuItem extends StatelessWidget {
                                 colorBorder: danmaku.badgeColorBorder,
                               ),
                             ),
-                          if (danmaku.userLevel.trim().isNotEmpty)
-                            zishuInlineBadge(ZishuChatUserLevelBadge(level: danmaku.userLevel)),
                           TextSpan(
                             text: "${danmaku.userName}: ",
                             style: AppTextStyles.t14.copyWith(fontWeight: FontWeight.w700, color: textColor),

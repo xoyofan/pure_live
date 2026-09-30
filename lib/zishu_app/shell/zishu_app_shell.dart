@@ -20,6 +20,8 @@ import 'package:pure_live/zishu_app/features/follow/zishu_follow_view.dart';
 import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
 import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_category_flyout.dart';
+import 'package:pure_live/zishu_app/shell/flyouts/zishu_follow_avatars.dart';
+import 'package:pure_live/zishu_app/shell/category_warmup.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_follow_flyout.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_hover_overlay.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_my_category_flyout.dart';
@@ -265,14 +267,12 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
     unawaited(showZishuSearchDialog(context).whenComplete(() => _searchOpening = false));
   }
 
-  /// zishu 设置页入口(顶栏设置钮与账号菜单共用同一份)。
-  void _openSettingsPage() {
-    Get.to(
-      () => Scaffold(
-        appBar: AppBar(title: Text(i18n('settings_title'))),
-        body: const ZishuSettingsView(embedded: true),
-      ),
-    );
+  /// zishu 设置弹窗入口(顶栏设置钮与账号菜单共用同一份)。
+  ///
+  /// 对齐 zishu openSettingsDialog 口径:弹对话框而非推整页
+  /// (弹窗框与内嵌视图见 zishu_settings_view.dart)。
+  void _openSettingsDialog() {
+    unawaited(openZishuSettingsDialog(context));
   }
 
   @override
@@ -280,6 +280,10 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
     super.initState();
     _bindPopular();
     _bindAreas();
+    // 分类目录预热:首帧后延迟 2s 启动(不与首屏抢带宽),悬停分类 flyout 秒开。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(seconds: 2), CategoryWarmup.schedule);
+    });
   }
 
   @override
@@ -455,7 +459,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
                         onPlatformHoverEnd: _cancelPlatformFlyoutOpen,
                         onFollowHoverStart: _openFollowFlyout,
                         onFollowHoverEnd: _scheduleFlyoutClose,
-                        onOpenSettings: _openSettingsPage,
+                        onOpenSettings: _openSettingsDialog,
                       ),
                       const Divider(height: 1, thickness: 1),
                       Expanded(
@@ -612,7 +616,7 @@ class _TopBar extends StatelessWidget {
   final void Function(String siteId, double centerX) onPlatformHoverStart;
   final VoidCallback onPlatformHoverEnd;
 
-  /// 打开 zishu 设置页(设置钮与账号菜单共用)。
+  /// 打开 zishu 设置弹窗(设置钮与账号菜单共用)。
   final VoidCallback onOpenSettings;
 
   const _TopBar({
@@ -648,10 +652,10 @@ class _TopBar extends StatelessWidget {
               onHoverEnd: onPlatformHoverEnd,
             ),
           const Spacer(),
-          _TopNavTool(
+          // 关注触发器:在播头像堆叠(无在播回落星形),悬停仍走既有
+          // follow flyout 态机(_openFollowFlyout / 延迟关门),点击进关注页。
+          ZishuFollowAvatars(
             tooltip: i18n('favorites_title'),
-            icon: Remix.heart_3_fill,
-            color: index == HomeMenu.favorites.index ? tokens.brandBright : null,
             onTap: () => onSelectMenu(HomeMenu.favorites.index),
             onHoverStart: onFollowHoverStart,
             onHoverEnd: onFollowHoverEnd,
@@ -799,51 +803,21 @@ class _PlatformTab extends StatelessWidget {
 }
 
 class _TopNavTool extends StatelessWidget {
+  const _TopNavTool({required this.tooltip, required this.icon, required this.onTap});
+
   final String tooltip;
   final IconData icon;
-  final Color? color;
   final VoidCallback onTap;
-
-  /// hover 浮层挂钩(可空:无挂钩时保持纯 IconButton 行为)。
-  final void Function(double centerX)? onHoverStart;
-  final VoidCallback? onHoverEnd;
-
-  const _TopNavTool({
-    required this.tooltip,
-    required this.icon,
-    required this.onTap,
-    this.color,
-    this.onHoverStart,
-    this.onHoverEnd,
-  });
 
   @override
   Widget build(BuildContext context) {
-    final button = IconButton(
+    return IconButton(
       tooltip: tooltip,
       onPressed: onTap,
-      icon: Icon(icon, size: 18, color: color ?? Theme.of(context).extension<ZishuTokens>()!.textSecondary),
+      icon: Icon(icon, size: 18, color: Theme.of(context).extension<ZishuTokens>()!.textSecondary),
       constraints: const BoxConstraints.tightFor(width: 32, height: 32),
       padding: EdgeInsets.zero,
       splashRadius: 18,
-    );
-    if (onHoverStart == null && onHoverEnd == null) return button;
-    return Builder(
-      builder: (hoverContext) {
-        RenderBox? box;
-        double centerX() {
-          final target = box ??= hoverContext.findRenderObject() as RenderBox?;
-          if (target == null) return 0;
-          final dx = target.localToGlobal(Offset.zero).dx;
-          return dx + target.size.width / 2;
-        }
-
-        return MouseRegion(
-          onEnter: (_) => onHoverStart?.call(centerX()),
-          onExit: (_) => onHoverEnd?.call(),
-          child: button,
-        );
-      },
     );
   }
 }
@@ -863,7 +837,7 @@ class _TopNavTool extends StatelessWidget {
 class _TopUserArea extends StatelessWidget {
   const _TopUserArea({required this.onOpenSettings});
 
-  /// 打开 zishu 设置页(与顶栏设置钮同一入口,由壳层注入)。
+  /// 打开 zishu 设置弹窗(与顶栏设置钮同一入口,由壳层注入)。
   final VoidCallback onOpenSettings;
 
   @override

@@ -5,12 +5,11 @@ import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/widgets/cover_badges.dart';
-import 'package:pure_live/zishu/presentation/widgets/outline_chip.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/translation/translated_text.dart';
 
 /// zishu 风格房间卡片(pure_live LiveRoom 适配版):16:9 封面 + 四角 tag
-/// + 标题/特色 chips 两行元信息。几何与状态层逐项对齐 zishu
+/// + 标题/空占位两行元信息。几何与状态层逐项对齐 zishu
 /// `features/browse/widgets/room_card.dart`(2026-09 改版裁决):
 /// - 左上:分类实底角标([CoverCategoryBadge]);
 /// - 左下:主播昵称(平台品牌色底 + chipForeground);
@@ -49,10 +48,10 @@ class ZishuRoomCard extends StatelessWidget {
   }
 }
 
-/// 元信息两行:标题 + 特色 chips 行(高度恒定,与 metaHeightFor 两行预算
-/// 同源)。chips 来源:typeName(二级分区,R5 轨给 LiveRoom 增补的
-/// `String? typeName`,可能为 null)非空 1 个 + area 非空且 ≠ typeName
-/// 1 个;两个都空保留空占位行保证卡片等高。
+/// 元信息两行:标题 + 第 2 行固定空占位(高度恒定 [_metaLineHeight],与
+/// metaHeightFor 两行预算同源,保三行等高契约)。zishu 口径里该行语义是
+/// 平台特色标签;pure_live 无对应数据源,typeName/area 是分类而非特色
+/// 标签,不渲染(2026-10 裁决;LiveRoom.typeName 字段保留,模型层不动)。
 class _RoomCardMeta extends StatelessWidget {
   const _RoomCardMeta({required this.room});
 
@@ -80,29 +79,9 @@ class _RoomCardMeta extends StatelessWidget {
             style: context.textTitle.copyWith(fontSize: AppFontSize.subtitle),
           ),
           const SizedBox(height: AppSpacing.xs),
-          _buildChipsLine(),
-        ],
-      ),
-    );
-  }
-
-  /// 特色 chips 行:字段 trim 后判空/去重;行高恒为 [_metaLineHeight]
-  /// ([OutlineChip] 垂直 padding 恒 0,边框计入后 16.3px,守住该预算)。
-  /// 不传 onTap = 纯展示 chip,点击自然落到卡片整体 onTap。
-  Widget _buildChipsLine() {
-    final typeName = (room.typeName ?? '').trim();
-    final area = (room.area ?? '').trim();
-    final labels = <String>[if (typeName.isNotEmpty) typeName, if (area.isNotEmpty && area != typeName) area];
-    if (labels.isEmpty) return const SizedBox(height: _metaLineHeight);
-    return SizedBox(
-      height: _metaLineHeight,
-      child: Row(
-        children: [
-          for (var i = 0; i < labels.length; i++) ...[
-            if (i > 0) const SizedBox(width: AppSpacing.xs),
-            // Flexible 允许压缩:约束不足时 chip 内文字省略号截断,不溢出。
-            Flexible(child: OutlineChip(label: labels[i])),
-          ],
+          // 第 2 行恒空占位:zishu 语义=平台特色标签,pure_live 无数据源,
+          // 不渲染 typeName/area 分类;恒高守住三行等高契约。
+          const SizedBox(height: _metaLineHeight),
         ],
       ),
     );

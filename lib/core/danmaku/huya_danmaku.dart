@@ -194,6 +194,11 @@ class HuyaDanmaku implements LiveDanmaku {
       final messageNotice = HYMessage();
       messageNotice.readFrom(TarsInputStream(Uint8List.fromList(payload)));
       final color = messageNotice.bulletFormat.fontColor;
+      // 徽章:粉丝牌(10400)与消费等级(真源语义 userLevel=消费等级,空串'');
+      // 虎牙协议无徽章色值(官网底图走 wup 资源通道,pure_live 未接)→ 渐变色不填。
+      final chatBadgeName = messageNotice.badgeName.trim();
+      final chatBadgeLevel = messageNotice.badgeLevel;
+      final chatUserLevel = messageNotice.userLevel;
       onMessage?.call(
         LiveMessage(
           type: LiveMessageType.chat,
@@ -202,6 +207,9 @@ class HuyaDanmaku implements LiveDanmaku {
           userName: messageNotice.userInfo.nickName,
           userId: messageNotice.userInfo.uid.toString(),
           messageId: messageId > 0 ? 'huya:$messageId' : '',
+          badgeName: chatBadgeName.isEmpty ? null : chatBadgeName,
+          badgeLevel: chatBadgeLevel > 0 ? '$chatBadgeLevel' : null,
+          userLevel: chatUserLevel > 0 ? '$chatUserLevel' : '',
         ),
       );
     } else if (uri == 8006) {
@@ -421,11 +429,42 @@ class HYMessage extends TarsStruct {
   String content = "";
   HYBulletFormat bulletFormat = HYBulletFormat();
 
+  // 装饰提取(10400 粉丝牌 / 11200 消费等级),由 readFrom 填充。
+  String badgeName = "";
+  int badgeLevel = 0;
+  int userLevel = 0;
+
   @override
   void readFrom(TarsInputStream inputStream) {
     userInfo = inputStream.readTarsStruct(userInfo, 0, false) as HYSender;
     content = inputStream.read(content, 3, false);
     bulletFormat = inputStream.readTarsStruct(bulletFormat, 6, false) as HYBulletFormat;
+    // 装饰列表(tag 8/9/12/15,LIST<DecorationInfo{appId@0,data@2}>,对齐真源
+    // live_parser huya/danmaku.dart 与 web huyaJce.ts):10400=粉丝牌
+    // BadgeInfo{sBadgeName@3,iBadgeLevel@4},11200=消费等级{iLevel@1};
+    // level<=0 视为无效不覆盖,同 appId 后写覆盖先写(normalizeHuyaBadge 同款)。
+    try {
+      for (final tag in const [8, 9, 12, 15]) {
+        final decos = inputStream.readList<HYDecorationInfo>(<HYDecorationInfo>[HYDecorationInfo()], tag, false);
+        for (final deco in decos) {
+          if (deco.data.isEmpty) continue;
+          final payload = TarsInputStream(Uint8List.fromList(deco.data));
+          if (deco.appId == 10400) {
+            final name = payload.readString(3, false);
+            final level = payload.readInt(4, false);
+            if (level > 0) {
+              badgeName = name;
+              badgeLevel = level;
+            }
+          } else if (deco.appId == 11200) {
+            final level = payload.readInt(1, false);
+            if (level > 0) userLevel = level;
+          }
+        }
+      }
+    } catch (_) {
+      // 装饰数据残缺只丢徽章不丢正文(静默)。
+    }
   }
 
   @override
@@ -436,7 +475,36 @@ class HYMessage extends TarsStruct {
     return HYMessage()
       ..userInfo = userInfo.deepCopy() as HYSender
       ..content = content
-      ..bulletFormat = bulletFormat.deepCopy() as HYBulletFormat;
+      ..bulletFormat = bulletFormat.deepCopy() as HYBulletFormat
+      ..badgeName = badgeName
+      ..badgeLevel = badgeLevel
+      ..userLevel = userLevel;
+  }
+
+  @override
+  void displayAsString(StringBuffer sb, int level) {}
+}
+
+/// MessageNotice 装饰项:DecorationInfo{appId@0, data@2}(data 为按 appId
+/// 解释的子结构序列化字节;真源 huyaJce.ts 同 tag)。
+class HYDecorationInfo extends TarsStruct {
+  int appId = 0;
+  List<int> data = <int>[];
+
+  @override
+  void readFrom(TarsInputStream inputStream) {
+    appId = inputStream.read(appId, 0, false);
+    data = inputStream.readBytes(2, false);
+  }
+
+  @override
+  void writeTo(TarsOutputStream outputStream) {}
+
+  @override
+  Object deepCopy() {
+    return HYDecorationInfo()
+      ..appId = appId
+      ..data = List<int>.from(data);
   }
 
   @override

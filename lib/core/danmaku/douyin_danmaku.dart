@@ -235,6 +235,29 @@ class DouyinDanmaku implements LiveDanmaku {
     final sentAt = rawCreateTime <= 0
         ? null
         : DateTime.fromMillisecondsSinceEpoch(rawCreateTime > 100000000000 ? rawCreateTime : rawCreateTime * 1000);
+    // 粉丝牌(对齐真源 live_parser douyin/protobuf_lite.dart parseDouyinChatPayload):
+    // User.BadgeImageList(tag 21)中 URL 含 'fansclub' 的官方图;等级/名称取描述子
+    // Image.content(#8){#3=等级,#4=名称}(裁剪 proto 对应 ImageContent.level /
+    // .alternativeText,同 tag 同型),等级缺失回落 URL 正则 badge_(\d+)。真源
+    // #61 项与 User.payGrade(消费等级)不在本 proto → userLevel 恒空;徽章仅
+    // 官方图片无色值 → 渐变色不填。
+    String? badgeName;
+    String? badgeLevel;
+    if (chatMessage.hasUser()) {
+      for (final image in chatMessage.user.badgeImageList) {
+        final url = image.urlListList.firstWhere((u) => u.toLowerCase().contains('fansclub'), orElse: () => '');
+        if (url.isEmpty) continue;
+        final desc = image.hasContent() ? image.content : null;
+        final name = desc?.alternativeText.trim() ?? '';
+        final level = desc != null && desc.level > 0
+            ? desc.level.toInt().toString()
+            : (RegExp(r'badge_(\d+)').firstMatch(url)?.group(1) ?? '');
+        if (level.isEmpty && name.isEmpty) continue;
+        badgeName = name.isEmpty ? null : name;
+        badgeLevel = level.isEmpty ? null : level;
+        break;
+      }
+    }
     onMessage?.call(
       LiveMessage(
         type: LiveMessageType.chat,
@@ -248,6 +271,8 @@ class DouyinDanmaku implements LiveDanmaku {
         userId: chatMessage.user.id.toString(),
         messageId: resolvedMessageId.isEmpty ? '' : 'douyin:$resolvedMessageId',
         sentAt: sentAt,
+        badgeName: badgeName,
+        badgeLevel: badgeLevel,
       ),
     );
   }

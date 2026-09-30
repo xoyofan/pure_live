@@ -5,19 +5,22 @@ import 'package:pure_live/common/index.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
+import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_my_category_flyout.dart';
 
 /// 窄屏(<768)底部主导航:移植 zishu_flutter `lib/src/app/shell/bottom_nav.dart`
 /// 的 `_BottomNav`(56px、surfaceSoft 底、顶缘 1px 边框)。
 ///
 /// 真源 8 项 = logo/首页/分类/我的分类/关注/搜索/主题/我的;pure_live 无
-/// 「我的」登录项,按任务口径省略 → 7 项。锚点名(nav-brand/nav-home/
-/// nav-category/nav-my-category/nav-follow/nav-search/nav-theme)沿用真源,
-/// `nav-settings` 随「我的」项一并省略。标签优先用既有 i18n key
+/// 「我的」登录项,按任务口径省略 → 7 项;`nav-settings` 以「设置弹窗」
+/// 形态补回(对齐真源该项 onTap = openSettingsDialog 的弹窗口径,不再推页,
+/// 与宽屏顶栏设置钮同源)。锚点名(nav-brand/nav-home/nav-category/
+/// nav-my-category/nav-follow/nav-search/nav-theme/nav-settings)沿用真源。
+/// 标签优先用既有 i18n key
 /// (popular_title=热门 / areas_title=分区 / favorites_title=关注 /
 /// search_live=搜索直播 / theme_mode_light|dark=浅色|深色模式 /
-/// my_category_title=我的分类)。「我的分类」点击弹 my_category flyout
-/// 同款底部面板(不再跳分区页)。
+/// my_category_title=我的分类 / settings_title=设置)。「我的分类」点击弹
+/// my_category flyout 同款底部面板(不再跳分区页)。
 class ZishuPhoneBottomNav extends StatelessWidget {
   const ZishuPhoneBottomNav({super.key, required this.index, required this.onSelectMenu});
 
@@ -111,6 +114,14 @@ class ZishuPhoneBottomNav extends StatelessWidget {
             onTap: () => unawaited(showZishuSearchDialog(context)),
           ),
           const _BottomThemeItem(),
+          _BottomItem(
+            key: const Key('nav-settings'),
+            leading: _bottomIcon(Icons.settings_outlined, false, context.tokens),
+            label: i18n('settings_title'),
+            // 对齐真源口径:设置是全局弹框(与宽屏顶栏设置钮同源),不切页面。
+            active: false,
+            onTap: () => unawaited(openZishuSettingsDialog(context)),
+          ),
         ],
       ),
     );
@@ -122,7 +133,7 @@ Widget _bottomIcon(IconData icon, bool active, ZishuTokens tokens) =>
     Icon(icon, size: 20, color: active ? tokens.accent : tokens.textSecondary);
 
 /// 底栏单格(真源 `_BottomItem` 原样):Expanded + InkWell + 图标/文字纵排,
-/// 8(此处 7)项挤在 360px 宽下时靠 FittedBox scaleDown 收敛而不是溢出。
+/// 8 项挤在 360px 宽下时靠 FittedBox scaleDown 收敛而不是溢出。
 class _BottomItem extends StatelessWidget {
   const _BottomItem({super.key, required this.leading, required this.label, required this.active, this.onTap});
 

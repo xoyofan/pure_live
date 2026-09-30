@@ -3,12 +3,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/plugins/cache_manager.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
+import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_flyout_panel.dart';
 
 /// 「关注」hover 出的在播房间网格(移植 zishu 真源
 /// `lib/src/app/shell/follow_avatars.dart` 的 `_FollowFlyout` 容器规格,
-/// 单格改为 pure_live 口径的「封面 + 主播名 + 人气」小卡)。
+/// 单格改为 pure_live 口径的「头像优先封面图 + 主播名 + 人气」小卡,
+/// 底色/hover 走平台品牌色两档,取图口径对齐真源 `_followAvatarSrc`)。
 ///
 /// 数据由壳层传入:`SettingsService.to.fav.favoriteRooms.v` 过滤
 /// [LiveRoom.isLiveNow] 的在播收藏;列数按实际在播数收敛(≤7 列,与面板
@@ -96,6 +98,10 @@ class ZishuFollowFlyout extends StatelessWidget {
 }
 
 /// 关注浮层小卡:16:9 封面 + 主播名 + 人气,点击进入播放页。
+///
+/// 每格底色与 hover 都取**平台品牌色**两档(对齐真源 `_FollowAvatarTile`):
+/// 底为 0.16 透明度品牌色常态底,hover 加深到 0.3,让「哪个平台的主播」
+/// 在网格里一眼可辨;未收录平台回退主文字色(真源同款兜底)。
 class _FollowRoomCard extends StatelessWidget {
   const _FollowRoomCard({required this.room, required this.onTap});
 
@@ -106,50 +112,80 @@ class _FollowRoomCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final anchor = (room.nick ?? '').trim();
+    final brandColor = PlatformBrandCatalog.byId(room.normalizedPlatformId)?.color ?? tokens.textPrimary;
     return Tooltip(
       message: '$anchor · ${room.title ?? ''}',
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: AppRadius.allSm,
-        hoverColor: tokens.surfaceRaised,
-        focusColor: AppStateLayer.focusOf(tokens.accent),
-        splashColor: AppStateLayer.splashOf(tokens.accent),
-        highlightColor: AppStateLayer.pressedOf(tokens.accent),
-        child: Padding(
-          padding: const EdgeInsets.all(2),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 封面吃满剩余高度(格高 108 固定,文字随系统字号缩放时由
-              // 封面让位,避免大字号下纵向溢出)。
-              Expanded(child: _cover(context)),
-              const SizedBox(height: 3),
-              Text(
-                anchor,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.textCaption.copyWith(color: tokens.textPrimary, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                _popularityLabel(room),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.textCaption.copyWith(color: tokens.textSecondary),
-              ),
-            ],
+      // 常态底 0.16 必须铺进 Material 的 ink 层(Ink),否则会被 InkWell
+      // 的叠色/水波纹画在上面遮掉(真源同款 Ink 结构)。
+      child: Ink(
+        color: brandColor.withValues(alpha: 0.16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: AppRadius.allSm,
+          hoverColor: brandColor.withValues(alpha: 0.3),
+          // 焦点/按下也走本格语义色(品牌色),与 hover 同源,不用通用
+          // accent(真源 _FollowAvatarTile 同口径);焦点保持 accent 光晕档。
+          focusColor: AppStateLayer.focusOf(tokens.accent),
+          splashColor: AppStateLayer.splashOf(brandColor),
+          highlightColor: AppStateLayer.pressedOf(brandColor),
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 封面吃满剩余高度(格高 108 固定,文字随系统字号缩放时由
+                // 封面让位,避免大字号下纵向溢出)。
+                Expanded(child: _cover(context)),
+                const SizedBox(height: 3),
+                Text(
+                  anchor,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.textCaption.copyWith(color: tokens.textPrimary, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  _popularityLabel(room),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.textCaption.copyWith(color: tokens.textSecondary),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// 封面(口径同 zishu 房间卡 `_Cover`:normalize + 站点 referer 头 +
-  /// 共享缓存管理器),空/加载失败回落「主播名首字」占位。充满父级给的
-  /// 剩余空间(约 16:9),不自带宽高比约束。
+  /// 斗鱼过期截图 CDN(照抄真源 `follow_avatars.dart` 的 `_followAvatarSrc`
+  /// 正则):`rpic.douyucdn.cn/asrpic…` 的截图会过期,不作小卡长期展示。
+  static final RegExp _expiringDouyuCdn = RegExp(r'(?:^|\.)rpic\.douyucdn\.cn/(?:asrpic|a\d+/)', caseSensitive: false);
+
+  /// 小卡取图:**头像优先、封面兜底**(真源 `_followAvatarSrc` 同口径,
+  /// web `pickFollowAvatarSrc`);斗鱼的过期截图 CDN 两个值都排除;都拿
+  /// 不到 → 空串,由调用方落「主播名首字」占位。
+  static String _followCardImageSrc(LiveRoom room) {
+    final isDouyu = room.normalizedPlatformId == 'douyu';
+    final avatar = (room.avatar ?? '').trim();
+    if (avatar.isNotEmpty) {
+      if (isDouyu && _expiringDouyuCdn.hasMatch(avatar)) return '';
+      return avatar;
+    }
+    final cover = (room.cover ?? '').trim();
+    if (cover.isEmpty) return '';
+    if (isDouyu && _expiringDouyuCdn.hasMatch(cover)) return '';
+    return cover;
+  }
+
+  /// 小卡图:头像优先(圆角方图)、否则封面吃满剩余空间(约 16:9)。
+  /// 两个值都过 normalizeNetworkImageUrl + networkImageHeaders(站点
+  /// referer/UA 头,口径同 zishu 房间卡 `_Cover`)+ 共享缓存管理器,
+  /// 空/加载失败回落「主播名首字」占位。充满父级给的剩余空间,不自带
+  /// 宽高比约束。
   Widget _cover(BuildContext context) {
     final tokens = context.tokens;
-    final coverUrl = normalizeNetworkImageUrl(room.cover);
+    final imageUrl = normalizeNetworkImageUrl(_followCardImageSrc(room));
     final anchor = (room.nick ?? '').trim();
     final fallback = ColoredBox(
       color: tokens.surfaceRaised,
@@ -162,12 +198,12 @@ class _FollowRoomCard extends StatelessWidget {
     );
     return ClipRRect(
       borderRadius: AppRadius.allSm,
-      child: coverUrl.isEmpty
+      child: imageUrl.isEmpty
           ? fallback
           : CachedNetworkImage(
-              imageUrl: coverUrl,
+              imageUrl: imageUrl,
               fit: BoxFit.cover,
-              httpHeaders: networkImageHeaders(coverUrl),
+              httpHeaders: networkImageHeaders(imageUrl),
               cacheManager: CustomImageCacheManager.instance,
               fadeInDuration: Duration.zero,
               fadeOutDuration: Duration.zero,

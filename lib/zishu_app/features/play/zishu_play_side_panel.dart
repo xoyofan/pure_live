@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/plugins/event_bus.dart';
@@ -7,6 +9,7 @@ import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/empty_view.dart' as zishu;
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
+import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 
 /// 会话级侧栏 tab 记忆(zishu `PlaySidePanelPrefs.tabIndex` 的最小等价物):
 /// 文件级可变 int 记录上次停留 tab,切房重建侧栏时作为 initialIndex 恢复,
@@ -768,8 +771,12 @@ class _SettingsPanel extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           _SettingsGroup(
             children: [
-              // 更多设置:跳既有设置路由(用户区入口,文案 settings_title)。
-              _SettingsEntryRow(label: i18n('settings_title'), onTap: () => Get.toNamed(RoutePath.kSettings)),
+              // 更多设置:弹设置对话框(与顶栏/用户菜单/底栏同源,
+              // openZishuSettingsDialog;不再 Get.toNamed 推页)。
+              _SettingsEntryRow(
+                label: i18n('settings_title'),
+                onTap: () => unawaited(openZishuSettingsDialog(context)),
+              ),
             ],
           ),
         ],
