@@ -299,14 +299,14 @@ class ZishuRecordTaskCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.warning_amber_rounded, size: 13, color: tokens.brand),
+              Icon(Icons.warning_amber_rounded, size: 13, color: tokens.brandBright),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
                   warnings.join('\n'),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: context.textCaption.copyWith(color: tokens.brand),
+                  style: context.textCaption.copyWith(color: tokens.brandBright),
                 ),
               ),
             ],

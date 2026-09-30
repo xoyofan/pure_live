@@ -8,7 +8,6 @@ import 'package:pure_live/recorder/models/live_record_task.dart';
 import 'package:pure_live/recorder/models/recorder_task_ordering.dart';
 import 'package:pure_live/recorder/widgets/recorder_bounded_scroll.dart';
 import 'package:pure_live/recorder/pages/recorder/recorder_controller.dart';
-import 'package:pure_live/modules/home/home_drawer_button.dart';
 
 class RecorderPage extends GetView<RecorderController> {
   const RecorderPage({super.key});
@@ -27,8 +26,6 @@ class RecorderPage extends GetView<RecorderController> {
 
   @override
   Widget build(BuildContext context) {
-    bool showAction = Get.width <= 680;
-
     final bool canGoBack = Navigator.of(context).canPop();
     return DefaultTabController(
       length: tabs.length,
@@ -36,7 +33,7 @@ class RecorderPage extends GetView<RecorderController> {
         appBar: AppBar(
           title: Text(i18n("recorder_title")),
           centerTitle: true,
-          leading: canGoBack ? const BackButton() : (showAction ? const HomeDrawerButton() : null),
+          leading: canGoBack ? const BackButton() : null,
 
           actions: [
             IconButton(

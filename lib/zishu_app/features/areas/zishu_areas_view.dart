@@ -176,7 +176,7 @@ class _GroupTab extends StatelessWidget {
         highlightColor: AppStateLayer.pressedOf(tokens.accent),
         focusColor: AppStateLayer.focusOf(tokens.accent),
         child: Container(
-          decoration: BoxDecoration(border: Border.all(color: selected ? tokens.brand : Colors.transparent)),
+          decoration: BoxDecoration(border: Border.all(color: selected ? tokens.accent : Colors.transparent)),
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
           child: Text(
             label,
@@ -259,7 +259,7 @@ class _CategoryChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? tokens.surfaceRaised : Colors.transparent,
           borderRadius: AppRadius.allMd,
-          border: Border.all(color: selected ? tokens.brand : tokens.border, width: 1),
+          border: Border.all(color: selected ? tokens.accent : tokens.border, width: 1),
         ),
         child: Text(
           label,

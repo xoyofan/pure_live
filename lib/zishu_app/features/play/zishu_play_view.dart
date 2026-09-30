@@ -278,9 +278,11 @@ class _ZishuRoomHeader extends StatelessWidget {
         categoryStyle?.foreground ??
         (badgeBg == null
             ? tokens.textSecondary
+            // 回退平台色底为品牌恒定色:前景按底亮度取主题无关恒亮/恒暗,
+            // 浅色主题下不再随主题翻转(surfaceSoft 浅字压亮平台色 2.4:1)。
             : ThemeData.estimateBrightnessForColor(badgeBg) == Brightness.dark
-            ? tokens.textPrimary
-            : tokens.surfaceSoft);
+            ? AppOnVideo.text
+            : AppOnBright.text);
     // 分类名统一走跨平台中文映射(海外平台原名归一为中文)。
     final categoryLabel = category.isNotEmpty ? displayCategoryName(siteId, category) : '';
     final matchedCategory = _matchCategory(siteId);
@@ -335,7 +337,7 @@ class _ZishuRoomHeader extends StatelessWidget {
                         icon: Icon(
                           favorited ? Icons.star_rounded : Icons.star_outline_rounded,
                           size: 13,
-                          color: favorited ? tokens.brand : badgeFg,
+                          color: favorited ? tokens.brandBright : badgeFg,
                         ),
                       );
                     }),

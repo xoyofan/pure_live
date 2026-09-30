@@ -132,14 +132,14 @@ class _FollowTab extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isFollowed ? tokens.brand.withValues(alpha: 0.12) : tokens.surfaceRaised.withValues(alpha: 0.4),
                 borderRadius: AppRadius.allSm,
-                border: Border.all(color: isFollowed ? tokens.brand : tokens.border),
+                border: Border.all(color: isFollowed ? tokens.brandBright : tokens.border),
               ),
               child: Row(
                 children: [
                   Icon(
                     isFollowed ? Icons.star_rounded : Icons.star_outline_rounded,
                     size: 20,
-                    color: isFollowed ? tokens.brand : tokens.textSecondary,
+                    color: isFollowed ? tokens.brandBright : tokens.textSecondary,
                   ),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
@@ -148,7 +148,7 @@ class _FollowTab extends StatelessWidget {
                       style: context.textBody.copyWith(
                         fontSize: AppFontSize.subtitle,
                         fontWeight: FontWeight.w600,
-                        color: isFollowed ? tokens.brand : tokens.textPrimary,
+                        color: isFollowed ? tokens.brandBright : tokens.textPrimary,
                       ),
                     ),
                   ),

@@ -204,14 +204,18 @@ class _MyCategoryChipState extends State<_MyCategoryChip> {
           onTap: widget.onTap,
           hoverColor: context.tokens.brand.withValues(alpha: 0.1),
           focusColor: AppStateLayer.focusOf(context.tokens.accent),
-          splashColor: AppStateLayer.splashOf(context.tokens.brand),
-          highlightColor: AppStateLayer.pressedOf(context.tokens.brand),
+          splashColor: AppStateLayer.splashOf(context.tokens.brandBright),
+          highlightColor: AppStateLayer.pressedOf(context.tokens.brandBright),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 9.6, vertical: 4.8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.star_rounded, size: 12, color: gold ? context.tokens.brand : context.tokens.textSecondary),
+                Icon(
+                  Icons.star_rounded,
+                  size: 12,
+                  color: gold ? context.tokens.brandBright : context.tokens.textSecondary,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   // 旧快照可能存的是英文/韩文原名:渲染时再映射一次中文名,
@@ -220,7 +224,7 @@ class _MyCategoryChipState extends State<_MyCategoryChip> {
                   style: TextStyle(
                     fontSize: AppFontSize.subtitle,
                     fontWeight: FontWeight.w500,
-                    color: gold ? context.tokens.brand : context.tokens.textPrimary,
+                    color: gold ? context.tokens.brandBright : context.tokens.textPrimary,
                   ),
                 ),
               ],
@@ -313,7 +317,7 @@ class _RemovableChip extends StatelessWidget {
         children: [
           Text(
             label,
-            style: TextStyle(fontSize: AppFontSize.body, color: context.tokens.brand),
+            style: TextStyle(fontSize: AppFontSize.body, color: context.tokens.brandBright),
           ),
           InkWell(
             borderRadius: AppRadius.allPill,
@@ -324,7 +328,7 @@ class _RemovableChip extends StatelessWidget {
             highlightColor: AppStateLayer.pressedOf(context.tokens.accent),
             child: Padding(
               padding: const EdgeInsets.all(3),
-              child: Icon(Icons.close_rounded, size: 13, color: context.tokens.brand),
+              child: Icon(Icons.close_rounded, size: 13, color: context.tokens.brandBright),
             ),
           ),
         ],

@@ -267,7 +267,8 @@ class _PlatformChip extends StatelessWidget {
               Text(
                 label,
                 style: context.textSecondary.copyWith(
-                  color: selected ? color : tokens.textSecondary,
+                  // 选中文字走主题文字色:平台品牌色文字在浅色淡底上不可读。
+                  color: selected ? tokens.textPrimary : tokens.textSecondary,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
                 ),
               ),

@@ -7,6 +7,8 @@ import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/services/settings/exit_settings_controller.dart';
 import 'package:pure_live/common/services/settings/window_size_controller.dart';
 import 'package:stop_watch_timer/stop_watch_timer.dart';
+import 'package:pure_live/zishu/presentation/design_tokens.dart';
+import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 
 class GeneralSettingsPage extends GetView<SettingsService> {
   const GeneralSettingsPage({super.key});
@@ -17,152 +19,154 @@ class GeneralSettingsPage extends GetView<SettingsService> {
       appBar: AppBar(title: Text(i18n("general"))),
       body: ListView(
         physics: const PureLiveScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.all(AppSpacing.xl),
         children: [
-          context.buildGroupTitle(i18n("general")),
-          context.buildModernCard([
-            if (Platform.isAndroid || Platform.isWindows)
-              Obx(() {
-                final info = DisplayModeService.info.value;
-                final mode = SettingsService.to.app.refreshRateMode;
-                final suffix = info == null
-                    ? ''
-                    : ' · ${info.currentRefreshRate.toStringAsFixed(0)} / ${info.maxRefreshRate.toStringAsFixed(0)} Hz';
-                return context.buildTile(
-                  title: i18n('refresh_rate_mode'),
-                  subtitle: '${_refreshRateModeLabel(mode)} · ${_refreshRateModeDescription(mode)}$suffix',
-                  icon: Remix.speed_up_line,
-                  isLong: true,
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => _showRefreshRateModeDialog(context),
-                );
-              }),
-            if (Platform.isWindows)
-              Obx(() {
-                final info = DisplayModeService.info.value;
-                final mode = info == null
-                    ? i18n('display_mode_detecting')
-                    : '${info.width} × ${info.height} · '
-                          '${info.currentRefreshRate.toStringAsFixed(0)} Hz '
-                          '(${i18n('display_mode_max')} ${info.maxRefreshRate.toStringAsFixed(0)} Hz)';
-                return context.buildTile(
-                  title: i18n('windows_dynamic_refresh_rate'),
-                  subtitle: '${i18n('windows_dynamic_refresh_rate_subtitle')}\n$mode',
-                  icon: Remix.speed_up_line,
-                  isLong: true,
-                  trailing: const Icon(Icons.refresh_rounded),
-                  onTap: () => DisplayModeService.refreshInfo(),
-                );
-              }),
-            if (Platform.isWindows)
-              context.buildSwitchTile(
-                title: i18n('open_new_window'),
-                subtitle: i18n("open_new_window_subtitle"),
-                value: SettingsService.to.app.enableNewWindowPlay,
-                icon: Icons.add_to_photos_outlined,
-              ),
-            context.buildSwitchTile(
-              title: i18n('splash_animation'),
-              subtitle: i18n("splash_animation_subtitle"),
-              value: SettingsService.to.app.showSplashPage,
-              icon: Remix.rocket_2_line,
-            ),
-            context.buildSwitchTile(
-              title: i18n('enable_auto_check_update'),
-              subtitle: "",
-              value: SettingsService.to.app.enableAutoCheckUpdate,
-              icon: Remix.refresh_line,
-            ),
-            context.buildSwitchTile(
-              title: i18n('use_github_origin_for_updates'),
-              subtitle: i18n('use_github_origin_for_updates_desc'),
-              value: SettingsService.to.app.useGitHubOriginForUpdates,
-              icon: Remix.github_line,
-              isLong: true,
-            ),
-            context.buildSwitchTile(
-              title: i18n('enable_countdown_close'),
-              subtitle: i18n('enable_countdown_close_subtitle'),
-              value: SettingsService.to.exit.enableAutoShutDownTime,
-              icon: Remix.timer_line,
-            ),
-            Obx(() {
-              final bool isEnabled = SettingsService.to.exit.enableAutoShutDownTime.v;
-              final int configMinutes = SettingsService.to.exit.autoShutDownTime.v;
-
-              return StreamBuilder<int>(
-                key: ValueKey('${isEnabled}_$configMinutes'),
-                stream: SettingsService.to.exit.stopWatchTimer.rawTime,
-                builder: (context, snapshot) {
-                  final int value = snapshot.data ?? 0;
-                  String subtitleText = "";
-
-                  if (!isEnabled || value == 0) {
-                    subtitleText = "$configMinutes ${i18n('minutes')}";
-                  } else {
-                    final displayTime = StopWatchTimer.getDisplayTime(value, hours: true, milliSecond: false);
-                    subtitleText = "${i18n('remaining_time')}: $displayTime";
-                  }
-
-                  return context.buildTile(
-                    iconWidget: AnimatedTimerIcon(enabled: isEnabled, remainingMs: value, totalMinutes: configMinutes),
-
-                    title: i18n('countdown_duration'),
-                    subtitle: subtitleText,
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => _showCountdownDurationDialog(context),
-                  );
-                },
-              );
-            }),
-
-            if (Platform.isWindows) ...[
-              Obx(() {
-                final startup = SettingsService.to.startup;
-                final applying = startup.isApplyingStartup.v;
-                final statusKey = startup.startupStatusKey.v;
-                final subtitleKey = applying
-                    ? 'startup_applying'
-                    : statusKey.isNotEmpty
-                    ? statusKey
-                    : 'startup_subtitle';
-                return SwitchListTile(
-                  key: const ValueKey('windows-startup-switch'),
-                  secondary: Icon(Remix.windows_line, color: Theme.of(context).colorScheme.primary, size: 22),
-                  title: Text(i18n('startup'), style: AppTextStyles.t15.copyWith(fontWeight: FontWeight.w600)),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      i18n(subtitleKey),
-                      style: AppTextStyles.t12.copyWith(
-                        color: statusKey.isNotEmpty && !applying
-                            ? Theme.of(context).colorScheme.error
-                            : Theme.of(context).hintColor.withValues(alpha: 0.75),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ZishuGroup(
+                    title: i18n("general"),
+                    children: [
+                      if (Platform.isAndroid || Platform.isWindows)
+                        Obx(() {
+                          final info = DisplayModeService.info.value;
+                          final mode = SettingsService.to.app.refreshRateMode;
+                          final suffix = info == null
+                              ? ''
+                              : ' · ${info.currentRefreshRate.toStringAsFixed(0)} / ${info.maxRefreshRate.toStringAsFixed(0)} Hz';
+                          return _ZishuRow(
+                            icon: Remix.speed_up_line,
+                            title: i18n('refresh_rate_mode'),
+                            subtitle: '${_refreshRateModeLabel(mode)} · ${_refreshRateModeDescription(mode)}$suffix',
+                            subtitleMaxLines: null,
+                            onTap: () => _showRefreshRateModeDialog(context),
+                          );
+                        }),
+                      if (Platform.isWindows)
+                        Obx(() {
+                          final info = DisplayModeService.info.value;
+                          final mode = info == null
+                              ? i18n('display_mode_detecting')
+                              : '${info.width} × ${info.height} · '
+                                    '${info.currentRefreshRate.toStringAsFixed(0)} Hz '
+                                    '(${i18n('display_mode_max')} ${info.maxRefreshRate.toStringAsFixed(0)} Hz)';
+                          return _ZishuRow(
+                            icon: Remix.speed_up_line,
+                            title: i18n('windows_dynamic_refresh_rate'),
+                            subtitle: '${i18n('windows_dynamic_refresh_rate_subtitle')}\n$mode',
+                            subtitleMaxLines: null,
+                            onTap: () => DisplayModeService.refreshInfo(),
+                          );
+                        }),
+                      if (Platform.isWindows)
+                        _ZishuSwitchRow(
+                          title: i18n('open_new_window'),
+                          subtitle: i18n("open_new_window_subtitle"),
+                          value: SettingsService.to.app.enableNewWindowPlay,
+                          icon: Icons.add_to_photos_outlined,
+                        ),
+                      _ZishuSwitchRow(
+                        title: i18n('splash_animation'),
+                        subtitle: i18n("splash_animation_subtitle"),
+                        value: SettingsService.to.app.showSplashPage,
+                        icon: Remix.rocket_2_line,
                       ),
-                    ),
+                      _ZishuSwitchRow(
+                        title: i18n('enable_auto_check_update'),
+                        value: SettingsService.to.app.enableAutoCheckUpdate,
+                        icon: Remix.refresh_line,
+                      ),
+                      _ZishuSwitchRow(
+                        title: i18n('use_github_origin_for_updates'),
+                        subtitle: i18n('use_github_origin_for_updates_desc'),
+                        value: SettingsService.to.app.useGitHubOriginForUpdates,
+                        icon: Remix.github_line,
+                        subtitleMaxLines: null,
+                      ),
+                      _ZishuSwitchRow(
+                        title: i18n('enable_countdown_close'),
+                        subtitle: i18n('enable_countdown_close_subtitle'),
+                        value: SettingsService.to.exit.enableAutoShutDownTime,
+                        icon: Remix.timer_line,
+                      ),
+                      Obx(() {
+                        final bool isEnabled = SettingsService.to.exit.enableAutoShutDownTime.v;
+                        final int configMinutes = SettingsService.to.exit.autoShutDownTime.v;
+
+                        return StreamBuilder<int>(
+                          key: ValueKey('${isEnabled}_$configMinutes'),
+                          stream: SettingsService.to.exit.stopWatchTimer.rawTime,
+                          builder: (context, snapshot) {
+                            final int value = snapshot.data ?? 0;
+                            String subtitleText = "";
+
+                            if (!isEnabled || value == 0) {
+                              subtitleText = "$configMinutes ${i18n('minutes')}";
+                            } else {
+                              final displayTime = StopWatchTimer.getDisplayTime(value, hours: true, milliSecond: false);
+                              subtitleText = "${i18n('remaining_time')}: $displayTime";
+                            }
+
+                            return _ZishuRow(
+                              iconWidget: AnimatedTimerIcon(
+                                enabled: isEnabled,
+                                remainingMs: value,
+                                totalMinutes: configMinutes,
+                              ),
+                              title: i18n('countdown_duration'),
+                              subtitle: subtitleText,
+                              onTap: () => _showCountdownDurationDialog(context),
+                            );
+                          },
+                        );
+                      }),
+                      if (Platform.isWindows) ...[
+                        Obx(() {
+                          final tokens = context.tokens;
+                          final startup = SettingsService.to.startup;
+                          final applying = startup.isApplyingStartup.v;
+                          final statusKey = startup.startupStatusKey.v;
+                          final subtitleKey = applying
+                              ? 'startup_applying'
+                              : statusKey.isNotEmpty
+                              ? statusKey
+                              : 'startup_subtitle';
+                          return _ZishuRow(
+                            key: const ValueKey('windows-startup-switch'),
+                            icon: Remix.windows_line,
+                            title: i18n('startup'),
+                            subtitle: i18n(subtitleKey),
+                            subtitleColor: statusKey.isNotEmpty && !applying ? tokens.error : null,
+                            trailing: Switch(
+                              value: startup.enableStartUp.v,
+                              onChanged: applying ? null : (value) => unawaited(startup.setStartupEnabled(value)),
+                            ),
+                          );
+                        }),
+                        _ZishuRow(
+                          icon: Remix.aspect_ratio_line,
+                          title: i18n("window_size"),
+                          subtitle:
+                              "${SettingsService.to.window.resolvedStoredWidth.toInt()} × ${SettingsService.to.window.resolvedStoredHeight.toInt()}",
+                          onTap: () => _showWindowSizeDialog(context),
+                        ),
+                        _ZishuSwitchRow(
+                          title: i18n("no_exit_confirm"),
+                          value: SettingsService.to.exit.dontAskExit,
+                          icon: Remix.error_warning_line,
+                        ),
+                      ],
+                    ],
                   ),
-                  value: startup.enableStartUp.v,
-                  onChanged: applying ? null : (value) => unawaited(startup.setStartupEnabled(value)),
-                  contentPadding: const EdgeInsets.only(left: 16, top: 2, bottom: 2, right: 8),
-                );
-              }),
-              context.buildTile(
-                icon: Remix.aspect_ratio_line,
-                title: i18n("window_size"),
-                subtitle:
-                    "${SettingsService.to.window.resolvedStoredWidth.toInt()} × ${SettingsService.to.window.resolvedStoredHeight.toInt()}",
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => _showWindowSizeDialog(context),
+                  const SizedBox(height: AppSpacing.xxl),
+                ],
               ),
-              context.buildSwitchTile(
-                title: i18n("no_exit_confirm"),
-                subtitle: "",
-                value: SettingsService.to.exit.dontAskExit,
-                icon: Remix.error_warning_line,
-              ),
-            ],
-          ]),
-          const SizedBox(height: 32),
+            ),
+          ),
         ],
       ),
     );
@@ -268,6 +272,177 @@ class GeneralSettingsPage extends GetView<SettingsService> {
 
   void _showCountdownDurationDialog(BuildContext context) {
     showDialog<void>(context: context, builder: (context) => const _CountdownDurationDialog());
+  }
+}
+
+/// zishu 分组卡片:surface + AppRadius.allMd + hairline tokens.border 描边,
+/// elevation 0(无投影)。与 ZishuSettingsView 的 `_SettingsGroup` 同构,
+/// 半径按本轨口径取 allMd。
+class _ZishuGroup extends StatelessWidget {
+  const _ZishuGroup({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        borderRadius: AppRadius.allMd,
+        border: Border.all(color: tokens.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            title,
+            style: context.textBody.copyWith(fontWeight: FontWeight.w700, color: tokens.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+/// zishu 设置行:图标块(36×36 surfaceRaised) + 标题 + 描述 + 右侧控件。
+/// 有 [onTap] 的行 hover 用 surfaceRaised,涟漪/按压/焦点层取 accent
+/// (AppStateLayer);无 onTap 的行(开关行)不包 InkWell。
+class _ZishuRow extends StatelessWidget {
+  const _ZishuRow({
+    super.key,
+    this.icon,
+    this.iconWidget,
+    required this.title,
+    this.subtitle,
+    this.subtitleMaxLines = 2,
+    this.subtitleColor,
+    this.trailing,
+    this.onTap,
+  });
+
+  final IconData? icon;
+  final Widget? iconWidget;
+  final String title;
+
+  /// 描述文案;null/空串不渲染该行。
+  final String? subtitle;
+  final Color? subtitleColor;
+
+  /// 描述行数上限;传 null 表示不限(长描述不截断)。
+  final int? subtitleMaxLines;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    final Widget iconBlock = Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(color: tokens.surfaceRaised, borderRadius: AppRadius.allSm),
+      child: Center(child: iconWidget ?? Icon(icon, size: 18, color: tokens.textSecondary)),
+    );
+
+    final Widget? right =
+        trailing ?? (onTap != null ? Icon(Icons.chevron_right_rounded, size: 18, color: tokens.textSecondary) : null);
+
+    final Widget content = Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Row(
+        children: [
+          iconBlock,
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.textBody.copyWith(fontWeight: FontWeight.w600),
+                ),
+                if (subtitle != null && subtitle!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    maxLines: subtitleMaxLines,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.textCaption.copyWith(color: subtitleColor),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (right != null) ...[const SizedBox(width: AppSpacing.lg), right],
+        ],
+      ),
+    );
+
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: AppRadius.allSm,
+      hoverColor: tokens.surfaceRaised,
+      splashColor: AppStateLayer.splashOf(tokens.accent),
+      highlightColor: AppStateLayer.pressedOf(tokens.accent),
+      focusColor: AppStateLayer.focusOf(tokens.accent),
+      child: content,
+    );
+  }
+}
+
+/// zishu 开关行:行为与 `context.buildSwitchTile` 完全一致
+/// (Obx 包裹 + `value.value = val` 自动提交 + 可选 onChanged 回调),
+/// 仅替换行外观为 _ZishuRow + 裸 Switch。
+class _ZishuSwitchRow extends StatelessWidget {
+  const _ZishuSwitchRow({
+    this.icon,
+    required this.title,
+    this.subtitle,
+    this.subtitleMaxLines = 2,
+    // ignore: unused_element_parameter 保留对称 API:行组件家族统一可选参数
+    this.subtitleColor,
+    required this.value,
+    // ignore: unused_element_parameter
+    this.onChanged,
+  });
+
+  final IconData? icon;
+  final String title;
+  final String? subtitle;
+  final int? subtitleMaxLines;
+  final Color? subtitleColor;
+  final RxBool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(
+      () => _ZishuRow(
+        icon: icon,
+        title: title,
+        subtitle: subtitle,
+        subtitleMaxLines: subtitleMaxLines,
+        subtitleColor: subtitleColor,
+        trailing: Switch(
+          value: value.value,
+          onChanged: (val) {
+            value.value = val;
+            onChanged?.call(val);
+          },
+        ),
+      ),
+    );
   }
 }
 

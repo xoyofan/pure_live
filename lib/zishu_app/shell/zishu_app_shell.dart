@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/consts/app_consts.dart';
+import 'package:pure_live/common/utils/windows_multi_instance_launcher.dart';
 import 'package:pure_live/modules/areas/areas_list_controller.dart';
 import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
@@ -20,7 +22,6 @@ import 'package:pure_live/zishu_app/shell/flyouts/zishu_category_flyout.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_follow_flyout.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_hover_overlay.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_my_category_flyout.dart';
-import 'package:pure_live/zishu_app/shell/flyouts/zishu_user_area.dart';
 
 /// zishu 前端移植主外壳(宽屏 >680):44px 顶栏 + 可折叠浏览侧栏。
 ///
@@ -553,7 +554,7 @@ class _TopBar extends StatelessWidget {
           _TopNavTool(
             tooltip: i18n('favorites_title'),
             icon: Remix.heart_3_fill,
-            color: index == HomeMenu.favorites.index ? tokens.brand : null,
+            color: index == HomeMenu.favorites.index ? tokens.brandBright : null,
             onTap: () => onSelectMenu(HomeMenu.favorites.index),
             onHoverStart: onFollowHoverStart,
             onHoverEnd: onFollowHoverEnd,
@@ -565,7 +566,7 @@ class _TopBar extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.xs),
           _TopNavTool(tooltip: i18n('settings_title'), icon: Remix.settings_5_line, onTap: onOpenSettings),
-          ZishuUserArea(onOpenSettings: onOpenSettings),
+          _TopUserArea(onOpenSettings: onOpenSettings),
         ],
       ),
     );
@@ -591,7 +592,7 @@ class _TopNavBrand extends StatelessWidget {
             'Pure Live',
             style: context.textTitle.copyWith(
               fontSize: AppFontSize.title,
-              color: tokens.brand,
+              color: tokens.brandBright,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -686,7 +687,7 @@ class _PlatformTab extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: selected ? tokens.surfaceRaised : Colors.transparent,
                     borderRadius: AppRadius.allMd,
-                    border: Border.all(color: selected ? tokens.brand : Colors.transparent, width: 1),
+                    border: Border.all(color: selected ? tokens.accent : Colors.transparent, width: 1),
                   ),
                   padding: const EdgeInsets.all(4),
                   child: PlatformIcon(id: site.id, size: 22),
@@ -746,6 +747,101 @@ class _TopNavTool extends StatelessWidget {
           child: button,
         );
       },
+    );
+  }
+}
+
+/// 顶栏右侧用户区:圆形头像钮 + PopupMenu。
+///
+/// 菜单在 zishu 原三项(历史/设置/关于)之外并入 pure_live 工具四项
+/// (备份/工具箱/多窗/新窗口),对齐旧 UI 的 MenuButton + CommonAppBarActions
+/// 能力面 —— 顶栏不另加图标避免拥挤,全部收进用户菜单。原
+/// 原 `ZishuUserArea` 菢单固定为三项且不可扩展,故按其视觉(头像钮、菜单
+/// 行高/图标/字级)在本壳内重建;工具项图标与文案沿用旧 UI 口径
+/// (cloud_line/link/layout_grid_line/add_to_photos_outlined)。
+///
+/// 开关门控在 itemBuilder 内读取(菜单每次打开即时取值,对齐旧 UI):
+/// 多窗受 `enableMultiView`,新窗口受 `Platform.isWindows && enableNewWindowPlay`,
+/// 关闭的项不渲染。
+class _TopUserArea extends StatelessWidget {
+  const _TopUserArea({required this.onOpenSettings});
+
+  /// 打开 zishu 设置页(与顶栏设置钮同一入口,由壳层注入)。
+  final VoidCallback onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return PopupMenuButton<String>(
+      key: const Key('zishu-nav-user'),
+      tooltip: i18n('account'),
+      offset: const Offset(0, 30),
+      color: tokens.surface,
+      onSelected: (action) {
+        switch (action) {
+          case 'history':
+            Get.toNamed(RoutePath.kHistory);
+          case 'settings':
+            onOpenSettings();
+          case 'about':
+            Get.toNamed(RoutePath.kAbout);
+          case 'backup':
+            Get.toNamed(RoutePath.kBackup);
+          case 'toolbox':
+            Get.toNamed(RoutePath.kToolbox);
+          case 'multiview':
+            unawaited(AppNavigator.toMultiview());
+          case 'new_window':
+            unawaited(_launchNewWindow());
+        }
+      },
+      itemBuilder: (menuContext) => [
+        _item(menuContext, 'history', Icons.history_rounded, i18n('history')),
+        _item(menuContext, 'settings', Remix.settings_5_line, i18n('settings_title')),
+        _item(menuContext, 'about', Remix.information_line, i18n('about')),
+        _item(menuContext, 'backup', Remix.cloud_line, i18n('backup_recover')),
+        _item(menuContext, 'toolbox', Remix.link, i18n('open_link')),
+        if (SettingsService.to.app.enableMultiView.v)
+          _item(menuContext, 'multiview', Remix.layout_grid_line, i18n('multiview_title')),
+        if (Platform.isWindows && SettingsService.to.app.enableNewWindowPlay.v)
+          _item(menuContext, 'new_window', Icons.add_to_photos_outlined, i18n('open_new_window')),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        child: CircleAvatar(
+          radius: 14,
+          backgroundColor: tokens.accent,
+          child: Icon(Icons.person_outline_rounded, size: 16, color: AppOnBright.white),
+        ),
+      ),
+    );
+  }
+
+  /// 新窗口:launch 已自守 `Platform.isWindows`;失败时对齐旧 UI MenuButton
+  /// 的 toast 提示。
+  Future<void> _launchNewWindow() async {
+    try {
+      await WindowsMultiInstanceLauncher.launch();
+    } catch (_) {
+      ToastUtil.show(i18n('open_new_window_failed'));
+    }
+  }
+
+  PopupMenuItem<String> _item(BuildContext context, String value, IconData icon, String label) {
+    final tokens = context.tokens;
+    return PopupMenuItem(
+      value: value,
+      height: 34,
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: tokens.textSecondary),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(fontSize: AppFontSize.bodySecondary, color: tokens.textPrimary),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -996,7 +1092,7 @@ class _PlatformBlock extends StatelessWidget {
           decoration: BoxDecoration(
             color: color,
             borderRadius: AppRadius.allMd,
-            border: Border.all(color: selected ? tokens.brand : Colors.transparent, width: 1.5),
+            border: Border.all(color: selected ? tokens.accent : Colors.transparent, width: 1.5),
           ),
           child: Center(child: PlatformIcon(id: site.id, size: 28)),
         ),
@@ -1026,7 +1122,7 @@ class _CategoryRow extends StatelessWidget {
         child: Row(
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 14, color: selected ? tokens.brand : tokens.textSecondary),
+              Icon(icon, size: 14, color: selected ? tokens.brandBright : tokens.textSecondary),
               const SizedBox(width: AppSpacing.sm),
             ],
             Expanded(
@@ -1034,7 +1130,10 @@ class _CategoryRow extends StatelessWidget {
                 name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: context.textBody.copyWith(fontSize: 13, color: selected ? tokens.brand : tokens.textPrimary),
+                style: context.textBody.copyWith(
+                  fontSize: 13,
+                  color: selected ? tokens.brandBright : tokens.textPrimary,
+                ),
               ),
             ),
           ],

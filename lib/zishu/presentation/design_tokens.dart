@@ -39,6 +39,14 @@ abstract final class AppOnVideo {
   /// 刻意保留 `static final` + `Colors.black.withValues(alpha: 0.35)`(理由同
   /// `AppElevation.sheet`):换成 `0x59` 字面量在像素上可能有 1/255 的差异。
   static final Color pauseScrim = Colors.black.withValues(alpha: 0.35);
+
+  /// on-video 控件强调色(恒亮深紫=深色主题 accent):恒暗 popover/角标内的
+  /// 激活标识在浅色主题下若用随主题 accent(#6A1B9A)对比不足(2.0:1),
+  /// on-video 语境统一取此恒亮值。
+  static const Color accent = Color(0xFF7C4DFF);
+
+  /// 弹幕设置 popover 恒暗底(web 同源 rgba(18,18,18,.95))。
+  static const Color popoverBg = Color(0xF2121212);
 }
 
 /// 亮饱和底(强调色 accent / 品牌金 brand / 平台品牌色)上的前景色。

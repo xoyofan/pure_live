@@ -8,6 +8,7 @@
 //
 // Methods: health | resolve | qualities | playUrls
 //          | categories | categoryRooms | recommendRooms | searchRooms
+//          | danmakuStart | danmakuStop (push frames via stdout)
 // (contracts stay in contracts/api.md; this process is a Dart-side
 // implementation detail of the streaming server's ResolverBackend).
 import 'dart:async';
@@ -15,16 +16,105 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:pure_live/core/common/convert_helper.dart';
+import 'package:pure_live/core/common/parser_config.dart';
 import 'package:pure_live/core/site/bilibili/bilibili_site.dart';
 import 'package:pure_live/core/site/douyin/douyin_site.dart';
+import 'package:pure_live/core/danmaku/douyin_danmaku.dart';
 import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/model/live_play_quality.dart';
 import 'package:pure_live/model/live_category.dart';
 import 'package:pure_live/common/models/live_area.dart';
+import 'package:pure_live/common/models/live_message.dart';
 import 'package:pure_live/common/models/live_room.dart';
 
 /// Page-size ceiling shared by every list method (api.md 4.6).
 const int _maxPageSize = 50;
+
+/// Optional operator cookie injection: PARSER_<PLATFORM>_COOKIE (e.g.
+/// PARSER_DOUYIN_COOKIE) aligns the sidecar with a logged-in app for the
+/// parsing paths that gate on cookie (douyin search, higher qualities).
+/// Without the env the sidecar keeps running anonymous, as before.
+class _EnvParserConfig implements ParserConfig {
+  @override
+  String cookieFor(String platform) {
+    final key = 'PARSER_${platform.toUpperCase()}_COOKIE';
+    return Platform.environment[key] ?? '';
+  }
+}
+
+/// Live douyin danmaku sessions keyed by roomId; frames are pushed to stdout
+/// as {"push":"danmaku","roomId":...,"frame":{...}} envelopes.
+final Map<String, DouyinDanmaku> _danmakuSessions = {};
+
+String _isoTs(DateTime? at) => (at ?? DateTime.now()).toUtc().toIso8601String();
+
+void _pushDanmakuFrame(String roomId, Map<String, dynamic> frame) {
+  stdout.writeln(jsonEncode({'push': 'danmaku', 'roomId': roomId, 'frame': frame}));
+}
+
+void _stopDanmakuSession(String roomId) {
+  final session = _danmakuSessions.remove(roomId);
+  if (session == null) return;
+  session.onMessage = null;
+  session.onReconnect = null;
+  session.onClose = null;
+  session.onReady = null;
+  session.stop();
+}
+
+Future<Object?> _startDanmakuSession(String roomId) async {
+  if (_danmakuSessions.containsKey(roomId)) {
+    return {'started': true, 'roomId': roomId, 'existing': true};
+  }
+  final site = _sites['douyin'];
+  if (site == null) {
+    throw _RpcError('PLATFORM_UNSUPPORTED', 'douyin is not built into this sidecar');
+  }
+  final room = await site.getRoomDetail(platform: 'douyin', roomId: roomId);
+  final args = room.danmakuData;
+  if (args is! DouyinDanmakuArgs) {
+    throw _RpcError('ROOM_CLOSED', 'room has no danmaku session data (offline?)');
+  }
+
+  final session = DouyinDanmaku();
+  session.onMessage = (message) {
+    if (message.type == LiveMessageType.chat) {
+      _pushDanmakuFrame(roomId, {
+        'type': 'chat',
+        'userName': message.userName,
+        'userId': message.userId,
+        'text': message.message,
+        'avatar': '',
+        'ts': _isoTs(message.sentAt),
+      });
+    } else if (message.type == LiveMessageType.online) {
+      _pushDanmakuFrame(roomId, {
+        'type': 'online',
+        'kind': message.data.kind.name,
+        'value': message.data.value,
+        'ts': _isoTs(null),
+      });
+    }
+  };
+  session.onReady = () {
+    _pushDanmakuFrame(roomId, {'type': 'status', 'state': 'connected'});
+  };
+  session.onReconnect = (msg) {
+    _pushDanmakuFrame(roomId, {'type': 'status', 'state': 'reconnecting', 'message': msg});
+  };
+  session.onClose = (msg) {
+    _pushDanmakuFrame(roomId, {'type': 'status', 'state': 'closed', 'message': msg});
+    _danmakuSessions.remove(roomId);
+  };
+  _danmakuSessions[roomId] = session;
+  try {
+    await session.start(args);
+  } catch (error) {
+    _danmakuSessions.remove(roomId);
+    throw _RpcError('UPSTREAM_ERROR', 'danmaku start failed: $error');
+  }
+  return {'started': true, 'roomId': roomId};
+}
 
 int _pageOf(Map<String, dynamic> params) {
   final value = asT<int?>(params['page']) ?? (int.tryParse('${params['page'] ?? ''}') ?? 1);
@@ -166,6 +256,23 @@ Future<Object?> _dispatch(String method, Map<String, dynamic> params) async {
       return _roomListResult(rooms, page, pageSize);
     }
 
+    case 'danmakuStart': {
+      // Douyin danmaku runs on the SAME lib/core implementation as the app;
+      // frames flow back as stdout push envelopes. Bilibili stays a host-side
+      // TS source (contracts/api.md section 5 is unchanged).
+      if (platform != 'douyin') {
+        throw _RpcError('PLATFORM_UNSUPPORTED', 'danmaku for "$platform" is served host-side');
+      }
+      if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');
+      return await _startDanmakuSession(roomId);
+    }
+
+    case 'danmakuStop': {
+      if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');
+      _stopDanmakuSession(roomId);
+      return {'stopped': true, 'roomId': roomId};
+    }
+
     default:
       throw _RpcError('BAD_REQUEST', 'unknown method "$method"');
   }
@@ -183,6 +290,8 @@ Future<void> runSidecar(List<String> args) async {
   if (args.contains('--quiet')) {
     // reserved for future flags
   }
+
+  ParserConfig.instance ??= _EnvParserConfig();
 
   stdout.writeln(jsonEncode({'ok': true, 'started': true, 'platforms': _sites.keys.toList(growable: false)}));
 

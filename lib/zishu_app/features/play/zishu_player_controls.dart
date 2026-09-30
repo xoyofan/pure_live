@@ -537,7 +537,7 @@ class _DanmakuMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? context.tokens.accent : AppOnVideo.textMuted;
+    final color = active ? AppOnVideo.accent : AppOnVideo.textMuted;
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -563,7 +563,7 @@ class _DanmakuMark extends StatelessWidget {
               height: 11,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: const Color(0xF2121212),
+                color: AppOnVideo.popoverBg,
                 borderRadius: BorderRadius.circular(3),
                 boxShadow: AppElevation.hairline,
               ),
@@ -574,10 +574,10 @@ class _DanmakuMark extends StatelessWidget {
                         fontSize: AppFontSize.overline,
                         height: 1,
                         fontWeight: FontWeight.w800,
-                        color: context.tokens.accent,
+                        color: AppOnVideo.accent,
                       ),
                     )
-                  : Icon(Icons.settings_rounded, size: 9, color: active ? context.tokens.accent : AppOnVideo.textMuted),
+                  : Icon(Icons.settings_rounded, size: 9, color: active ? AppOnVideo.accent : AppOnVideo.textMuted),
             ),
           ),
       ],
@@ -611,7 +611,7 @@ class _DanmakuSettingsButtonState extends State<_DanmakuSettingsButton> {
       onClose: () => _unpinControlBar(controller),
       style: MenuStyle(
         alignment: Alignment.topCenter,
-        backgroundColor: const WidgetStatePropertyAll(Color(0xF2121212)),
+        backgroundColor: const WidgetStatePropertyAll(AppOnVideo.popoverBg),
         padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
       ),
       menuChildren: [
@@ -687,12 +687,12 @@ class _DanmakuSettingsButtonState extends State<_DanmakuSettingsButton> {
     width: double.infinity,
     padding: const EdgeInsets.only(bottom: 4),
     margin: const EdgeInsets.only(bottom: 6),
-    decoration: const BoxDecoration(
-      border: Border(bottom: BorderSide(color: Color(0x1FFFFFFF))),
+    decoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: AppOnVideo.text.withValues(alpha: 0.12))),
     ),
     child: Text(
       i18n('danmaku'),
-      style: TextStyle(fontSize: AppFontSize.bodySecondary, fontWeight: FontWeight.w600, color: context.tokens.accent),
+      style: TextStyle(fontSize: AppFontSize.bodySecondary, fontWeight: FontWeight.w600, color: AppOnVideo.accent),
     ),
   );
 
@@ -747,7 +747,7 @@ class _DanmakuSettingsButtonState extends State<_DanmakuSettingsButton> {
                 min: min,
                 max: max,
                 divisions: divisions,
-                activeColor: context.tokens.accent,
+                activeColor: AppOnVideo.accent,
                 inactiveColor: AppOnVideo.textMuted,
                 onChanged: onChanged,
               ),
@@ -760,7 +760,7 @@ class _DanmakuSettingsButtonState extends State<_DanmakuSettingsButton> {
           child: Text(
             display,
             textAlign: TextAlign.end,
-            style: TextStyle(fontSize: AppFontSize.caption, color: context.tokens.accent),
+            style: TextStyle(fontSize: AppFontSize.caption, color: AppOnVideo.accent),
           ),
         ),
       ],
@@ -793,7 +793,7 @@ class _DanmakuSettingsButtonState extends State<_DanmakuSettingsButton> {
                     child: Row(
                       children: [
                         if (current == ratio)
-                          Icon(Icons.check_rounded, size: 16, color: context.tokens.accent)
+                          Icon(Icons.check_rounded, size: 16, color: AppOnVideo.accent)
                         else
                           const SizedBox(width: 16),
                         const SizedBox(width: AppSpacing.xs),
@@ -838,7 +838,7 @@ class _PopoverSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final track = context.tokens.accent;
+    final track = AppOnVideo.accent;
     return Semantics(
       toggled: value,
       child: GestureDetector(

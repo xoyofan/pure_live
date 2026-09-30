@@ -220,7 +220,8 @@ class ZishuFollowRowItem extends StatelessWidget {
           overflow: TextOverflow.clip,
           style: context.textCaption.copyWith(
             fontSize: AppFontSize.label,
-            color: style?.foreground ?? tokens.textSecondary,
+            // 调色板基色(主题无关):foreground 档在浅色 18% 淡底上对比不足。
+            color: style?.background ?? tokens.textSecondary,
           ),
         ),
       ),

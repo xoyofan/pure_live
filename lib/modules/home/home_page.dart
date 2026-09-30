@@ -57,12 +57,21 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
 
   int _selectedIndex = 0;
 
-  final Map<HomeMenu, Widget> _pageMap = const {
-    HomeMenu.favorites: FavoritePage(),
-    HomeMenu.popular: PopularPage(),
-    HomeMenu.areas: AreasPage(),
-    HomeMenu.record: RecorderPage(),
-  };
+  /// 窄屏外壳无内容分发(zishu_phone_shell.dart 直接 `Expanded(child: body)`)，
+  /// 四个 tab 内容仍由本页按需提供；宽屏外壳 `_contentForMenu` 已全量接管
+  /// 四个 tab(zishu 视图)，body 仅兜底、永不渲染。
+  Widget _pageForMenu(HomeMenu menu) {
+    switch (menu) {
+      case HomeMenu.favorites:
+        return const FavoritePage();
+      case HomeMenu.popular:
+        return const PopularPage();
+      case HomeMenu.areas:
+        return const AreasPage();
+      case HomeMenu.record:
+        return const RecorderPage();
+    }
+  }
 
   @override
   void initState() {
@@ -230,7 +239,6 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
             final activeMenuIds = List<String>.from(SettingsService.to.app.savedMenuIds.v);
 
             int adjustedIndex = _selectedIndex;
-            Widget currentWidget = const SizedBox.shrink();
 
             if (activeMenuIds.isNotEmpty) {
               if (adjustedIndex < 0 || adjustedIndex >= HomeMenu.values.length) {
@@ -239,23 +247,23 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                   adjustedIndex = fallbackMenu.index;
                 }
               }
-              if (adjustedIndex >= 0 && adjustedIndex < HomeMenu.values.length) {
-                final currentMenu = HomeMenu.values[adjustedIndex];
-                currentWidget = _pageMap[currentMenu] ?? const SizedBox.shrink();
-              }
             } else {
               adjustedIndex = -1;
             }
 
+            final bool hasActiveMenu = adjustedIndex >= 0 && adjustedIndex < HomeMenu.values.length;
+
             return !isTablet
                 ? ZishuPhoneShell(
-                    body: currentWidget,
+                    body: hasActiveMenu ? _pageForMenu(HomeMenu.values[adjustedIndex]) : const SizedBox.shrink(),
                     index: adjustedIndex,
                     activeMenuIds: activeMenuIds,
                     onDestinationSelected: onDestinationSelected,
                   )
                 : ZishuAppShell(
-                    body: currentWidget,
+                    // 宽屏外壳 _contentForMenu 覆盖全部四个 menu 且空菜单时
+                    // 自渲染空态页，body 兜底分支不可达，传空渲染即可。
+                    body: const SizedBox.shrink(),
                     index: adjustedIndex,
                     activeMenuIds: activeMenuIds,
                     onDestinationSelected: onDestinationSelected,
