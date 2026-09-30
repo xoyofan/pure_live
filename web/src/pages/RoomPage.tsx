@@ -441,10 +441,15 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
                 <div className="player-controls">
                   <div className="controls-group">
                     <button type="button" className="ctrl-btn" title={videoPaused ? '播放' : '暂停'} onClick={togglePlay}>
-                      {videoPaused ? '▶' : '⏸'}
+                      {videoPaused ? '▶' : '❚❚'}
                     </button>
-                    <button type="button" className="ctrl-btn" title={videoMuted ? '取消静音' : '静音'} onClick={toggleMute}>
-                      {videoMuted || videoVolume === 0 ? '🔇' : '🔊'}
+                    <button
+                      type="button"
+                      className={`ctrl-btn${videoMuted || videoVolume === 0 ? ' off' : ''}`}
+                      title={videoMuted || videoVolume === 0 ? '取消静音' : '静音'}
+                      onClick={toggleMute}
+                    >
+                      声
                     </button>
                     <input
                       type="range"
