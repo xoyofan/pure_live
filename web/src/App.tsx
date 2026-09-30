@@ -146,6 +146,7 @@ export default function App() {
             <button
               key={p.id}
               type="button"
+              data-platform={p.id}
               className={`platform-tab${route.platform === p.id ? ' active' : ''}`}
               onClick={() => showDiscover(p.id, null, null)}
             >

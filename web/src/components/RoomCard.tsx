@@ -27,6 +27,7 @@ export default function RoomCard({ room, platformName, onOpen }: Props) {
             src={room.cover}
             alt=""
             loading="lazy"
+            referrerPolicy="no-referrer"
             onError={(e) => {
               e.currentTarget.style.display = 'none';
             }}

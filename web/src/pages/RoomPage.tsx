@@ -102,6 +102,7 @@ export default function RoomPage({ platform, roomId, onLeave }: Props) {
   const qualityRef = useRef<string | null>(null);
   const currentQualityIdRef = useRef<string | null>(null);
   const autoRecoverTimerRef = useRef<number | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
 
   // --- resolve -------------------------------------------------------------
   useEffect(() => {
@@ -246,13 +247,44 @@ export default function RoomPage({ platform, roomId, onLeave }: Props) {
         })()
       : null;
 
-  // --- render ----------------------------------------------------------------
+  const [sideTab, setSideTab] = useState<'chat' | 'settings'>('chat');
+  const chatListRef = useRef<HTMLDivElement | null>(null);
+  const chatStuckRef = useRef(true);
+
+  // Follow the chat tail unless the user scrolled up to read history.
+  useEffect(() => {
+    const node = chatListRef.current;
+    if (!node || sideTab !== 'chat') return;
+    if (chatStuckRef.current) node.scrollTop = node.scrollHeight;
+  }, [danmaku.chatList, sideTab]);
+
+  const reloadStream = () => setNonce((n) => n + 1);
+
+  const toggleFullscreen = () => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void stage.requestFullscreen().catch(() => {});
+  };
+
+  const togglePip = async () => {
+    const video = stageRef.current?.querySelector('video');
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await video.requestPictureInPicture();
+    } catch {
+      /* PiP unsupported or rejected */
+    }
+  };
+
   const coverNode = (
     <div className="cover">
       {room?.cover ? (
         <img
           src={room.cover}
           alt="直播间封面"
+          referrerPolicy="no-referrer"
           onError={(e) => {
             e.currentTarget.style.display = 'none';
           }}
@@ -262,13 +294,15 @@ export default function RoomPage({ platform, roomId, onLeave }: Props) {
     </div>
   );
 
+  // --- render ----------------------------------------------------------------
   return (
     <div className="room">
-      <div className="room-topbar">
+      <div className="play-header">
         <button type="button" className="btn-ghost" onClick={onLeave}>
           ← 返回
         </button>
-        {room && <span className="room-crumb">{room.title || `${platform} ${roomId}`}</span>}
+        <span className={`platform-chip platform-${platform}`}>{platform === 'douyin' ? 'Douyin' : 'BiliBili'}</span>
+        <span className="play-title">{room?.title || `${platform} ${roomId}`}</span>
       </div>
 
       {phase.kind === 'loading' && <p className="banner">正在获取房间信息…</p>}
@@ -285,12 +319,52 @@ export default function RoomPage({ platform, roomId, onLeave }: Props) {
       {phase.kind === 'ok' && room && (
         <div className="room-grid">
           <div className="player-col">
-            <div className="player-stage">
+            <div className="player-stage" ref={stageRef}>
               {coverNode}
               {source && <Player source={source} onError={handlePlayerError} onStall={handleStall} onPlaying={handlePlaying} />}
+              {playable && source && <DanmakuCanvas chatQueueRef={danmaku.chatQueueRef} muted={danmakuMuted} />}
               {room && !playable && (
                 <div className="player-state">
                   <p className="banner banner-state">{liveStatusText(room.liveStatus)}</p>
+                </div>
+              )}
+              {playable && source && (
+                <div className="player-controls">
+                  <div className="controls-group">
+                    <button type="button" className="ctrl-btn" title="刷新播放" onClick={reloadStream}>
+                      ↻
+                    </button>
+                    <button
+                      type="button"
+                      className={`ctrl-btn${danmakuMuted ? ' off' : ''}`}
+                      title={danmakuMuted ? '开启弹幕' : '关闭弹幕'}
+                      onClick={() => setDanmakuMuted((m) => !m)}
+                    >
+                      弹
+                    </button>
+                  </div>
+                  {qualities.length > 0 && (
+                    <div className="controls-group qualities">
+                      {qualities.map((q) => (
+                        <button
+                          key={q.selectionId}
+                          type="button"
+                          className={`ctrl-chip${q.selectionId === currentQuality ? ' active' : ''}`}
+                          onClick={() => selectQuality(q.selectionId)}
+                        >
+                          {q.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="controls-group">
+                    <button type="button" className="ctrl-btn" title="画中画" onClick={() => void togglePip()}>
+                      画
+                    </button>
+                    <button type="button" className="ctrl-btn" title="网页全屏" onClick={toggleFullscreen}>
+                      全
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -311,11 +385,7 @@ export default function RoomPage({ platform, roomId, onLeave }: Props) {
             {playbackError && (
               <div className="banner banner-error">
                 <span>{playbackError}</span>
-                <button
-                  type="button"
-                  className="btn-small"
-                  onClick={() => setNonce((n) => n + 1)}
-                >
+                <button type="button" className="btn-small" onClick={reloadStream}>
                   重新加载
                 </button>
                 <button
@@ -327,58 +397,78 @@ export default function RoomPage({ platform, roomId, onLeave }: Props) {
                 </button>
               </div>
             )}
-
-            {qualities.length > 0 && (
-              <div className="quality-bar">
-                <span className="quality-label">清晰度</span>
-                {qualities.map((q) => (
-                  <button
-                    key={q.selectionId}
-                    type="button"
-                    className={`btn-chip${q.selectionId === currentQuality ? ' active' : ''}`}
-                    onClick={() => selectQuality(q.selectionId)}
-                  >
-                    {q.label}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
-          <aside className="danmaku-col">
-            <div className="room-meta">
-              {room.avatar ? <img className="avatar" src={room.avatar} alt="" /> : null}
-              <div>
+          <aside className="play-side">
+            <div className="side-header">
+              {room.avatar ? (
+                <img className="avatar" src={room.avatar} alt="" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="avatar placeholder" />
+              )}
+              <div className="side-header-info">
                 <p className="nick">{room.nick || '未知主播'}</p>
                 <p className="watching">
-                  {viewerText ? `观看 ${viewerText}` : ''}
+                  {viewerText ? `${viewerText} 观看` : ''}
                   {liveStatusText(room.liveStatus) ? ' · 未开播' : ''}
                 </p>
               </div>
+              <span className={`dot dot-${danmaku.status}`} title={danmakuStatusText(danmaku.status) ?? ''} />
             </div>
 
-            <div className="danmaku-toolbar">
-              <span className={`dot dot-${danmaku.status}`} />
-              <span className="danmaku-status">
-                {danmakuStatusText(danmaku.status)}
-                {danmaku.statusMessage ? `(${danmaku.statusMessage})` : ''}
-              </span>
+            <div className="side-tabs">
               <button
                 type="button"
-                className="btn-chip"
-                onClick={() => setDanmakuMuted((m) => !m)}
+                className={`side-tab${sideTab === 'chat' ? ' active' : ''}`}
+                onClick={() => setSideTab('chat')}
               >
-                {danmakuMuted ? '弹幕已屏蔽' : '弹幕开启'}
+                聊天
+              </button>
+              <button
+                type="button"
+                className={`side-tab${sideTab === 'settings' ? ' active' : ''}`}
+                onClick={() => setSideTab('settings')}
+              >
+                设置
               </button>
             </div>
 
-            <div className="danmaku-panel">
-              {playable ? (
-                <DanmakuCanvas chatQueueRef={danmaku.chatQueueRef} muted={danmakuMuted} />
-              ) : (
-                <p className="danmaku-empty">房间未开播,弹幕服务未连接</p>
-              )}
-            </div>
+            {sideTab === 'chat' ? (
+              <div
+                className="chat-list"
+                ref={chatListRef}
+                onScroll={(e) => {
+                  const node = e.currentTarget;
+                  chatStuckRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 40;
+                }}
+              >
+                {danmaku.chatList.length === 0 && (
+                  <p className="danmaku-empty">
+                    {playable ? '还没有弹幕,来说点什么…' : '房间未开播,弹幕服务未连接'}
+                  </p>
+                )}
+                {danmaku.chatList.map((item, index) => (
+                  <p key={index} className="chat-item">
+                    <span className="chat-user">{item.userName}:</span>
+                    <span className="chat-text">{item.text}</span>
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <div className="side-settings">
+                <label className="settings-row">
+                  <span>弹幕</span>
+                  <button
+                    type="button"
+                    className={`switch${danmakuMuted ? ' off' : ''}`}
+                    onClick={() => setDanmakuMuted((m) => !m)}
+                  >
+                    {danmakuMuted ? '关闭' : '开启'}
+                  </button>
+                </label>
+                <p className="settings-hint">弹幕状态:{danmakuStatusText(danmaku.status) ?? '未连接'}</p>
+              </div>
+            )}
           </aside>
         </div>
       )}

@@ -29,7 +29,12 @@ export interface DanmakuHandle {
   onlineValue: number | null;
   /** Queue the canvas drains; capped at BACKLOG_CAP (oldest dropped). */
   chatQueueRef: MutableRefObject<DanmakuChatItem[]>;
+  /** Bounded recent-chat mirror for side-panel list rendering. */
+  chatList: DanmakuChatItem[];
 }
+
+/** Side-panel list cap; older entries drop off the head. */
+const CHAT_LIST_CAP = 60;
 
 /**
  * Consume the danmaku WebSocket
@@ -44,6 +49,7 @@ export function useDanmaku(
   const [status, setStatus] = useState<DanmakuConnectionState | 'idle'>('idle');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [onlineValue, setOnlineValue] = useState<number | null>(null);
+  const [chatList, setChatList] = useState<DanmakuChatItem[]>([]);
   const chatQueueRef = useRef<DanmakuChatItem[]>([]);
 
   useEffect(() => {
@@ -51,6 +57,7 @@ export function useDanmaku(
       setStatus('idle');
       setStatusMessage(null);
       setOnlineValue(null);
+      setChatList([]);
       chatQueueRef.current = [];
       return;
     }
@@ -135,11 +142,16 @@ export function useDanmaku(
             const userName = typeof msg.userName === 'string' ? msg.userName : '用户';
             const text = typeof msg.text === 'string' ? msg.text : '';
             if (text.length === 0) return;
+            const item = { userName, text };
             const queue = chatQueueRef.current;
-            queue.push({ userName, text });
+            queue.push(item);
             if (queue.length > BACKLOG_CAP) {
               queue.splice(0, queue.length - BACKLOG_CAP);
             }
+            setChatList((prev) => {
+              const next = [...prev, item];
+              return next.length > CHAT_LIST_CAP ? next.slice(next.length - CHAT_LIST_CAP) : next;
+            });
             break;
           }
           case 'online': {
@@ -201,8 +213,9 @@ export function useDanmaku(
         socket = null;
       }
       chatQueueRef.current = [];
+      setChatList([]);
     };
   }, [platform, roomId]);
 
-  return { status, statusMessage, onlineValue, chatQueueRef };
+  return { status, statusMessage, onlineValue, chatQueueRef, chatList };
 }
