@@ -4,9 +4,14 @@
  * 502 UPSTREAM_ERROR) at the call sites via toApiError.
  */
 import axios, { type AxiosRequestConfig } from 'axios';
-import { isNetworkTimeout, upstreamError } from './errors.js';
+import { ApiError, isNetworkTimeout, upstreamError } from './errors.js';
 
 export const UPSTREAM_TIMEOUT_MS = 12_000;
+
+/** Upstream HTTP status attached to ApiError by mapNetworkError when known. */
+interface UpstreamStatusAware {
+  upstreamStatus?: number;
+}
 
 const client = axios.create({
   timeout: UPSTREAM_TIMEOUT_MS,
@@ -18,13 +23,25 @@ const client = axios.create({
 
 function mapNetworkError(err: unknown, url: string): never {
   if (isNetworkTimeout(err)) throw err; // re-thrown; toApiError maps to 504
-  const detail =
-    err instanceof Error
-      ? err.message
-      : axios.isAxiosError(err) && err.response
-        ? `HTTP ${err.response.status}`
-        : String(err);
+  if (axios.isAxiosError(err) && err.response) {
+    // Keep the upstream status on the error so callers can distinguish
+    // "room page gone (404)" from a genuine upstream failure.
+    const apiError: ApiError & UpstreamStatusAware = upstreamError(
+      `upstream request failed (${url}): HTTP ${err.response.status}`,
+    );
+    apiError.upstreamStatus = err.response.status;
+    throw apiError;
+  }
+  const detail = err instanceof Error ? err.message : String(err);
   throw upstreamError(`upstream request failed (${url}): ${detail}`);
+}
+
+/** Reads the upstream HTTP status attached by mapNetworkError, if any. */
+export function upstreamStatusOf(err: unknown): number | undefined {
+  if (err && typeof err === 'object' && 'upstreamStatus' in err) {
+    return (err as UpstreamStatusAware).upstreamStatus;
+  }
+  return undefined;
 }
 
 export interface JsonOptions {

@@ -3,7 +3,7 @@
  * lib/core/utils/douyin/douyin_utils.dart (a_bogus-signed request URLs) and
  * the douyin branch of lib/core/common/playback_header_resolver.dart.
  */
-import { getJson, getText, getTextWithCookies, headSetCookies } from '../http.js';
+import { getJson, getText, getTextWithCookies, headSetCookies, upstreamStatusOf } from '../http.js';
 import { badRequest, roomClosed, roomNotFound, upstreamError } from '../errors.js';
 import { generateAbogus } from '../sign/abogus.js';
 import type {
@@ -500,11 +500,37 @@ async function resolveByWebRidApi(webRid: string): Promise<DouyinResolution> {
   const data = asStringMap(result?.data);
   const rooms = Array.isArray(data?.['data']) ? (data['data'] as unknown[]) : [];
   const room = asStringMap(rooms[0]);
-  if (!room) throw roomNotFound(`douyin room ${webRid} not found`);
   const user = asStringMap(data?.['user']);
+  if (!room) {
+    // Ended broadcasts leave the enter API with an empty room list but the
+    // anchor profile intact; report an offline room instead of an error.
+    if (user) return offlineRoomFromUser(webRid, user);
+    throw roomNotFound(`douyin room ${webRid} not found`);
+  }
   const owner = asStringMap(room['owner']);
   const fallbackNick = readText(user?.['nickname']);
   return buildResolution(webRid, room, owner, fallbackNick);
+}
+
+/** Offline room built from the anchor profile (enter API with no live room). */
+function offlineRoomFromUser(webRid: string, user: Record<string, unknown>): DouyinResolution {
+  const avatar = asStringMap(user['avatar_thumb']);
+  const avatarList = Array.isArray(avatar?.['url_list']) ? (avatar['url_list'] as unknown[]) : [];
+  return {
+    info: {
+      platform: 'douyin',
+      roomId: webRid,
+      title: '',
+      nick: readText(user['nickname']),
+      avatar: readText(avatarList[0]),
+      cover: '',
+      watching: '',
+      link: `https://live.douyin.com/${webRid}`,
+      status: false,
+      liveStatus: 'offline',
+    },
+    streamUrl: {},
+  };
 }
 
 /** Port of _getWebCookie + _getRoomDataByHtml (HTML fallback). */
@@ -513,7 +539,12 @@ async function resolveByWebRidHtml(webRid: string): Promise<DouyinResolution> {
     referer: DOUYIN_REFERER,
     'user-agent': DOUYIN_API_USER_AGENT,
   };
-  const setCookies = await headSetCookies(`https://live.douyin.com/${webRid}`, { headers: base });
+  const setCookies = await headSetCookies(`https://live.douyin.com/${webRid}`, { headers: base }).catch((error) => {
+    // douyin answers 404 for room URLs that are gone; that is ROOM_NOT_FOUND,
+    // not an upstream failure.
+    if (upstreamStatusOf(error) === 404) throw roomNotFound(`douyin room ${webRid} not found`);
+    throw error;
+  });
   const pairs: string[] = [];
   for (const value of setCookies) {
     const pair = (value.split(';')[0] ?? '').trim();
@@ -525,6 +556,9 @@ async function resolveByWebRidHtml(webRid: string): Promise<DouyinResolution> {
 
   const html = await getText(`https://live.douyin.com/${webRid}`, {
     headers: cookie ? { ...base, cookie } : base,
+  }).catch((error) => {
+    if (upstreamStatusOf(error) === 404) throw roomNotFound(`douyin room ${webRid} not found`);
+    throw error;
   });
   const match = html.match(/\{\\"state\\":\{\\"appStore[\s\S]*?\]\\n/);
   if (!match) throw roomNotFound(`douyin room ${webRid} not found (page state missing)`);
