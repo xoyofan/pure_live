@@ -502,7 +502,7 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
       )}
 
       {phase.kind === 'ok' && room && (
-        <div className="room-grid">
+        <div className={`room-grid${sideCollapsed ? " side-collapsed" : ""}`}>
           <div className="player-col">
             {headerNode}
             <div className="player-stage" ref={stageRef}>

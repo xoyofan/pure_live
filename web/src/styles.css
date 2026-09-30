@@ -968,20 +968,17 @@ select {
   :root {
     --play-sidebar-width: 392px;
   }
-
-  .room-grid {
-    grid-template-columns: minmax(0, 1fr) 392px;
-  }
 }
 
 @media (min-width: 1920px) {
   :root {
     --play-sidebar-width: 425px;
   }
+}
 
-  .room-grid {
-    grid-template-columns: minmax(0, 1fr) 425px;
-  }
+/* side panel collapsed: the player takes the full row */
+.room-grid.side-collapsed {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .player-col {
