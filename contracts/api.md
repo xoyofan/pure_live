@@ -75,7 +75,8 @@ M2 逐步扩展:`huya`、`douyu`、`cc`、`soop`、`yy`、`twitch`、`iptv` 等�
     "platform": "bilibili", "roomId": "21452505",
     "title": "直播间标题", "nick": "主播名",
     "avatar": "https://...", "cover": "https://...",
-    "watching": "1.2万", "link": "https://live.bilibili.com/21452505",
+    "watching": "1.2万", "audienceMetricType": "popularity", "totalViewers": "",
+    "link": "https://live.bilibili.com/21452505",
     "followers": "", "introduction": "主播签名(可缺省)",
     "status": true, "liveStatus": "live"
   }
@@ -84,6 +85,19 @@ M2 逐步扩展:`huya`、`douyu`、`cc`、`soop`、`yy`、`twitch`、`iptv` 等�
 
 `liveStatus` 取值:`live` | `offline` | `replay` | `banned` | `unknown`。
 房间不在线时返回 200 + `liveStatus: "offline"`(不是错误)。
+- `audienceMetricType`:`popularity` | `onlineViewers` | `totalViewers` | `followers` | `unknown`(可缺省,缺省同 `unknown`),标注 `watching` 的口径——人气热度或观看人数。
+- `totalViewers`(可缺省):本场累计观看人数;前端展示时优先于 `watching`,并以「观看」标注。
+
+### 4.3.1 `GET /rooms/{platform}/live-status?roomId=`
+
+轻量开播探测(关注页刷新等只需要「是否在播」的场景,不必拉全量房间元数据):
+
+```json
+{ "live": true }
+```
+
+- `roomId` 缺省/空 → 400 `BAD_REQUEST`;平台未注册 → 404 `PLATFORM_UNSUPPORTED`。
+- 解析层调用各站点 `LiveSite.getLiveStatus`;上游异常一律归一化为 `{ "live": false }`,不作为错误返回。
 
 ### 4.4 `GET /rooms/{platform}/qualities?roomId=` (M1)
 
@@ -118,10 +132,10 @@ M2 逐步扩展:`huya`、`douyu`、`cc`、`soop`、`yy`、`twitch`、`iptv` 等�
 
 ### 4.6 发现与搜索 (directory / search)
 
-房间列表条目统一为**瘦身 LiveRoom**(与 4.3 同形,字段可缺省):
+房间列表条目统一为**瘦身 LiveRoom**(与 4.3 同形,字段可缺省;`audienceMetricType`/`totalViewers` 语义同 4.3):
 
 ```json
-{ "page": 1, "hasMore": true, "rooms": [ { "platform": "...", "roomId": "...", "title": "...", "nick": "...", "avatar": "...", "cover": "...", "watching": "...", "area": "分类名", "followers": "", "introduction": "", "link": "...", "status": true, "liveStatus": "live" } ] }
+{ "page": 1, "hasMore": true, "rooms": [ { "platform": "...", "roomId": "...", "title": "...", "nick": "...", "avatar": "...", "cover": "...", "watching": "...", "audienceMetricType": "popularity", "totalViewers": "", "area": "分类名", "followers": "", "introduction": "", "link": "...", "status": true, "liveStatus": "live" } ] }
 ```
 
 `page` 从 1 起;`hasMore` 以返回条数是否达到 pageSize 估计。`pageSize` 缺省 30,上限 50。

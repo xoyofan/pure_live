@@ -6,7 +6,7 @@
 // {"id":<req id>,"ok":true,"result":...} | {"id":<req id>,"ok":false,
 // "error":{"code":"...","message":"..."}}.
 //
-// Methods: health | resolve | qualities | playUrls
+// Methods: health | resolve | liveStatus | qualities | playUrls
 //          | categories | categoryRooms | recommendRooms | searchRooms
 //          | danmakuStart | danmakuStop (push frames via stdout)
 // (contracts stay in contracts/api.md; this process is a Dart-side
@@ -183,6 +183,8 @@ Map<String, dynamic> _roomToJson(LiveRoom room) {
     'avatar': room.avatar ?? '',
     'cover': room.cover ?? '',
     'watching': room.watching ?? '',
+    'audienceMetricType': room.audienceMetricType?.name ?? 'unknown',
+    'totalViewers': room.totalViewers ?? '',
     'followers': room.followers ?? '',
     'area': room.area ?? '',
     'introduction': room.introduction ?? '',
@@ -210,6 +212,17 @@ Future<Object?> _dispatch(String method, Map<String, dynamic> params) async {
       if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');
       final room = await site.getRoomDetail(platform: platform, roomId: roomId);
       return {'room': _roomToJson(room)};
+
+    case 'liveStatus':
+      // Cheap liveness probe for follow lists (api.md 4.3.1): any upstream or
+      // shape failure reads as offline instead of surfacing a transport error.
+      if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');
+      try {
+        final live = await site.getLiveStatus(platform: platform, roomId: roomId);
+        return {'live': live};
+      } catch (_) {
+        return {'live': false};
+      }
 
     case 'qualities':
       if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');

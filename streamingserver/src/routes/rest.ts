@@ -1,10 +1,11 @@
 /**
  * REST endpoints of contracts/api.md: 4.1 health, 4.2 platforms, 4.3 resolve,
- * 4.4 qualities, 4.5 play-urls. All non-2xx failures serialize through the
- * shared error middleware as {"error":{code,message}}.
+ * 4.3.1 live-status, 4.4 qualities, 4.5 play-urls. All non-2xx failures
+ * serialize through the shared error middleware as {"error":{code,message}}.
  */
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { registry } from '../backends/types.js';
+import type { SidecarProcess } from '../backends/dart_sidecar.js';
 import { badRequest, platformUnsupported, toApiError } from '../errors.js';
 
 const VERSION = '1.0.0';
@@ -73,6 +74,28 @@ export function createRestRouter(): Router {
       const roomId = requireRoomId(req.body?.roomId);
       const room = await backend.resolveRoom(roomId);
       res.json({ room });
+    }),
+  );
+
+  // 4.3.1 GET /rooms/{platform}/live-status?roomId=
+  router.get(
+    '/rooms/:platform/live-status',
+    handler(async (req, res) => {
+      const platform = req.params.platform ?? '';
+      const backend = getBackend(platform);
+      const roomId = requireRoomId(req.query.roomId);
+      // Liveness rides the sidecar transport owned by the backend (sidecar
+      // "liveStatus" -> lib/core LiveSite.getLiveStatus, upstream failures
+      // already normalized to {"live":false} there). Non-sidecar backends
+      // fall back to full room metadata (4.3 semantics).
+      const sidecar = (backend as { sidecar?: SidecarProcess }).sidecar;
+      if (sidecar) {
+        const result = await sidecar.call<{ live?: boolean }>('liveStatus', { platform, roomId });
+        res.json({ live: result.live === true });
+        return;
+      }
+      const room = await backend.resolveRoom(roomId);
+      res.json({ live: room.liveStatus === 'live' || room.status });
     }),
   );
 

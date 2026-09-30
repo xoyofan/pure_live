@@ -10,6 +10,9 @@ interface Props {
   onOpenCategory: (platform: string, area: { areaId: string; areaType?: string; typeName?: string; areaName?: string }) => void;
 }
 
+/** Tiles per screen;「加载更多」appends this many (huya alone has ~400 leaves). */
+const PAGE_SIZE = 60;
+
 /**
  * Category index (zishu CategoryIndexView shape): tiles of every directory
  * leaf — cover image when the platform supplies one, hashed-color name tile
@@ -19,6 +22,8 @@ export default function CategoryIndexPage({ platform, onOpenCategory }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [myCats, setMyCats] = useState(listMyCategories);
+  const [query, setQuery] = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Save/remove happens here; the subscription keeps the ★ state current.
   useEffect(() => subscribeMyCategories(() => setMyCats(listMyCategories())), []);
@@ -27,6 +32,7 @@ export default function CategoryIndexPage({ platform, onOpenCategory }: Props) {
     let disposed = false;
     setCategories([]);
     setError(null);
+    setVisibleCount(PAGE_SIZE);
     getCategories(platform)
       .then((res) => {
         if (!disposed) setCategories(res.categories ?? []);
@@ -49,6 +55,15 @@ export default function CategoryIndexPage({ platform, onOpenCategory }: Props) {
 
   const savedKeys = new Set(myCats.filter((e) => e.platform === platform).map((e) => e.areaId));
 
+  // Client-side filter over areaName/typeName — no extra requests.
+  const keyword = query.trim().toLowerCase();
+  const filtered = keyword
+    ? leaves.filter((area) =>
+        [area.areaName ?? '', area.typeName ?? ''].some((name) => name.toLowerCase().includes(keyword)),
+      )
+    : leaves;
+  const shown = filtered.slice(0, visibleCount);
+
   const toggleSave = (area: AreaItem) => {
     const areaId = area.areaId ?? '';
     if (savedKeys.has(areaId)) removeMyCategory(platform, areaId);
@@ -65,10 +80,24 @@ export default function CategoryIndexPage({ platform, onOpenCategory }: Props) {
   return (
     <div className="discover">
       <h2 className="category-index-title">全部分类</h2>
+      <div className="discover-search">
+        <input
+          type="search"
+          value={query}
+          placeholder="搜索分类名称"
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setVisibleCount(PAGE_SIZE);
+          }}
+        />
+      </div>
       {error && <p className="banner banner-error">{error}</p>}
       {!error && leaves.length === 0 && <p className="banner">分类加载中…</p>}
+      {!error && leaves.length > 0 && filtered.length === 0 && (
+        <p className="banner">没有匹配的分类,换个关键词试试</p>
+      )}
       <div className="category-tiles">
-        {leaves.map((area) => {
+        {shown.map((area) => {
           const style = categoryStyle(area.areaName || area.typeName || '');
           const saved = savedKeys.has(area.areaId ?? '');
           return (
@@ -107,6 +136,13 @@ export default function CategoryIndexPage({ platform, onOpenCategory }: Props) {
           );
         })}
       </div>
+      {filtered.length > shown.length && (
+        <div className="category-load-more">
+          <button type="button" className="btn-small" onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}>
+            加载更多
+          </button>
+        </div>
+      )}
     </div>
   );
 }

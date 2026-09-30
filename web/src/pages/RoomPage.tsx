@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCategories, getCategoryRooms, getPlayUrls, getQualities, getRecommendRooms, resolveRoom, toPlaybackUrl } from '../api/client';
-import { formatWatching } from '../lib/format';
+import { audienceDisplay, formatWatching } from '../lib/format';
 import { isApiError } from '../api/types';
 import type { Category, PlayUrls, Quality, Room, RoomListItem } from '../api/types';
 import { useDanmaku } from '../hooks/useDanmaku';
@@ -76,6 +76,11 @@ function liveStatusText(liveStatus: Room['liveStatus']): string | null {
 function formatViewers(value: number): string {
   if (value >= 10000) return `${(value / 10000).toFixed(1)}万`;
   return String(Math.round(value));
+}
+
+/** Recommend-list meta value: totalViewers (cumulative viewers) beats legacy watching. */
+function recommendViewers(room: RoomListItem): string {
+  return (room.totalViewers ?? '').trim() || (room.watching ?? '').trim();
 }
 
 function danmakuStatusText(status: ReturnType<typeof useDanmaku>['status']): string | null {
@@ -365,10 +370,14 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
     setDanmakuPrefs(next);
   };
 
+  // Sidebar audience line: a live danmaku count wins; otherwise totalViewers
+  // (cumulative head count) beats the legacy `watching`, with the unit label
+  // (人气 heat vs 观看 head count) following audienceMetricType.
+  const audience = room ? audienceDisplay(room) : { value: '', label: '人气' };
   const viewerText =
     danmaku.onlineValue !== null
       ? formatViewers(danmaku.onlineValue)
-      : room?.watching || '';
+      : audience.value;
 
   const source: PlaybackSource | null =
     play !== null && playable
@@ -699,7 +708,7 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
                   {room.nick || '未知主播'}
                 </p>
                 <p className="watching">
-                  {viewerText ? `${formatWatching(viewerText)} 人气` : ''}
+                  {viewerText ? `${formatWatching(viewerText)} ${audience.label}` : ''}
                   {Number(room.followers ?? '') > 0 ? ` · ${formatWatching(room.followers ?? '')} 粉丝` : ''}
                   {liveStatusText(room.liveStatus) ? ' · 未开播' : ''}
                 </p>
@@ -854,7 +863,7 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
                       <span className="recommend-item-title">{room.title || room.nick}</span>
                       <span className="recommend-item-meta">
                         {room.nick}
-                        {room.watching ? ` · ${room.watching}` : ''}
+                        {recommendViewers(room) ? ` · ${recommendViewers(room)}` : ''}
                       </span>
                     </span>
                   </button>

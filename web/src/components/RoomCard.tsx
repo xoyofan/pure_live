@@ -1,6 +1,6 @@
 import type { RoomListItem } from '../api/types';
 import { categoryStyle } from '../lib/categoryColor';
-import { formatWatching } from '../lib/format';
+import { audienceDisplay } from '../lib/format';
 
 interface Props {
   room: RoomListItem;
@@ -21,7 +21,7 @@ export default function RoomCard({ room, platformName, onOpen }: Props) {
   const isLive = room.liveStatus === 'live' || room.status;
   const area = (room.area ?? '').trim();
   const areaStyle = GENERIC_AREAS.has(area) ? null : categoryStyle(area);
-  const viewers = formatWatching(room.watching ?? '');
+  const audience = audienceDisplay(room);
 
   return (
     <button
@@ -51,7 +51,7 @@ export default function RoomCard({ room, platformName, onOpen }: Props) {
           {isLive && <span className="tag-live">直播</span>}
         </div>
         <span className={`tag-platform platform-${room.platform || ''}`}>{platformName}</span>
-        {viewers ? <span className="tag-viewers">{viewers}</span> : null}
+        {audience.value ? <span className="tag-viewers">{audience.value} {audience.label}</span> : null}
       </div>
       <div className="room-card-body">
         <p className="room-card-title">{room.title || `${platformName} ${room.roomId}`}</p>

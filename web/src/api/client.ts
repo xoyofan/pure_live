@@ -98,6 +98,14 @@ export function resolveRoom(platform: string, roomId: string): Promise<{ room: R
   });
 }
 
+/** GET /rooms/{platform}/live-status?roomId= */
+export function getLiveStatus(platform: string, roomId: string): Promise<{ live: boolean }> {
+  const query = new URLSearchParams({ roomId });
+  return request<{ live: boolean }>(
+    `/rooms/${encodeURIComponent(platform)}/live-status?${query.toString()}`,
+  );
+}
+
 /** GET /rooms/{platform}/qualities?roomId= */
 export function getQualities(platform: string, roomId: string): Promise<{ qualities: Quality[] }> {
   const query = new URLSearchParams({ roomId });

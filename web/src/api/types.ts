@@ -38,6 +38,10 @@ export interface Room {
   avatar: string;
   cover: string;
   watching: string;
+  /** Semantics of `watching`: 'popularity' | 'onlineViewers' | 'totalViewers' | 'followers' | 'unknown' (absent -> 'unknown'). */
+  audienceMetricType?: string;
+  /** Cumulative session viewers when the platform supplies one ('' otherwise); preferred over `watching` for display. */
+  totalViewers?: string;
   /** Category/area display name ('' when the platform does not supply one). */
   area?: string;
   /** Follower count when the platform supplies one ('' otherwise). */
