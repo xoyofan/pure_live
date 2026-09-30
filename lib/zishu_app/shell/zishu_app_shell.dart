@@ -674,7 +674,11 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-/// 品牌字 + 主导航图标组(首页/分区);关注等工具入口在顶栏右侧。
+/// 品牌字 + 主导航图标组(首页/分区/我的分类);关注等工具入口在顶栏右侧。
+/// 组成与顺序对齐 zishu 真源 top_nav.dart 的 nav-home / nav-category /
+/// nav-my-category(真源图标 Icons.star_border_rounded);我的分类无对应
+/// 菜单页签(点击弹 ZishuMyCategorySheet),无持久选中态,图标恒为
+/// 主组未选色 textSecondary。
 class _TopNavBrand extends StatelessWidget {
   final int index;
   final void Function(int) onSelectMenu;
@@ -699,16 +703,25 @@ class _TopNavBrand extends StatelessWidget {
           ),
         ),
         _TopNavIcon(
+          key: const Key('nav-home'),
           icon: Remix.home_5_fill,
           tooltip: i18n('popular_title'),
           color: index == HomeMenu.popular.index ? tokens.textPrimary : tokens.textSecondary,
           onTap: () => onSelectMenu(HomeMenu.popular.index),
         ),
         _TopNavIcon(
+          key: const Key('nav-category'),
           icon: Remix.apps_2_fill,
           tooltip: i18n('areas_title'),
           color: index == HomeMenu.areas.index ? tokens.textPrimary : tokens.textSecondary,
           onTap: () => onSelectMenu(HomeMenu.areas.index),
+        ),
+        _TopNavIcon(
+          key: const Key('nav-my-category'),
+          icon: Icons.star_border_rounded,
+          tooltip: i18n('my_category_title'),
+          color: tokens.textSecondary,
+          onTap: () => unawaited(showZishuMyCategorySheet(context)),
         ),
       ],
     );
@@ -721,7 +734,7 @@ class _TopNavIcon extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
 
-  const _TopNavIcon({required this.icon, required this.tooltip, required this.color, required this.onTap});
+  const _TopNavIcon({super.key, required this.icon, required this.tooltip, required this.color, required this.onTap});
 
   @override
   Widget build(BuildContext context) {

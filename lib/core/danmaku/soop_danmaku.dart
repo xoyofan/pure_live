@@ -187,8 +187,48 @@ class SoopDanmaku implements LiveDanmaku {
     final comment = fields[1].trim();
     final userName = fields[6].trim();
     if (comment.isEmpty || userName.isEmpty || ['-1', '1'].contains(comment) || comment.contains('|')) return;
+    // 徽章(对齐真源 live_parser soop/danmaku.dart _soopBadges):flag1
+    // (fields[7],'|' 取首段)位域 + 订阅月数(fields[8]);订阅(位 268435456)
+    // 或 months>0 时牌名为月数,管理员 256/铁粉 32768/粉丝团 32 为单字母牌。
+    // 协议单色 → start/end/border 同值;无用户等级字段 → userLevel 留默认空串。
+    String? badgeName;
+    String? badgeLevel;
+    String? badgeColor;
+    if (fields.length > 7) {
+      final flag = int.tryParse(fields[7].split('|').first.trim()) ?? 0;
+      final months = fields.length > 8 ? (int.tryParse(fields[8].trim()) ?? 0) : 0;
+      const int subscriber = 268435456, manager = 256, topfan = 32768, fanclub = 32;
+      if ((flag & subscriber) != 0 || months > 0) {
+        final lv = months > 0 ? months : 1;
+        badgeName = '$lv';
+        badgeLevel = '$lv';
+        badgeColor = '#EF565F';
+      } else if ((flag & manager) != 0) {
+        badgeName = 'M';
+        badgeLevel = '1';
+        badgeColor = '#53B1AE';
+      } else if ((flag & topfan) != 0) {
+        badgeName = 'T';
+        badgeLevel = '1';
+        badgeColor = '#D65B8F';
+      } else if ((flag & fanclub) != 0) {
+        badgeName = 'F';
+        badgeLevel = '1';
+        badgeColor = '#75AA5C';
+      }
+    }
     onMessage?.call(
-      LiveMessage(type: LiveMessageType.chat, color: LiveMessageColor.white, message: comment, userName: userName),
+      LiveMessage(
+        type: LiveMessageType.chat,
+        color: LiveMessageColor.white,
+        message: comment,
+        userName: userName,
+        badgeName: badgeName,
+        badgeLevel: badgeLevel,
+        badgeColorStart: badgeColor,
+        badgeColorEnd: badgeColor,
+        badgeColorBorder: badgeColor,
+      ),
     );
   }
 }

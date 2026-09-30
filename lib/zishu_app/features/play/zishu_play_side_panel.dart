@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/plugins/event_bus.dart';
-import 'package:pure_live/modules/live_play/widgets/danmaku/danmaku_tab.dart';
 import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/empty_view.dart' as zishu;
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_chat_tab.dart';
 import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 
 /// 会话级侧栏 tab 记忆(zishu `PlaySidePanelPrefs.tabIndex` 的最小等价物):
@@ -17,11 +17,12 @@ import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 int _lastSidePanelTab = 0;
 
 /// zishu 播放页侧栏(对齐 zishu play_side_panel):
-/// surface 底 + 左缘描边;头部(头像 + 名称 + 统计行)+ 关注/超关双 chip +
+/// surface 底 + 左缘描边;头部(贴边出血头像 + 三行信息 + 头内纵向双 chip)+
 /// 「聊天/关注/推荐/设置」四等分 tab(高 32,默认聊天)。
 ///
 /// 内容接线:
-/// - 聊天 → 既有 `DanmakuTabView()`(含弹幕列表/超级 chat/弹幕设置/屏蔽);
+/// - 聊天 → `ZishuChatTab` 纯聊天流(对齐 zishu _ChatTab,替换原
+///   DanmakuTabView 四子页签);
 /// - 关注 → `FavoriteController` 数据源;
 /// - 推荐 → 热门页 `PopularController` 分类房间流;
 /// - 设置 → 就地渲染弹幕设置(对齐 zishu settings_panel,非跳转列表)。
@@ -53,8 +54,6 @@ class ZishuPlaySidePanel extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _SideHeader(room: room, isLive: isLive),
-              // 关注/超关双 chip:横排于头部下方,高约 28。
-              _SideChipsRow(room: room),
               // 高度对齐 web `--el-tabs-header-height: 2rem`(32px)。
               SizedBox(
                 height: 32,
@@ -89,9 +88,9 @@ class ZishuPlaySidePanel extends StatelessWidget {
               Expanded(
                 child: TabBarView(
                   children: [
-                    // 聊天:既有弹幕页签整体复用(弹幕列表/超级chat/设置/屏蔽),
-                    // GetView<LivePlayController> 与播放路由同实例。
-                    const DanmakuTabView(),
+                    // 聊天:纯聊天流(对齐 zishu _ChatTab:正向列表最新在底 +
+                    // 贴底跟随 + 「N 条新消息」跳底,无输入框/子页签)。
+                    ZishuChatTab(room: room),
                     _FollowTab(room: room),
                     _RecommendTab(platform: room.platform ?? ''),
                     const _SettingsPanel(),
@@ -362,9 +361,12 @@ class _RecommendRow extends StatelessWidget {
   }
 }
 
-/// 侧栏信息头:头像贴边出血(64 宽 × 72 高)+ 名称 + 统计行。
-/// 统计行对齐 zishu side_panel_header 的统计区排版(图标 + 数值列):
-/// 人气 + 关注数两列;VIP/SVIP 两列 pure_live 的 LiveRoom 无数据源,本轮跳过。
+/// 侧栏信息头(对齐 zishu side_panel_header `_SideHeader` 三行结构):
+/// Row[贴边出血头像(64 宽 × 头高,仅右下小圆角) | Expanded 三行 Column
+/// ①主播名(w600,开播走 liveBadge 强调)+「关注 N」普通次级文字
+/// ②分类文字行(room.area,空则整行省;zishu 的提醒/网页按钮无对应能力,不渲染)
+/// ③统计行 FittedBox(人气 + 关注数两列;VIP/SVIP pure_live 无数据源)]
+/// | 右侧纵向关注/超关双 chip(对齐 zishu `_SideActions` 头内排布)。
 class _SideHeader extends StatelessWidget {
   const _SideHeader({required this.room, required this.isLive});
 
@@ -393,8 +395,9 @@ class _SideHeader extends StatelessWidget {
     final tokens = context.tokens;
     final nick = room.nick?.trim() ?? '';
     final avatar = room.avatar?.trim() ?? '';
-    final fallbackText = nick.isEmpty ? '?' : nick.substring(0, 1);
+    final category = room.area?.trim() ?? '';
     final followersText = _followersText;
+    final fallbackText = nick.isEmpty ? '?' : nick.substring(0, 1);
     Widget avatarContent = avatar.isEmpty
         ? ColoredBox(
             color: tokens.surfaceRaised,
@@ -426,8 +429,11 @@ class _SideHeader extends StatelessWidget {
               ),
             ),
           );
+    // 信息头留出稳定的三行排版空间(对齐 zishu:昵称/分类/统计各占一行,
+    // 高度随系统字号缩放,避免窄侧栏下互相挤压)。
+    final headerHeight = MediaQuery.textScalerOf(context).scale(72.0);
     return Container(
-      height: 72,
+      height: headerHeight,
       decoration: BoxDecoration(
         color: tokens.surface,
         border: Border(bottom: BorderSide(color: tokens.border)),
@@ -448,20 +454,50 @@ class _SideHeader extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Column(
+                // 三行内容在剩余高度内均分(对齐 zishu spaceBetween)。
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    nick.isNotEmpty ? nick : '主播信息',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.textTitle.copyWith(
-                      fontSize: AppFontSize.subtitle,
-                      fontWeight: FontWeight.w600,
-                      color: isLive ? tokens.liveBadge : tokens.textPrimary,
-                    ),
+                  // 第一行:主播名 + 「关注 N」普通次级文字(对齐 zishu:关注数
+                  // 与昵称同行,纯文字无胶囊底/描边)。
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          nick.isNotEmpty ? nick : '主播信息',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.textTitle.copyWith(
+                            fontSize: AppFontSize.subtitle,
+                            height: 1.18,
+                            fontWeight: FontWeight.w600,
+                            color: isLive ? tokens.liveBadge : tokens.textPrimary,
+                          ),
+                        ),
+                      ),
+                      if (followersText != null) ...[
+                        const SizedBox(width: AppSpacing.xs),
+                        Text(
+                          '${i18n('follow')} $followersText',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.textSecondary.copyWith(fontSize: AppFontSize.bodySecondary, height: 1.2),
+                        ),
+                      ],
+                    ],
                   ),
-                  // 统计行:FittedBox(scaleDown) 兜底窄栏/大字号溢出
+                  // 第二行:分类文字(pure_live 取 room.area;空则省行)。
+                  if (category.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      category,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.textSecondary.copyWith(fontSize: AppFontSize.bodySecondary, height: 1.2),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  // 第三行:统计行 FittedBox(scaleDown) 兜底窄栏/大字号溢出
                   // (对齐 zishu 统计区的等比缩放策略)。
                   Flexible(
                     child: FittedBox(
@@ -493,7 +529,11 @@ class _SideHeader extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: AppSpacing.sm),
+          // 右侧纵向关注/超关双 chip(对齐 zishu:头内右侧 59 宽上下充满)。
+          Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 2, right: 2),
+            child: _SideActionsColumn(room: room),
+          ),
         ],
       ),
     );
@@ -532,11 +572,11 @@ class _SideStatValue extends StatelessWidget {
   }
 }
 
-/// 头部下方双 chip 行(语义对齐 zishu _SideActions,横排、高约 28):
-/// 关注(红系,接既有房间收藏)+ 超级关注(紫系,本地标记)。
-/// zishu 的提醒/网页按钮 pure_live 无对应能力,不渲染。
-class _SideChipsRow extends StatelessWidget {
-  const _SideChipsRow({required this.room});
+/// 头部右侧纵向双 chip(对齐 zishu `_SideActions`:59 宽、上下 Expanded
+/// 充满头高、间隔 2):关注(红系,接既有房间收藏)+ 超级关注(紫系,本地
+/// 标记)。zishu 的提醒/网页按钮 pure_live 无对应能力,不渲染。
+class _SideActionsColumn extends StatelessWidget {
+  const _SideActionsColumn({required this.room});
 
   final LiveRoom room;
 
@@ -544,55 +584,53 @@ class _SideChipsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final superFollow = SuperFollowController.to;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 6),
-      child: SizedBox(
-        height: 28,
-        child: Row(
-          children: [
-            Expanded(
-              child: Obx(() {
-                // isFavorite 内部读 favoriteRooms(Rx),Obx 即时态。
-                final followed = SettingsService.to.fav.isFavorite(room);
-                return _SideActionChip(
-                  selected: followed,
-                  icon: followed ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                  label: followed ? i18n('followed') : i18n('follow'),
-                  colors: _SideChipColors(
-                    background: tokens.playFollowBg,
-                    hoverBackground: tokens.playFollowBgHover,
-                    activeBackground: tokens.playFollowBgActive,
-                    border: tokens.playFollowBorder,
-                    foreground: tokens.playFollowText,
-                    activeForeground: tokens.playFollowTextActive,
-                  ),
-                  onPressed: () => _toggleRoomFavorite(room),
-                );
-              }),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Obx(() {
-                final isSuper = superFollow.isSuper(room);
-                return _SideActionChip(
-                  selected: isSuper,
-                  icon: isSuper ? Icons.star_rounded : Icons.star_border_rounded,
-                  // 「超关/已超关」无既有 i18n key,中文常量(见报告)。
-                  label: isSuper ? '已超关' : '超关',
-                  colors: _SideChipColors(
-                    background: tokens.playSuperBg,
-                    hoverBackground: tokens.playSuperBgHover,
-                    activeBackground: tokens.playSuperBgActive,
-                    border: tokens.playSuperBorder,
-                    foreground: tokens.playSuperText,
-                    activeForeground: tokens.playSuperTextActive,
-                  ),
-                  onPressed: () => superFollow.toggle(room),
-                );
-              }),
-            ),
-          ],
-        ),
+    return SizedBox(
+      width: 59,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Obx(() {
+              // isFavorite 内部读 favoriteRooms(Rx),Obx 即时态。
+              final followed = SettingsService.to.fav.isFavorite(room);
+              return _SideActionChip(
+                selected: followed,
+                icon: followed ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                label: followed ? i18n('followed') : i18n('follow'),
+                colors: _SideChipColors(
+                  background: tokens.playFollowBg,
+                  hoverBackground: tokens.playFollowBgHover,
+                  activeBackground: tokens.playFollowBgActive,
+                  border: tokens.playFollowBorder,
+                  foreground: tokens.playFollowText,
+                  activeForeground: tokens.playFollowTextActive,
+                ),
+                onPressed: () => _toggleRoomFavorite(room),
+              );
+            }),
+          ),
+          const SizedBox(height: 2),
+          Expanded(
+            child: Obx(() {
+              final isSuper = superFollow.isSuper(room);
+              return _SideActionChip(
+                selected: isSuper,
+                icon: isSuper ? Icons.star_rounded : Icons.star_border_rounded,
+                // 「超关/已超关」无既有 i18n key,中文常量(见报告)。
+                label: isSuper ? '已超关' : '超关',
+                colors: _SideChipColors(
+                  background: tokens.playSuperBg,
+                  hoverBackground: tokens.playSuperBgHover,
+                  activeBackground: tokens.playSuperBgActive,
+                  border: tokens.playSuperBorder,
+                  foreground: tokens.playSuperText,
+                  activeForeground: tokens.playSuperTextActive,
+                ),
+                onPressed: () => superFollow.toggle(room),
+              );
+            }),
+          ),
+        ],
       ),
     );
   }
