@@ -383,6 +383,11 @@ class BiliBiliDanmaku implements LiveDanmaku {
             final sentAt = rawTimestamp == null
                 ? null
                 : DateTime.fromMillisecondsSinceEpoch(rawTimestamp > 100000000000 ? rawTimestamp : rawTimestamp * 1000);
+            // 粉丝牌/用户等级:_biliMedalOf 统一新老协议,UL = info[4][0]。
+            final medal = _biliMedalOf(obj, metadata);
+            String? badgeName = '${medal?['name'] ?? ''}'.trim();
+            if (badgeName.isEmpty) badgeName = null;
+            final ulList = obj["info"].length > 4 && obj["info"][4] is List ? obj["info"][4] as List : null;
             var liveMsg = LiveMessage(
               type: LiveMessageType.chat,
               userName: username,
@@ -391,6 +396,12 @@ class BiliBiliDanmaku implements LiveDanmaku {
               color: color == 0 ? LiveMessageColor.white : LiveMessageColor.numberToColor(color),
               messageId: rawNonce.isEmpty ? '' : 'bilibili:$rawNonce',
               sentAt: sentAt,
+              badgeName: badgeName,
+              badgeLevel: _badgeIntText(medal?['level']),
+              badgeColorStart: _badgeHexColor(medal?['v2_medal_color_start'] ?? medal?['color_start']),
+              badgeColorEnd: _badgeHexColor(medal?['v2_medal_color_end'] ?? medal?['color_end']),
+              badgeColorBorder: _badgeHexColor(medal?['v2_medal_color_border'] ?? medal?['color_border']),
+              userLevel: ulList == null || ulList.isEmpty ? '' : (_badgeIntText(ulList[0]) ?? ''),
             );
             onMessage?.call(liveMsg);
           }
@@ -489,6 +500,49 @@ class BiliBiliDanmaku implements LiveDanmaku {
       if (candidate.isNotEmpty && !masked.hasMatch(candidate)) return candidate;
     }
     return candidates.isNotEmpty ? candidates.first : legacyName;
+  }
+
+  /// 粉丝牌统一视图:新协议 info[0][15].user.medal 优先(取色时 v2_medal_color_*
+  /// 回落 color_*);无牌回落 info[3] 老结构([0]=level,[1]=name,int 色 [8]/[9]/[5])。
+  Map<dynamic, dynamic>? _biliMedalOf(dynamic obj, List<dynamic> metadata) {
+    dynamic rich = metadata.length > 15 ? metadata[15] : null;
+    if (rich is String && rich.trimLeft().startsWith('{')) {
+      try {
+        rich = json.decode(rich);
+      } catch (_) {
+        rich = null;
+      }
+    }
+    final user = rich is Map ? rich['user'] : null;
+    final medal = user is Map ? user['medal'] : null;
+    if (medal is Map) return medal;
+    final info = obj is Map ? obj['info'] : null;
+    if (info is! List || info.length <= 3 || info[3] is! List) return null;
+    final old = info[3] as List;
+    final level = _badgeIntText(old.elementAtOrNull(0));
+    final name = old.length > 1 ? '${old[1] ?? ''}'.trim() : '';
+    if (level == null || name.isEmpty) return null;
+    return {
+      'name': name,
+      'level': level,
+      'color_start': old.elementAtOrNull(8),
+      'color_end': old.elementAtOrNull(9),
+      'color_border': old.elementAtOrNull(5),
+    };
+  }
+
+  /// 正整数文本(徽章等级/用户等级);缺失或非正返回 null。
+  String? _badgeIntText(Object? raw) {
+    final v = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}'.trim());
+    return v == null || v <= 0 ? null : '$v';
+  }
+
+  /// 数值色或 "#RRGGBB" → 统一 '#RRGGBB';缺失/非法返回 null。
+  String? _badgeHexColor(Object? raw) {
+    final v = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}'.trim().replaceFirst('#', ''), radix: 16);
+    if (v == null || v <= 0) return null;
+    final rgb = v & 0xffffff;
+    return rgb == 0 ? null : '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
   }
 
   int readInt(List<int> buffer, int start, int len) {

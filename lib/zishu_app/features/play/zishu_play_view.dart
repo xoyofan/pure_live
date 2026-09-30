@@ -155,6 +155,10 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
                       onBack: () => Get.back(),
                       onToggleSidePanel: () => setState(() => _sidePanelVisible = !_sidePanelVisible),
                     ),
+                    // 统计格:真源 play_meta_bar 的头像 + 关注/人气/状态三格
+                    // (弹幕数无实时源,省略);房间头与舞台之间,堆叠/并排
+                    // 两种布局均位于舞台上方。
+                    _ZishuMetaBar(room: room, isLiving: controller.state.value.room.isLiving),
                     Expanded(
                       child: stacked
                           ? Column(
@@ -208,6 +212,157 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
           }),
         ],
       ),
+    );
+  }
+}
+
+/// 房间头与舞台之间的统计格(对齐 zishu play_meta_bar 的统计区结构,桌面
+/// 左右布局下的紧凑形态):左 32 圆头像(room.avatar,加载失败/为空用昵称
+/// 首字兜底;侧栏信息头已有大头像,此格仍按真源保留)+ 右三格统计
+/// (关注 / 人气 / 开播状态,每格图标 + 「标签 数值」)。
+///
+/// **数据诚实性**:弹幕数上游无实时计数字段,真源同样恒为「—」
+/// (play_meta_bar.dart 文档「弹幕总数上游无字段」),本格按省略处理;
+/// 关注数与人气沿用侧栏信息头同一条取数口径,缺值显示「—」不伪造。
+/// 高度 52,surface 底 + 底部 hairline,紧凑不挤舞台。
+class _ZishuMetaBar extends StatelessWidget {
+  const _ZishuMetaBar({required this.room, required this.isLiving});
+
+  /// 当前房间快照(`controller.state.value.room.detail`,缺 detail 时为
+  /// `controller.room`):只取展示字段,不做解析。
+  final LiveRoom room;
+
+  /// 开播状态:控制器维护(`updateRoom(isLiving: …)`),与侧栏同源。
+  final bool isLiving;
+
+  /// 人气取值:各平台字段不齐,按 热度/观看/在线/累计 择先非空,缺省「—」;
+  /// 与侧栏 `_SideHeader._popularityLabel` 同口径(readableCount 统一万进制)。
+  String get _popularityText {
+    for (final value in [room.popularity, room.watching, room.onlineViewers, room.totalViewers]) {
+      final v = value?.trim() ?? '';
+      if (v.isNotEmpty) return readableCount(v);
+    }
+    return '—';
+  }
+
+  /// 关注数:`room.followers` 空白时显示「—」,不伪造(侧栏同口径)。
+  String get _followersText {
+    final v = room.followers?.trim() ?? '';
+    if (v.isEmpty) return '—';
+    return readableCount(v);
+  }
+
+  /// 头像兜底视图:surfaceRaised 底 + 昵称首字(真源与侧栏同语义)。
+  Widget _avatarFallback(ZishuTokens tokens) {
+    final nick = room.nick?.trim() ?? '';
+    final fallbackText = nick.isEmpty ? '?' : nick.substring(0, 1);
+    return Center(
+      child: Text(
+        fallbackText,
+        style: TextStyle(
+          fontSize: AppFontSize.subtitle,
+          fontWeight: FontWeight.w700,
+          color: isLiving ? tokens.liveBadge : tokens.textSecondary,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final avatar = room.avatar?.trim() ?? '';
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        border: Border(bottom: BorderSide(color: tokens.border)),
+      ),
+      child: Row(
+        children: [
+          // 左 32 圆头像:开播中亮绿描边(真源 _MetaAvatar 口径)。
+          Container(
+            width: 32,
+            height: 32,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: tokens.surfaceRaised,
+              border: Border.all(color: isLiving ? tokens.liveBadge : tokens.border),
+            ),
+            child: avatar.isEmpty
+                ? _avatarFallback(tokens)
+                : Image.network(avatar, fit: BoxFit.cover, errorBuilder: (_, _, _) => _avatarFallback(tokens)),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          // 三格统计:FittedBox(scaleDown) 兜底窄栏/大字号溢出(侧栏统计行
+          // 同策略);图标色遵循真源 —— 关注红系、人气 statAudience、
+          // 开播状态开播中亮绿。
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ZishuMetaStat(
+                    icon: Icons.favorite_border_rounded,
+                    iconColor: tokens.playFollowText,
+                    label: i18n('audience_followers'),
+                    value: _followersText,
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  _ZishuMetaStat(
+                    icon: Icons.people_alt_outlined,
+                    iconColor: tokens.statAudience,
+                    label: i18n('audience_popularity'),
+                    value: _popularityText,
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  _ZishuMetaStat(
+                    icon: Icons.schedule_rounded,
+                    iconColor: isLiving ? tokens.liveBadge : tokens.textSecondary,
+                    label: isLiving ? i18n('live_now') : i18n('offline'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 单个统计格(真源 play_meta_bar `_MetaStat` 同构):图标(12) +
+/// 「标签 数值」caption 单行文本(textSecondary);`value` 为 null 表示
+/// 纯状态格,只渲染标签文本。
+class _ZishuMetaStat extends StatelessWidget {
+  const _ZishuMetaStat({required this.icon, required this.iconColor, required this.label, this.value});
+
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+
+  /// 数值文本;null = 无数值的纯状态格。
+  final String? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: iconColor),
+        const SizedBox(width: 3),
+        Text(
+          value == null ? label : '$label $value',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: context.textCaption.copyWith(fontSize: AppFontSize.caption, height: 1.05, color: tokens.textSecondary),
+        ),
+      ],
     );
   }
 }

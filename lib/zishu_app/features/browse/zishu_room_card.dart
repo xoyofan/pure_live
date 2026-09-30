@@ -7,6 +7,7 @@ import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/widgets/cover_badges.dart';
 import 'package:pure_live/zishu/presentation/widgets/outline_chip.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
+import 'package:pure_live/zishu_app/translation/translated_text.dart';
 
 /// zishu 风格房间卡片(pure_live LiveRoom 适配版):16:9 封面 + 四角 tag
 /// + 标题/特色 chips 两行元信息。几何与状态层逐项对齐 zishu
@@ -69,8 +70,11 @@ class _RoomCardMeta extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
+          // 标题自动中文化(海外平台):原文先显示,译文到达原位替换;
+          // 开关关(enableTitleTranslation 默认 false)/已是中文/翻译失败
+          // 恒显原文,与改动前行为一致。
+          TranslatedText(
+            text: title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: context.textTitle.copyWith(fontSize: AppFontSize.subtitle),

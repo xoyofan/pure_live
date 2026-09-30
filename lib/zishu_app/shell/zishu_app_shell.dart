@@ -6,6 +6,7 @@ import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/consts/app_consts.dart';
 import 'package:pure_live/common/utils/windows_multi_instance_launcher.dart';
+import 'package:pure_live/core/site/cc/cc_catalog.dart';
 import 'package:pure_live/modules/areas/areas_list_controller.dart';
 import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
@@ -27,8 +28,14 @@ import 'package:pure_live/zishu_app/shell/flyouts/zishu_my_category_flyout.dart'
 ///
 /// 新目录 `lib/zishu_app/` 按"照搬 zishu 前端 + pure_live 解析"路线组建;
 /// 本壳对齐 zishu browse_sidebar:侧栏展开 220 / 收起 52
-/// ([AppDirectoryDrawer]),右缘外挂 13.6×44 突出折叠按钮(仅右侧 4px
-/// 圆角);平台块统一 44×44、横向 Wrap 自动换行。
+/// ([AppDirectoryDrawer]),折叠把手 13.6×44(仅右侧 4px 圆角)悬浮于
+/// 内容区左缘(不占布局宽,见 build 的 Stack);平台块统一 44×44、
+/// 横向 Wrap 自动换行。
+///
+/// 分类详情外壳内两级:[selectAreaCategory] 是全部分类入口(侧栏热门
+/// 分类/顶栏平台浮层 chips/我的分类 chips/分区封面格)的统一收口 —— 切到
+/// 分区 tab 并把分类交给 [ZishuAreasView] 内嵌渲染(不再推 kAreaRooms
+/// 路由);CC 官方入口维持外链回落。
 class ZishuAppShell extends StatefulWidget {
   final Widget body;
   final int index;
@@ -73,6 +80,10 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
   /// 平台 tab 悬停到浮层弹出的延迟(300ms):扫过顶栏不弹,停留才弹。
   static const Duration _kPlatformHoverOpenDelay = Duration(milliseconds: 300);
 
+  /// 侧栏宽/把手位动画时长(展开 220 ↔ 收起 52):侧栏本体
+  /// AnimatedContainer 与外壳把手的 AnimatedPositioned 同源同曲线。
+  static const Duration _kSidebarWidthAnimDuration = Duration(milliseconds: 200);
+
   PopularController? _popular;
   VoidCallback? _tabListener;
   bool _bound = false;
@@ -82,6 +93,16 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
   VoidCallback? _areasTabListener;
   bool _areasBound = false;
   int _areasSiteIndex = 0;
+
+  // ---- 外壳内分类详情(分区 tab 两级) ----
+
+  /// 待打开分类代数:每采纳一次分类自增。ZishuAreasView 以「代数变化」
+  /// 识别重新应用 initialCategory —— 同一分类重复点选也要重建控制器。
+  int? _pendingAreaCategory;
+
+  /// 待打开分类及其所属站点(与代数同步更新,建控制器要 Site)。
+  Site? _pendingCategorySite;
+  LiveArea? _pendingCategoryArea;
 
   // ---- hover 浮层态机(自持于本 State;Timer 管开/关延迟,浮层互斥) ----
 
@@ -188,10 +209,42 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
     unawaited(AppNavigator.toLiveRoomDetail(liveRoom: room));
   }
 
-  /// 浮层点分类:先收浮层,再跳分类详情(需要 Site 对象)。
-  void _openCategoryFromFlyout(Site site, LiveArea area) {
+  /// 分类详情统一入口:先收浮层,再切分区 tab 内嵌打开(需要 Site 对象)。
+  ///
+  /// 分类入口统一收口(侧栏热门分类/顶栏平台浮层 chips/我的分类 chips/
+  /// 分区封面格都走这里):切到分区 tab 并把分类交给 [ZishuAreasView]
+  /// 内嵌渲染(外壳内两级,不再推 kAreaRooms 路由)。
+  void selectAreaCategory(Site site, LiveArea area) {
+    if (!mounted) return;
     _closeAllFlyouts();
-    unawaited(AppNavigator.toCategoryDetail(site: site, category: area));
+    // CC 官方入口是外链分类,不进内嵌房间流(对齐
+    // AppNavigator.toCategoryDetail 的口径,维持既有外链/提示行为)。
+    if (CCCatalog.isOfficialEntry(area)) {
+      unawaited(AppNavigator.toCategoryDetail(site: site, category: area));
+      return;
+    }
+    _pendingCategorySite = site;
+    _pendingCategoryArea = area;
+    setState(() => _pendingAreaCategory = (_pendingAreaCategory ?? 0) + 1);
+    _navigateToMenu(HomeMenu.areas.index);
+    // 分区页站点对齐分类所属站:目标站点的目录面板要在前台
+    // (_currentSiteId 同步,同 _selectSiteId 的处理)。
+    _bindAreas();
+    if (_areas != null) {
+      final areasIndex = _areas!.sites.indexWhere((s) => s.id == site.id);
+      if (areasIndex >= 0) _areas!.tabController.animateTo(areasIndex);
+    }
+  }
+
+  /// 菜单导航收口:离开分区 tab 时作废内嵌分类详情态(重进分区回索引页,
+  /// 不把详情态带过页)。
+  void _navigateToMenu(int index) {
+    if (index != HomeMenu.areas.index) {
+      _pendingAreaCategory = null;
+      _pendingCategorySite = null;
+      _pendingCategoryArea = null;
+    }
+    widget.onDestinationSelected(index);
   }
 
   Site? _siteById(String siteId) {
@@ -282,7 +335,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
 
   void _selectSiteId(String siteId) {
     if (widget.index != HomeMenu.popular.index) {
-      widget.onDestinationSelected(HomeMenu.popular.index);
+      _navigateToMenu(HomeMenu.popular.index);
     }
     _bindPopular();
     final controller = _popular;
@@ -315,7 +368,9 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
     return sites[_siteIndex].id;
   }
 
-  /// 内容区:热门/关注/分区已迁 zishu 视图,录制仍走旧页面体。
+  /// 内容区:热门/关注/分区已迁 zishu 视图,录制仍走旧页面体。分区视图
+  /// 接收外壳待打开分类(initialCategory + 代数 token)与分类入口回调,
+  /// 实现外壳内两级分类详情。
   Widget _contentForMenu(int menuIndex, String? currentSiteId) {
     if (menuIndex == HomeMenu.popular.index && currentSiteId != null) {
       return ZishuBrowseView(siteId: currentSiteId);
@@ -324,7 +379,12 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
       return const ZishuFollowView();
     }
     if (menuIndex == HomeMenu.areas.index) {
-      return const ZishuAreasView();
+      return ZishuAreasView(
+        initialCategory: _pendingCategoryArea,
+        initialCategorySite: _pendingCategorySite,
+        categoryToken: _pendingAreaCategory,
+        onOpenCategory: selectAreaCategory,
+      );
     }
     if (menuIndex == HomeMenu.record.index) {
       return const ZishuRecorderView();
@@ -389,7 +449,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
                         index: widget.index,
                         sites: visibleSites,
                         currentSiteId: _currentSiteId,
-                        onSelectMenu: widget.onDestinationSelected,
+                        onSelectMenu: _navigateToMenu,
                         onSelectSite: _selectSiteId,
                         onPlatformHoverStart: _schedulePlatformFlyout,
                         onPlatformHoverEnd: _cancelPlatformFlyoutOpen,
@@ -399,21 +459,58 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
                       ),
                       const Divider(height: 1, thickness: 1),
                       Expanded(
-                        child: Row(
+                        // 折叠把手悬浮化:侧栏本体纯宽(220/52),Row 外包
+                        // Stack,把手 Positioned 浮于内容区左缘(z 序高,
+                        // Material+elevation 出投影),不再占布局宽。
+                        child: Stack(
                           children: [
-                            _BrowseSidebar(
-                              index: widget.index,
-                              sites: visibleSites,
-                              currentSiteId: _currentSiteId,
-                              collapsed: _collapsed,
-                              onToggleCollapsed: () => setState(() => _collapsed = !_collapsed),
-                              onSelectSite: _selectSiteId,
-                              onSelectMenu: widget.onDestinationSelected,
-                              categorySite: _currentSite,
-                              onOpenCategory: _openCategoryFromFlyout,
+                            Row(
+                              children: [
+                                _BrowseSidebar(
+                                  index: widget.index,
+                                  sites: visibleSites,
+                                  currentSiteId: _currentSiteId,
+                                  collapsed: _collapsed,
+                                  onSelectSite: _selectSiteId,
+                                  onSelectMenu: _navigateToMenu,
+                                  categorySite: _currentSite,
+                                  onOpenCategory: selectAreaCategory,
+                                ),
+                                const VerticalDivider(width: 1, thickness: 1),
+                                Expanded(child: _contentForMenu(widget.index, _currentSiteId)),
+                              ],
                             ),
-                            const VerticalDivider(width: 1, thickness: 1),
-                            Expanded(child: _contentForMenu(widget.index, _currentSiteId)),
+                            // 突出折叠把手:贴侧栏右缘悬浮(top:0/bottom:0 +
+                            // Center = 布局垂直中部);宽度动画期间用
+                            // AnimatedPositioned(与侧栏 AnimatedContainer
+                            // 同时长同曲线)同步贴住侧栏当前宽。
+                            AnimatedPositioned(
+                              duration: _kSidebarWidthAnimDuration,
+                              curve: Curves.easeOutCubic,
+                              left: _collapsed ? AppDirectoryDrawer.railWidth : AppDirectoryDrawer.width,
+                              top: 0,
+                              bottom: 0,
+                              child: Center(
+                                child: Material(
+                                  color: tokens.surface,
+                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+                                  elevation: 1,
+                                  child: InkWell(
+                                    onTap: () => setState(() => _collapsed = !_collapsed),
+                                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+                                    child: SizedBox(
+                                      width: AppDirectoryDrawer.toggleWidth,
+                                      height: AppDirectoryDrawer.toggleHeight,
+                                      child: Icon(
+                                        _collapsed ? Remix.arrow_right_s_line : Remix.arrow_left_s_line,
+                                        size: 16,
+                                        color: tokens.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -454,7 +551,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
                 groups: groups,
                 onEnter: _cancelFlyoutClose,
                 onExit: _scheduleFlyoutClose,
-                onOpenCategory: site == null ? null : (area) => _openCategoryFromFlyout(site, area),
+                onOpenCategory: site == null ? null : (area) => selectAreaCategory(site, area),
                 emptyHint: groups.isEmpty ? emptyHint : i18n('zishu_category_flyout_empty'),
               ),
             );
@@ -846,16 +943,17 @@ class _TopUserArea extends StatelessWidget {
   }
 }
 
-/// 可折叠浏览侧栏:展开 220 / 收起 52,右缘外挂突出折叠按钮。
+/// 可折叠浏览侧栏:展开 220 / 收起 52(纯宽,折叠把手悬浮于外壳内容区
+/// 左缘,见 _ZishuAppShellState.build 的 Stack,本组件不再占把手宽)。
 ///
 /// 展开态 = 平台统一色块(44×44,Wrap 横向换行)+ 我的分类(内嵌展开)+
-/// 热门分类 + 录制;收起态 = 平台图标竖排 + 折叠按钮。
+/// 热门分类 + 录制;收起态 = 平台图标竖排。宽度动画走 AnimatedContainer,
+/// 与外壳把手的 AnimatedPositioned 同时长同曲线(把手贴右缘随动)。
 class _BrowseSidebar extends StatelessWidget {
   final int index;
   final List<Site> sites;
   final String? currentSiteId;
   final bool collapsed;
-  final VoidCallback onToggleCollapsed;
   final void Function(String) onSelectSite;
   final void Function(int) onSelectMenu;
 
@@ -870,7 +968,6 @@ class _BrowseSidebar extends StatelessWidget {
     required this.sites,
     required this.currentSiteId,
     required this.collapsed,
-    required this.onToggleCollapsed,
     required this.onSelectSite,
     required this.onSelectMenu,
     required this.categorySite,
@@ -881,43 +978,12 @@ class _BrowseSidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final width = collapsed ? AppDirectoryDrawer.railWidth : AppDirectoryDrawer.width;
-    return SizedBox(
-      width: width + AppDirectoryDrawer.toggleWidth,
-      child: Stack(
-        children: [
-          Container(
-            width: width,
-            color: tokens.surfaceSoft,
-            child: collapsed ? _buildCollapsed(context, tokens) : _buildExpanded(context, tokens),
-          ),
-          // 突出折叠按钮:贴侧栏右缘外挂 13.6×44,仅右侧 4px 圆角。
-          Positioned(
-            left: width,
-            top: 0,
-            bottom: 0,
-            child: Center(
-              child: Material(
-                color: tokens.surface,
-                borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
-                elevation: 1,
-                child: InkWell(
-                  onTap: onToggleCollapsed,
-                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
-                  child: SizedBox(
-                    width: AppDirectoryDrawer.toggleWidth,
-                    height: AppDirectoryDrawer.toggleHeight,
-                    child: Icon(
-                      collapsed ? Remix.arrow_right_s_line : Remix.arrow_left_s_line,
-                      size: 16,
-                      color: tokens.textSecondary,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return AnimatedContainer(
+      duration: _ZishuAppShellState._kSidebarWidthAnimDuration,
+      curve: Curves.easeOutCubic,
+      width: width,
+      color: tokens.surfaceSoft,
+      child: collapsed ? _buildCollapsed(context, tokens) : _buildExpanded(context, tokens),
     );
   }
 
@@ -939,8 +1005,9 @@ class _BrowseSidebar extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.lg),
         // 「我的分类」入口行 + 内嵌展开区(位于热门分类区上方):点击行
-        // 展开/收起收藏 chips,面板与 my_category flyout 同一份内容。
-        const _SidebarMyCategorySection(),
+        // 展开/收起收藏 chips,面板与 my_category flyout 同一份内容;
+        // chip 点击经壳层 onOpenCategory 进内嵌分类详情。
+        _SidebarMyCategorySection(onOpenCategory: onOpenCategory),
         const SizedBox(height: AppSpacing.md),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.xs),
@@ -1033,9 +1100,13 @@ class _BrowseSidebar extends StatelessWidget {
 /// 图标 Remix.star_line,展开态文字/图标转品牌金,对齐 zishu「收藏分类」
 /// 金色语义);展开区复用 [ZishuMyCategoryPanel](与 my_category flyout、
 /// 窄屏底栏弹层同一份面板:管理入口 + chips),chip 点击按名称匹配平台
-/// 目录进分类详情(无宿主可收,close 钩子留空)。
+/// 目录后经 [onOpenCategory](壳层 selectAreaCategory)进外壳内嵌分类详情
+/// (无宿主可收,close 钩子留空)。
 class _SidebarMyCategorySection extends StatefulWidget {
-  const _SidebarMyCategorySection();
+  const _SidebarMyCategorySection({required this.onOpenCategory});
+
+  /// 注入的分类跳转(壳层 selectAreaCategory,收藏 chip 进内嵌分类详情)。
+  final void Function(Site site, LiveArea area) onOpenCategory;
 
   @override
   State<_SidebarMyCategorySection> createState() => _SidebarMyCategorySectionState();
@@ -1058,9 +1129,9 @@ class _SidebarMyCategorySectionState extends State<_SidebarMyCategorySection> {
         ),
         if (_expanded) ...[
           const SizedBox(height: AppSpacing.xs),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-            child: ZishuMyCategoryPanel(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+            child: ZishuMyCategoryPanel(onOpenCategory: widget.onOpenCategory),
           ),
         ],
       ],

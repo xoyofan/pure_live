@@ -15,6 +15,7 @@ import 'package:pure_live/modules/live_play/controllers/live_play_controller.dar
 import 'package:pure_live/modules/live_play/widgets/danmaku/danmaku_message_actions.dart';
 import 'package:pure_live/modules/live_play/widgets/danmaku/danmaku_arrival_counter.dart';
 import 'package:pure_live/modules/live_play/widgets/local_interaction/local_danmaku_style_editor.dart';
+import 'package:pure_live/zishu_app/features/play/chat_badges.dart';
 
 bool isDanmakuUserScrollStart(
   ScrollNotification notification, {
@@ -504,6 +505,20 @@ class DanmakuItem extends StatelessWidget {
                     child: Text.rich(
                       TextSpan(
                         children: [
+                          // 徽章在用户名前内联(顺序按轨道口径:粉丝牌 → 等级牌);
+                          // 两字段皆空时集合 if 均不命中,段落与旧渲染零差异。
+                          if (danmaku.badgeName?.trim().isNotEmpty == true)
+                            zishuInlineBadge(
+                              ZishuChatFanBadge(
+                                name: danmaku.badgeName!,
+                                level: danmaku.badgeLevel,
+                                colorStart: danmaku.badgeColorStart,
+                                colorEnd: danmaku.badgeColorEnd,
+                                colorBorder: danmaku.badgeColorBorder,
+                              ),
+                            ),
+                          if (danmaku.userLevel.trim().isNotEmpty)
+                            zishuInlineBadge(ZishuChatUserLevelBadge(level: danmaku.userLevel)),
                           TextSpan(
                             text: "${danmaku.userName}: ",
                             style: AppTextStyles.t14.copyWith(fontWeight: FontWeight.w700, color: textColor),

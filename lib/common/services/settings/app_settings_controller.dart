@@ -60,6 +60,10 @@ class AppSettingsController extends GetxController {
   final RxBool enableMultiView = hiveBool('enableMultiView', true);
   final RxBool enableNewWindowPlay = hiveBool('enableNewWindowPlay', true);
 
+  /// 海外平台标题中文化(zishu 移植):默认关,避免无感外网翻译流量;
+  /// 打开后列表卡片标题先显原文、译文到达原位替换,失败静默回原文。
+  final RxBool enableTitleTranslation = hiveBool('enableTitleTranslation', false);
+
   AppRefreshRateMode get refreshRateMode => AppRefreshRateMode.parse(refreshRateModeName.v);
 
   void setRefreshRateMode(AppRefreshRateMode mode) {
@@ -244,6 +248,7 @@ class AppSettingsController extends GetxController {
       'savedPlatformIds': normalizePlatformIds(savedPlatformIds.v),
       'enableMultiView': enableMultiView.v,
       'enableNewWindowPlay': enableNewWindowPlay.v,
+      'enableTitleTranslation': enableTitleTranslation.v,
     };
   }
 
@@ -277,6 +282,7 @@ class AppSettingsController extends GetxController {
       ),
       'enableMultiView': typed<bool>(json['enableMultiView'] ?? true),
       'enableNewWindowPlay': typed<bool>(json['enableNewWindowPlay'] ?? true),
+      'enableTitleTranslation': typed<bool>(json['enableTitleTranslation'] ?? false),
     };
   }
 
@@ -301,6 +307,7 @@ class AppSettingsController extends GetxController {
     savedPlatformIds.v = parsed['savedPlatformIds'];
     enableMultiView.v = parsed['enableMultiView'];
     enableNewWindowPlay.v = parsed['enableNewWindowPlay'];
+    enableTitleTranslation.v = parsed['enableTitleTranslation'];
   }
 
   static Map<String, dynamic> extractConfig(Map<String, dynamic>? rootConfig) {
@@ -329,6 +336,7 @@ class AppSettingsController extends GetxController {
       'savedPlatformIds': normalizePlatformIds(List<String>.from(app['savedPlatformIds'] ?? defaultVisiblePlatformIds)),
       'enableMultiView': app['enableMultiView'] ?? true,
       'enableNewWindowPlay': app['enableNewWindowPlay'] ?? true,
+      'enableTitleTranslation': app['enableTitleTranslation'] ?? false,
     };
   }
 

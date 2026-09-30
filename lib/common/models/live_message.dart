@@ -104,6 +104,18 @@ class LiveMessage {
   final DateTime? sentAt;
   final LiveMessageStyle? style;
 
+  /// 粉丝牌团名(由数据轨填充;null/空白 = 行内不渲染粉丝牌)。
+  final String? badgeName;
+
+  /// 粉丝牌等级(原始字符串;null/空白 = 不展示等级数字)。
+  final String? badgeLevel;
+
+  /// 粉丝牌渐变起/止色与描边色(十六进制字符串,`RRGGBB`/`AARRGGBB`,
+  /// 容许 `#`/`0x` 前缀;解析失败由渲染侧用 accent 兜底,描边缺失不画边)。
+  final String? badgeColorStart;
+  final String? badgeColorEnd;
+  final String? badgeColorBorder;
+
   LiveMessage({
     required this.type,
     required this.userName,
@@ -118,6 +130,11 @@ class LiveMessage {
     this.messageId = "",
     this.sentAt,
     this.style,
+    this.badgeName,
+    this.badgeLevel,
+    this.badgeColorStart,
+    this.badgeColorEnd,
+    this.badgeColorBorder,
   });
 }
 

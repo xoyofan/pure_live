@@ -85,11 +85,16 @@ class ZishuMyCategoryFlyout extends StatelessWidget {
 /// [ZishuMyCategoryFlyout] / 窄屏底栏弹层 [showZishuMyCategorySheet] /
 /// 宽屏侧栏内嵌展开(「我的分类」行下方)。
 class ZishuMyCategoryPanel extends StatelessWidget {
-  const ZishuMyCategoryPanel({super.key, this.onClose});
+  const ZishuMyCategoryPanel({super.key, this.onClose, this.onOpenCategory});
 
   /// chip 跳转 / 开管理弹窗前收起宿主(浮层 pop、底栏弹层 pop);侧栏内嵌
   /// 展开等无宿主可收时留空。
   final VoidCallback? onClose;
+
+  /// 注入的分类跳转(宽屏外壳把自身 selectAreaCategory 传进来:收藏 chip
+  /// 直接入外壳内嵌分类详情);为 null 时维持既有路由跳转(窄屏外壳,
+  /// 见 zishu_phone_shell)。
+  final void Function(Site site, LiveArea area)? onOpenCategory;
 
   @override
   Widget build(BuildContext context) {
@@ -117,7 +122,11 @@ class ZishuMyCategoryPanel extends StatelessWidget {
             ),
           ),
         ),
-        ZishuMyCategoryChips(maxHeight: kZishuMyCategoryTagsMaxHeight, onClose: onClose),
+        ZishuMyCategoryChips(
+          maxHeight: kZishuMyCategoryTagsMaxHeight,
+          onClose: onClose,
+          onOpenCategory: onOpenCategory,
+        ),
       ],
     );
   }
@@ -125,13 +134,22 @@ class ZishuMyCategoryPanel extends StatelessWidget {
 
 /// 收藏 chip 折行区:`Obx` 订阅 [MyCategoryController.categories],空集合
 /// 提示「暂无收藏分类」。chip 点击 → [resolveMyCategoryArea] 按名称匹配
-/// 该平台目录,命中先 [onClose] 收起宿主再进分类详情;未命中 toast 并保留
-/// 面板(用户可直接改选其他分类)。
+/// 该平台目录,命中先 [onClose] 收起宿主再进分类详情([onOpenCategory]
+/// 注入时走外壳内嵌详情,否则旧路由);未命中 toast 并保留面板(用户可
+/// 直接改选其他分类)。
 class ZishuMyCategoryChips extends StatelessWidget {
-  const ZishuMyCategoryChips({super.key, this.maxHeight = kZishuMyCategoryTagsMaxHeight, this.onClose});
+  const ZishuMyCategoryChips({
+    super.key,
+    this.maxHeight = kZishuMyCategoryTagsMaxHeight,
+    this.onClose,
+    this.onOpenCategory,
+  });
 
   final double maxHeight;
   final VoidCallback? onClose;
+
+  /// 注入的分类跳转(宽屏外壳内嵌详情;null = 旧路由跳转)。
+  final void Function(Site site, LiveArea area)? onOpenCategory;
 
   @override
   Widget build(BuildContext context) {
@@ -165,6 +183,12 @@ class ZishuMyCategoryChips extends StatelessWidget {
       return;
     }
     onClose?.call();
+    final open = onOpenCategory;
+    if (open != null) {
+      // 宽屏外壳:直接进外壳内嵌分类详情(CC 官方入口由外壳回落外链)。
+      open(Sites.of(entry.site), area);
+      return;
+    }
     unawaited(AppNavigator.toCategoryDetail(site: Sites.of(entry.site), category: area));
   }
 }

@@ -122,11 +122,22 @@ class DouyuDanmaku implements LiveDanmaku {
       LiveMessage? liveMsg;
       if (type == "chatmsg" && fans == '1') {
         var col = int.tryParse(jsonData["col"].toString()) ?? 0;
+        // 粉丝牌:bnn/bn=牌名,bl(兜底 bnnl/fl)=等级,bc=packed RGB 底色
+        // (协议单色,start/end/border 同值);用户等级 level/lv。
+        final badgeName = '${jsonData['bnn'] ?? jsonData['bn'] ?? ''}'.trim();
+        final badgeLevel = _douyuBadgeLevel(jsonData['bl'] ?? jsonData['bnnl']) ?? _douyuBadgeLevel(jsonData['fl']);
+        final badgeColor = _douyuBadgeHexColor(jsonData['bc']);
         liveMsg = LiveMessage(
           type: LiveMessageType.chat,
           userName: jsonData["nn"].toString(),
           message: jsonData["txt"].toString(),
           color: getColor(col),
+          badgeName: badgeName.isEmpty ? null : badgeName,
+          badgeLevel: badgeLevel,
+          badgeColorStart: badgeColor,
+          badgeColorEnd: badgeColor,
+          badgeColorBorder: badgeColor,
+          userLevel: _douyuBadgeLevel(jsonData['level'] ?? jsonData['lv']) ?? '',
         );
       } else if (type == "comm_chatmsg") {
         DateTime curTimestamp = DateTime.fromMillisecondsSinceEpoch(int.parse(jsonData["now"]));
@@ -277,4 +288,21 @@ class DouyuDanmaku implements LiveDanmaku {
         return LiveMessageColor.white;
     }
   }
+}
+
+/// STT 字段整数值;斗鱼 STT 值均为字符串,缺字段/非数字返回 0。
+int _douyuSttInt(Object? raw) => int.tryParse('${raw ?? ''}'.trim()) ?? 0;
+
+/// 正整数文本(粉丝牌等级/用户等级);非正返回 null(协议未提供以 0 表示)。
+String? _douyuBadgeLevel(Object? raw) {
+  final v = _douyuSttInt(raw);
+  return v > 0 ? '$v' : null;
+}
+
+/// packed RGB 十进制色 → '#RRGGBB';缺失/非法返回 null。
+String? _douyuBadgeHexColor(Object? raw) {
+  final value = _douyuSttInt(raw);
+  if (value <= 0) return null;
+  final rgb = value & 0xffffff;
+  return rgb == 0 ? null : '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
 }

@@ -17,7 +17,11 @@ class ZishuAreaGrid extends StatelessWidget {
   final List<LiveArea> areas;
   final ScrollController? scrollController;
 
-  const ZishuAreaGrid({super.key, required this.areas, this.scrollController});
+  /// 注入的分类点击(宽屏外壳把自身的 selectAreaCategory 传进来,分区封面
+  /// 点进外壳内嵌分类详情);为 null 时维持既有路由跳转(窄屏外壳)。
+  final void Function(LiveArea area)? onOpenCategory;
+
+  const ZishuAreaGrid({super.key, required this.areas, this.scrollController, this.onOpenCategory});
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +51,7 @@ class ZishuAreaGrid extends StatelessWidget {
                   (context, index) => ZishuAreaTile(
                     key: ValueKey('${areas[index].platform}:${areas[index].areaId}'),
                     area: areas[index],
+                    onOpenCategory: onOpenCategory,
                   ),
                   childCount: areas.length,
                 ),
@@ -60,12 +65,16 @@ class ZishuAreaGrid extends StatelessWidget {
 }
 
 /// zishu 风格分区 tile:方形封面(官方图,缺失回落 `AreaPicMapper`)+
-/// 居中单行分区名。点击进入该分区的房间流(`toCategoryDetail`);
-/// IPTV 分区即频道,直接合成房间打开(对齐 `AreaCard` 行为)。
+/// 居中单行分区名。点击进入该分区的房间流:注入 [onOpenCategory] 时交外壳
+/// (内嵌分类详情),否则维持 `toCategoryDetail` 路由跳转;IPTV 分区即频道,
+/// 直接合成房间打开(对齐 `AreaCard` 行为)。
 class ZishuAreaTile extends StatelessWidget {
   final LiveArea area;
 
-  const ZishuAreaTile({super.key, required this.area});
+  /// 注入的分类点击(可空,空 = 既有路由跳转)。
+  final void Function(LiveArea area)? onOpenCategory;
+
+  const ZishuAreaTile({super.key, required this.area, this.onOpenCategory});
 
   void _open() {
     if (area.platform == Sites.iptvSite) {
@@ -75,13 +84,18 @@ class ZishuAreaTile extends StatelessWidget {
         cover: '',
         nick: area.areaName,
         watching: '',
-        avatar: 'https://img95.699pic.com/xsj/0q/x6/7p.jpg%21/fw/700/watermark/url/L3hzai93YXRlcl9kZXRhaWwyLnBuZw/align/southeast',
+        avatar: 'https://img95.699pic.com/xsj/0q/x6/7p.jpg%21/fw/700/watermark/url/L3hzai93YXRlcl9kZXRhaWwyLnBuZy9hbGlnbi9zb3V0aGVhc3Q',
         area: '',
         liveStatus: LiveStatus.live,
         status: true,
         platform: 'iptv',
       );
       AppNavigator.toLiveRoomDetail(liveRoom: channel);
+      return;
+    }
+    final open = onOpenCategory;
+    if (open != null) {
+      open(area);
       return;
     }
     AppNavigator.toCategoryDetail(site: Sites.of(area.platform!), category: area);
@@ -134,7 +148,7 @@ class ZishuAreaTile extends StatelessWidget {
                   ),
                 ),
                 // CC 官方入口提示:角标只做提示,导航仍走 toCategoryDetail
-                // (对齐 AreaCard 的口径)。
+                // 口径(注入回调时由外壳 selectAreaCategory 内部回落外链)。
                 if (CCCatalog.isOfficialEntry(area))
                   Positioned(
                     top: 0,
