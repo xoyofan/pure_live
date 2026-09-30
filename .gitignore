@@ -71,3 +71,6 @@ app.*.map.json
 .zcode/
 # local verification screenshots
 .shots/
+
+node_modules/
+tsconfig.tsbuildinfo
