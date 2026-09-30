@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/empty_view.dart' as zishu;
