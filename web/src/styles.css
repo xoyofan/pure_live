@@ -769,13 +769,26 @@ select {
   position: relative;
 }
 
-.live-flag {
-  background: var(--ok);
-  color: #fff;
+.area-flag {
   font-size: 12px;
   line-height: 1;
-  padding: 4px 8px;
+  padding: 5px 9px;
   border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  font-weight: 500;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* header sits inside the player column now; title centered over the player */
+.play-header .play-title {
+  flex: 1;
+  text-align: center;
+}
+
+.play-header .side-toggle {
   flex-shrink: 0;
 }
 
@@ -1251,7 +1264,7 @@ select {
   /* player column width = 100vw - rail - room padding (2x20) - side - gap;
      aside height = its 16:9 stage + chips row so the columns line up like
      zishu's play view (a stretch row would let scroll lists inflate it) */
-  height: calc((100vw - var(--rail-w) - 40px - var(--play-sidebar-width) - 16px) * 0.5625 + 48px);
+  height: calc((100vw - var(--rail-w) - 40px - var(--play-sidebar-width) - 16px) * 0.5625 + 46px + 48px);
 }
 
 .side-header {

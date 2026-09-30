@@ -38,6 +38,8 @@ export interface Room {
   avatar: string;
   cover: string;
   watching: string;
+  /** Category/area display name ('' when the platform does not supply one). */
+  area?: string;
   /** Follower count when the platform supplies one ('' otherwise). */
   followers?: string;
   /** Anchor signature / room introduction ('' when absent). */

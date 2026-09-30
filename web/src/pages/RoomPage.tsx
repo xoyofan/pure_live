@@ -7,6 +7,7 @@ import { useDanmaku } from '../hooks/useDanmaku';
 import DanmakuCanvas from '../components/DanmakuCanvas';
 import Player, { type PlaybackSource } from '../components/Player';
 import * as followStore from '../lib/followStore';
+import { categoryStyle } from '../lib/categoryColor';
 import type { FollowEntry } from '../lib/followStore';
 
 interface Props {
@@ -452,30 +453,47 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
   );
 
   // --- render ----------------------------------------------------------------
+  const headerNode = (
+    <div className="play-header">
+      <button type="button" className="btn-ghost" onClick={onLeave}>
+        ← 返回
+      </button>
+      {room?.area ? (
+        (() => {
+          const style = categoryStyle(room.area);
+          return style ? (
+            <span className="area-flag" style={{ background: style.background, color: style.foreground }}>
+              {room.area}
+            </span>
+          ) : null;
+        })()
+      ) : null}
+      <span className="play-title">{room?.title || `${platform} ${roomId}`}</span>
+      {phase.kind === 'ok' && (
+        <button
+          type="button"
+          className="btn-ghost side-toggle"
+          title={sideCollapsed ? '展开侧栏' : '收起侧栏'}
+          onClick={() => setSideCollapsed((c) => !c)}
+        >
+          {sideCollapsed ? '«' : '»'}
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className="room">
-      <div className="play-header">
-        <button type="button" className="btn-ghost" onClick={onLeave}>
-          ← 返回
-        </button>
-        {room?.liveStatus === 'live' && <span className="live-flag">直播</span>}
-        <span className="play-title">{room?.title || `${platform} ${roomId}`}</span>
-        {phase.kind === 'ok' && (
-          <button
-            type="button"
-            className="btn-ghost side-toggle"
-            title={sideCollapsed ? '展开侧栏' : '收起侧栏'}
-            onClick={() => setSideCollapsed((c) => !c)}
-          >
-            {sideCollapsed ? '«' : '»'}
-          </button>
-        )}
-      </div>
-
-      {phase.kind === 'loading' && <p className="banner">正在获取房间信息…</p>}
+      {phase.kind === 'loading' && (
+        <>
+          {headerNode}
+          <p className="banner">正在获取房间信息…</p>
+        </>
+      )}
 
       {phase.kind === 'error' && (
         <div className="room-state">
+          {headerNode}
           <p className="banner banner-error">{phase.message}</p>
           <button type="button" className="btn-primary" onClick={onLeave}>
             返回首页
@@ -486,6 +504,7 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
       {phase.kind === 'ok' && room && (
         <div className="room-grid">
           <div className="player-col">
+            {headerNode}
             <div className="player-stage" ref={stageRef}>
               {coverNode}
               {source && <Player source={source} onError={handlePlayerError} onStall={handleStall} onPlaying={handlePlaying} />}
