@@ -22,11 +22,7 @@ void bindParserRuntimeToApp() {
   CoreLog.runtime = _AppCoreLogRuntime();
   HttpClient.proxyDirectiveProvider = () {
     final proxy = SettingsService.to.proxy;
-    return buildProxyDirective(
-      enabled: proxy.enableAppProxy.v,
-      host: proxy.appProxyHost.v,
-      port: proxy.appProxyPort.v,
-    );
+    return buildProxyDirective(enabled: proxy.enableAppProxy.v, host: proxy.appProxyHost.v, port: proxy.appProxyPort.v);
   };
   ParserConfig.instance = _AppCookieConfig();
   HttpError.statusCodeFormatter = (statusCode) {

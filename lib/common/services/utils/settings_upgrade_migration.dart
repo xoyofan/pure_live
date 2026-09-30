@@ -33,7 +33,13 @@ class SettingsUpgradeMigration {
 
   static const Set<String> _objectListKeys = {'favoriteRooms', 'favoriteAreas', 'historyRooms', 'webDavConfigs'};
 
-  static const Set<String> _stringListKeys = {'shieldList', 'blockedDanmakuUsers', 'hotAreasList', 'savedMenuIds'};
+  static const Set<String> _stringListKeys = {
+    'shieldList',
+    'blockedDanmakuUsers',
+    'hotAreasList',
+    'savedMenuIds',
+    'savedPlatformIds',
+  };
 
   static Future<SettingsUpgradeReport> migrate({
     required Box<dynamic> target,

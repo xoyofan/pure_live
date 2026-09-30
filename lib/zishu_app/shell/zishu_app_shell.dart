@@ -441,86 +441,90 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
           child: Focus(
             focusNode: _shortcutFocusNode,
             autofocus: true,
-            child: Scaffold(
-              backgroundColor: tokens.background,
-              body: SafeArea(
-                // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表。
-                child: Obx(() {
-                  final visibleSites = _visibleSites();
-                  return Column(
-                    children: [
-                      _TopBar(
-                        index: widget.index,
-                        sites: visibleSites,
-                        currentSiteId: _currentSiteId,
-                        onSelectMenu: _navigateToMenu,
-                        onSelectSite: _selectSiteId,
-                        onPlatformHoverStart: _schedulePlatformFlyout,
-                        onPlatformHoverEnd: _cancelPlatformFlyoutOpen,
-                        onFollowHoverStart: _openFollowFlyout,
-                        onFollowHoverEnd: _scheduleFlyoutClose,
-                        onOpenSettings: _openSettingsDialog,
-                      ),
-                      const Divider(height: 1, thickness: 1),
-                      Expanded(
-                        // 折叠把手悬浮化:侧栏本体纯宽(220/52),Row 外包
-                        // Stack,把手 Positioned 浮于内容区左缘(z 序高,
-                        // Material+elevation 出投影),不再占布局宽。
-                        child: Stack(
-                          children: [
-                            Row(
-                              children: [
-                                _BrowseSidebar(
-                                  index: widget.index,
-                                  sites: visibleSites,
-                                  currentSiteId: _currentSiteId,
-                                  collapsed: _collapsed,
-                                  onSelectSite: _selectSiteId,
-                                  onSelectMenu: _navigateToMenu,
-                                  categorySite: _currentSite,
-                                  onOpenCategory: selectAreaCategory,
-                                ),
-                                const VerticalDivider(width: 1, thickness: 1),
-                                Expanded(child: _contentForMenu(widget.index, _currentSiteId)),
-                              ],
-                            ),
-                            // 突出折叠把手:贴侧栏右缘悬浮(top:0/bottom:0 +
-                            // Center = 布局垂直中部);宽度动画期间用
-                            // AnimatedPositioned(与侧栏 AnimatedContainer
-                            // 同时长同曲线)同步贴住侧栏当前宽。
-                            AnimatedPositioned(
-                              duration: _kSidebarWidthAnimDuration,
-                              curve: Curves.easeOutCubic,
-                              left: _collapsed ? AppDirectoryDrawer.railWidth : AppDirectoryDrawer.width,
-                              top: 0,
-                              bottom: 0,
-                              child: Center(
-                                child: Material(
-                                  color: tokens.surface,
-                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
-                                  elevation: 1,
-                                  child: InkWell(
-                                    onTap: () => setState(() => _collapsed = !_collapsed),
+            child: Theme(
+              // 交互态收口:外壳根部统一 focus 色(键盘导航可见)。
+              data: Theme.of(context).copyWith(focusColor: AppStateLayer.focusOf(tokens.accent)),
+              child: Scaffold(
+                backgroundColor: tokens.background,
+                body: SafeArea(
+                  // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表。
+                  child: Obx(() {
+                    final visibleSites = _visibleSites();
+                    return Column(
+                      children: [
+                        _TopBar(
+                          index: widget.index,
+                          sites: visibleSites,
+                          currentSiteId: _currentSiteId,
+                          onSelectMenu: _navigateToMenu,
+                          onSelectSite: _selectSiteId,
+                          onPlatformHoverStart: _schedulePlatformFlyout,
+                          onPlatformHoverEnd: _cancelPlatformFlyoutOpen,
+                          onFollowHoverStart: _openFollowFlyout,
+                          onFollowHoverEnd: _scheduleFlyoutClose,
+                          onOpenSettings: _openSettingsDialog,
+                        ),
+                        const Divider(height: 1, thickness: 1),
+                        Expanded(
+                          // 折叠把手悬浮化:侧栏本体纯宽(220/52),Row 外包
+                          // Stack,把手 Positioned 浮于内容区左缘(z 序高,
+                          // Material+elevation 出投影),不再占布局宽。
+                          child: Stack(
+                            children: [
+                              Row(
+                                children: [
+                                  _BrowseSidebar(
+                                    index: widget.index,
+                                    sites: visibleSites,
+                                    currentSiteId: _currentSiteId,
+                                    collapsed: _collapsed,
+                                    onSelectSite: _selectSiteId,
+                                    onSelectMenu: _navigateToMenu,
+                                    categorySite: _currentSite,
+                                    onOpenCategory: selectAreaCategory,
+                                  ),
+                                  const VerticalDivider(width: 1, thickness: 1),
+                                  Expanded(child: _contentForMenu(widget.index, _currentSiteId)),
+                                ],
+                              ),
+                              // 突出折叠把手:贴侧栏右缘悬浮(top:0/bottom:0 +
+                              // Center = 布局垂直中部);宽度动画期间用
+                              // AnimatedPositioned(与侧栏 AnimatedContainer
+                              // 同时长同曲线)同步贴住侧栏当前宽。
+                              AnimatedPositioned(
+                                duration: _kSidebarWidthAnimDuration,
+                                curve: Curves.easeOutCubic,
+                                left: _collapsed ? AppDirectoryDrawer.railWidth : AppDirectoryDrawer.width,
+                                top: 0,
+                                bottom: 0,
+                                child: Center(
+                                  child: Material(
+                                    color: tokens.surface,
                                     borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
-                                    child: SizedBox(
-                                      width: AppDirectoryDrawer.toggleWidth,
-                                      height: AppDirectoryDrawer.toggleHeight,
-                                      child: Icon(
-                                        _collapsed ? Remix.arrow_right_s_line : Remix.arrow_left_s_line,
-                                        size: 16,
-                                        color: tokens.textSecondary,
+                                    elevation: 1,
+                                    child: InkWell(
+                                      onTap: () => setState(() => _collapsed = !_collapsed),
+                                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+                                      child: SizedBox(
+                                        width: AppDirectoryDrawer.toggleWidth,
+                                        height: AppDirectoryDrawer.toggleHeight,
+                                        child: Icon(
+                                          _collapsed ? Remix.arrow_right_s_line : Remix.arrow_left_s_line,
+                                          size: 16,
+                                          color: tokens.textSecondary,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  );
-                }),
+                      ],
+                    );
+                  }),
+                ),
               ),
             ),
           ),

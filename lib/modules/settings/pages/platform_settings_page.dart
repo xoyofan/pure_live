@@ -1,5 +1,6 @@
 import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/common/index.dart';
+import 'package:pure_live/modules/settings/pages/platform_order_settings_page.dart';
 
 class PlatformSettingsPage extends GetView<SettingsService> {
   const PlatformSettingsPage({super.key});
@@ -14,11 +15,13 @@ class PlatformSettingsPage extends GetView<SettingsService> {
         children: [
           context.buildGroupTitle(i18n("platform_settings")),
           context.buildModernCard([
+            // 平台显示入口改跳 PlatformOrderSettingsPage:savedPlatformIds 是
+            // 唯一真源,旧 hot_areas 编辑页(kSettingsHotAreas)已无导航入口。
             context.buildTile(
-              icon: Remix.apps_2_line,
-              title: i18n("platform_display"),
-              subtitle: i18n("platform_display_subtitle"),
-              onTap: () => Get.toNamed(RoutePath.kSettingsHotAreas),
+              icon: Remix.sort_asc,
+              title: i18n("platform_order_settings"),
+              subtitle: i18n("platform_order_settings_desc"),
+              onTap: () => Get.to(() => const PlatformOrderSettingsPage()),
             ),
             Obx(
               () => context.buildTile(

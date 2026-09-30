@@ -45,6 +45,13 @@ class ZishuTokens extends ThemeExtension<ZishuTokens> {
   final Color surface;
   final Color surfaceSoft;
   final Color surfaceRaised;
+
+  /// 品牌强调色:colorScheme.primary/secondary(app_theme.decorate)与
+  /// 收藏星/hover 等功能性用色取此处。
+  ///
+  /// 运行时可被用户主题色覆盖(见 app_theme.dart 的 ZishuTheme.decorate):
+  /// 用户显式选过主题色时,本值与 [brandBright]、[accent] 一并替换为用户色;
+  /// 未选时保持下列常量(金色基线)。
   final Color brand;
 
   /// 「轮播/回放」强调色:比 [brand] 更亮一档的金黄(web 独立变量 `#f5dc70`)。
@@ -60,6 +67,10 @@ class ZishuTokens extends ThemeExtension<ZishuTokens> {
   ///
   /// 与 [brand](金黄,收藏星/hover 等对齐 SFVideoLive web 的功能性颜色)刻意
   /// 分开:用户口径(2026-09-20)控件强调一律品牌紫,金色不再充当控件色。
+  ///
+  /// 运行时可被用户主题色覆盖(见 app_theme.dart 的 ZishuTheme.decorate):
+  /// 用户显式选过主题色时 accent 与 brand 同值接管;浅色主题 + 暗色(或
+  /// 反之)用户色的对比度不强制兜底,由选色用户自担。
   final Color accent;
 
   final Color textPrimary;

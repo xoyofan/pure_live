@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/consts/app_consts.dart';
+import 'package:pure_live/common/services/settings/favorite_room_controller.dart';
 import 'package:pure_live/common/utils/hive_pref_util.dart';
 
 class AppSettingsController extends GetxController {
@@ -21,6 +22,7 @@ class AppSettingsController extends GetxController {
 
   Worker? _refreshRateModeWorker;
   Worker? _realOnlinePlatformsWorker;
+  Worker? _savedPlatformSyncWorker;
 
   static AppRefreshRateMode _legacyRefreshRateMode(Object? enabled) {
     return enabled == true ? AppRefreshRateMode.balanced : AppRefreshRateMode.powerSaving;
@@ -87,6 +89,16 @@ class AppSettingsController extends GetxController {
     if (!listEquals(savedMenuIds.v, normalizedMenus)) savedMenuIds.v = normalizedMenus;
     final normalizedPlatforms = normalizePlatformIds(savedPlatformIds.v);
     if (!listEquals(savedPlatformIds.v, normalizedPlatforms)) savedPlatformIds.v = normalizedPlatforms;
+    // 平台双源合一:savedPlatformIds 是唯一真源(顶栏平台 tab + 设置开关),
+    // 热门分区站点表 hotAreasList 只单向跟随(saved→hot),旧的 hotAreasList
+    // 编辑入口逐步废弃。时序已核对:SettingsService 在 initial_services.dart
+    // 常驻注册,其 onInit 把本控制器与 FavoriteRoomController 同批 lazyPut
+    // (settings_service.dart:_registerSettingsControllers),首次 find 即实例化,
+    // fav 恒可用;判注册仅防御异常时序。
+    _savedPlatformSyncWorker = ever<List<String>>(savedPlatformIds, (v) {
+      if (!Get.isRegistered<FavoriteRoomController>()) return;
+      SettingsService.to.fav.hotAreasList.v = List<String>.from(v);
+    });
     if (audienceMetricMigration.v < 1) {
       if (!realOnlinePlatforms.contains('twitch')) realOnlinePlatforms.add('twitch');
       audienceMetricMigration.v = 1;
@@ -183,6 +195,8 @@ class AppSettingsController extends GetxController {
     _refreshRateModeWorker = null;
     _realOnlinePlatformsWorker?.dispose();
     _realOnlinePlatformsWorker = null;
+    _savedPlatformSyncWorker?.dispose();
+    _savedPlatformSyncWorker = null;
     super.onClose();
   }
 
