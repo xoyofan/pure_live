@@ -865,6 +865,18 @@ select {
   right: 36px;
 }
 
+/* touch devices have no hover: keep ✕ visible and shift the star aside
+   (same affordance as the hover state above) */
+@media (hover: none) {
+  .follow-remove {
+    display: inline-flex;
+  }
+
+  .follow-cell .follow-star {
+    right: 36px;
+  }
+}
+
 /* ---- buttons ---- */
 
 .btn-primary {
@@ -953,6 +965,15 @@ select {
 .banner-state {
   border-color: var(--border);
   color: var(--text);
+}
+
+/* StateBanner: centered gray text for list loading/empty states */
+.state-banner {
+  margin: 12px 0;
+  padding: 18px 14px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-dim);
 }
 
 /* ---- play page: header (zishu PlayHeader: back + live flag + centered title + toggle) ---- */
@@ -1940,12 +1961,25 @@ select {
   }
 
   .app-header {
-    gap: 8px;
-    padding: 0 12px;
+    /* two rows on mobile: platform row above search/toggles */
+    gap: 4px 8px;
+    padding: 4px 12px;
+    height: auto;
+    min-height: 44px;
+    flex-wrap: wrap;
   }
 
-  /* platform navigation unifies into the bottom bar; top bar keeps search */
+  /* the bottom bar carries page navigation only, so platforms stay in the top
+     bar as a full-width scrollable row (sidebar is hidden on mobile) */
   .platform-tabs {
+    order: -1;
+    flex-basis: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .platform-tabs::-webkit-scrollbar {
     display: none;
   }
 

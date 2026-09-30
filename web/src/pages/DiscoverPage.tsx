@@ -3,6 +3,7 @@ import { getCategoryRooms, getRecommendRooms, searchRooms } from '../api/client'
 import { isApiError } from '../api/types';
 import type { RoomListItem } from '../api/types';
 import RoomCard from '../components/RoomCard';
+import StateBanner from '../components/StateBanner';
 
 export interface CategorySelection {
   areaId: string;
@@ -71,6 +72,8 @@ export default function DiscoverPage({
   onSearch,
 }: Props) {
   const [feed, setFeed] = useState<Feed>({ kind: 'loading' });
+  // 错误 banner 的「重试」:自增后触发首屏重新请求。
+  const [reloadSeq, setReloadSeq] = useState(0);
   const loadSeqRef = useRef(0);
   const loadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -101,7 +104,7 @@ export default function DiscoverPage({
       .finally(() => {
         if (seq === loadSeqRef.current) loadingRef.current = false;
       });
-  }, [platform, keyword, area?.areaId, area?.areaType]);
+  }, [platform, keyword, area?.areaId, area?.areaType, reloadSeq]);
 
   const loadMore = useCallback(() => {
     if (loadingRef.current) return;
@@ -182,12 +185,12 @@ export default function DiscoverPage({
 
       {feed.kind === 'error' && (
         <div className="room-state">
-          <p className="banner banner-error">{feed.message}</p>
+          <StateBanner kind="error" text={feed.message} onRetry={() => setReloadSeq((n) => n + 1)} />
         </div>
       )}
 
       {feed.kind === 'ok' && feed.rooms.length === 0 && (
-        <p className="banner">{mode === 'search' ? '没有匹配的直播间' : '暂时没有开播中的房间'}</p>
+        <StateBanner kind="empty" text={mode === 'search' ? '没有匹配的直播间' : '暂时没有开播中的房间'} />
       )}
 
       {feed.kind === 'ok' && feed.rooms.length > 0 && (

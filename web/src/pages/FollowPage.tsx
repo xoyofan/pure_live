@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import RoomCard from '../components/RoomCard';
+import StateBanner from '../components/StateBanner';
 import { getLiveStatus } from '../api/client';
 import * as followStore from '../lib/followStore';
 import type { FollowEntry } from '../lib/followStore';
@@ -91,7 +92,7 @@ export default function FollowPage({ onEnterRoom, platformName }: Props) {
     <div className="discover">
       <h2 className="category-index-title">我的关注</h2>
       {follows.length === 0 && (
-        <p className="banner">还没有关注的直播间——进入直播间后点右侧栏的「关注」即可收藏。</p>
+        <StateBanner kind="empty" text="还没有关注的直播间——进入直播间后点右侧栏的「关注」即可收藏。" />
       )}
       <div className="cards-grid">
         {follows.map((entry) => {

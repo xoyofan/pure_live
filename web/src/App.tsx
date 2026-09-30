@@ -393,19 +393,19 @@ export default function App() {
       </button>
       <button
         type="button"
+        className={`bottom-nav-item${route.page === 'myCategories' ? ' active' : ''}`}
+        onClick={() => navigate({ page: 'myCategories', platform: route.platform })}
+      >
+        <span className="bottom-nav-icon">♥</span>
+        <span className="bottom-nav-label">我的分类</span>
+      </button>
+      <button
+        type="button"
         className={`bottom-nav-item${route.page === 'follow' ? ' active' : ''}`}
         onClick={() => navigate({ page: 'follow', platform: route.platform })}
       >
         <span className="bottom-nav-icon">★</span>
         <span className="bottom-nav-label">关注</span>
-      </button>
-      <button
-        type="button"
-        className={`bottom-nav-item${route.page === 'myCategories' ? ' active' : ''}`}
-        onClick={() => navigate({ page: 'myCategories', platform: route.platform })}
-      >
-        <span className="bottom-nav-icon">▤</span>
-        <span className="bottom-nav-label">我的分类</span>
       </button>
     </nav>
   );

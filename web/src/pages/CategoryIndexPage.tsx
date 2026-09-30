@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getCategories } from '../api/client';
 import { isApiError } from '../api/types';
 import type { AreaItem, Category } from '../api/types';
+import StateBanner from '../components/StateBanner';
 import { categoryStyle } from '../lib/categoryColor';
 import { addMyCategory, listMyCategories, removeMyCategory, subscribeMyCategories } from '../lib/myCategories';
 
@@ -21,6 +22,8 @@ const PAGE_SIZE = 60;
 export default function CategoryIndexPage({ platform, onOpenCategory }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // 错误 banner 的「重试」:自增后触发分类重新请求。
+  const [reloadSeq, setReloadSeq] = useState(0);
   const [myCats, setMyCats] = useState(listMyCategories);
   const [query, setQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -44,7 +47,7 @@ export default function CategoryIndexPage({ platform, onOpenCategory }: Props) {
     return () => {
       disposed = true;
     };
-  }, [platform]);
+  }, [platform, reloadSeq]);
 
   const leaves: AreaItem[] = [];
   for (const category of categories) {
@@ -91,10 +94,10 @@ export default function CategoryIndexPage({ platform, onOpenCategory }: Props) {
           }}
         />
       </div>
-      {error && <p className="banner banner-error">{error}</p>}
-      {!error && leaves.length === 0 && <p className="banner">分类加载中…</p>}
+      {error && <StateBanner kind="error" text={error} onRetry={() => setReloadSeq((n) => n + 1)} />}
+      {!error && leaves.length === 0 && <StateBanner kind="loading" text="分类加载中…" />}
       {!error && leaves.length > 0 && filtered.length === 0 && (
-        <p className="banner">没有匹配的分类,换个关键词试试</p>
+        <StateBanner kind="empty" text="没有匹配的分类,换个关键词试试" />
       )}
       <div className="category-tiles">
         {shown.map((area) => {
