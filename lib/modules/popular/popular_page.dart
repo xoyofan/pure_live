@@ -1,8 +1,8 @@
 import 'popular_grid_view.dart';
+
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/widgets/common_appbar_actions.dart';
-
-
+import 'package:pure_live/modules/home/home_drawer_button.dart';
 
 class PopularPage extends GetView<PopularController> {
   const PopularPage({super.key});
@@ -23,7 +23,7 @@ class PopularPage extends GetView<PopularController> {
           return Scaffold(
             appBar: AppBar(
               centerTitle: true,
-              leading: showAction ? const MenuButton() : null,
+              leading: showAction ? const HomeDrawerButton() : null,
               actions: showAction ? [CommonAppBarActions()] : null,
               title: ScrollableTabBar(
                 key: const ValueKey('popular-platform-tabs'),
