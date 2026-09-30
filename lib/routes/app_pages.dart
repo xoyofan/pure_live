@@ -18,6 +18,7 @@ import 'package:pure_live/modules/history/history_page.dart';
 import 'package:pure_live/modules/auth/user_manage_page.dart';
 import 'package:pure_live/modules/about/version_history.dart';
 import 'package:pure_live/modules/search/search_binding.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_play_view.dart';
 import 'package:pure_live/modules/search/web_search_page.dart';
 import 'package:pure_live/modules/favorite/favorite_page.dart';
 import 'package:pure_live/modules/settings/settings_page.dart';
@@ -43,7 +44,6 @@ import 'package:pure_live/modules/account/huya/huya_cookie_page.dart';
 import 'package:pure_live/modules/area_rooms/area_rooms_binding.dart';
 import 'package:pure_live/recorder/pages/recorder/recorder_page.dart';
 import 'package:pure_live/modules/account/bilibili/qr_login_page.dart';
-import 'package:pure_live/modules/live_play/pages/live_play_page.dart';
 import 'package:pure_live/modules/account/douyu/douyu_cookie_page.dart';
 import 'package:pure_live/modules/account/bilibili/bilibili_bings.dart';
 import 'package:pure_live/modules/account/bilibili/web_login_page.dart';
@@ -94,7 +94,7 @@ class AppPages {
     ),
     GetPage(
       name: RoutePath.kLivePlay,
-      page: () => LivePlayPage(),
+      page: () => ZishuPlayView(),
       preventDuplicates: false,
       bindings: [LivePlayBinding()],
     ),

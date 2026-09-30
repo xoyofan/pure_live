@@ -5,7 +5,11 @@ import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/platform_icon.dart';
+import 'package:pure_live/zishu_app/features/areas/zishu_areas_view.dart';
 import 'package:pure_live/zishu_app/features/browse/zishu_browse_view.dart';
+import 'package:pure_live/zishu_app/features/follow/zishu_follow_view.dart';
+import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
+import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 
 /// zishu 前端移植主外壳(宽屏 >680):44px 顶栏 + 可折叠浏览侧栏。
 ///
@@ -55,17 +59,23 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
   bool _bound = false;
   bool _collapsed = false;
   int _siteIndex = 0;
+  AreasController? _areas;
+  VoidCallback? _areasTabListener;
+  bool _areasBound = false;
+  int _areasSiteIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _bindPopular();
+    _bindAreas();
   }
 
   @override
   void didUpdateWidget(covariant ZishuAppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
     _bindPopular();
+    _bindAreas();
   }
 
   void _bindPopular() {
@@ -88,7 +98,25 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
     if (_popular != null && _tabListener != null) {
       _popular!.tabController.removeListener(_tabListener!);
     }
+    if (_areas != null && _areasTabListener != null) {
+      _areas!.tabController.removeListener(_areasTabListener!);
+    }
     super.dispose();
+  }
+
+  void _bindAreas() {
+    if (_areasBound) return;
+    if (!Get.isRegistered<AreasController>()) return;
+    final controller = Get.find<AreasController>();
+    _areasTabListener = () {
+      if (mounted && controller.tabController.index >= 0) {
+        setState(() => _areasSiteIndex = controller.tabController.index);
+      }
+    };
+    controller.tabController.addListener(_areasTabListener!);
+    if (controller.tabController.index >= 0) _areasSiteIndex = controller.tabController.index;
+    _areas = controller;
+    _areasBound = true;
   }
 
   void _selectSiteId(String siteId) {
@@ -97,20 +125,47 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
     }
     _bindPopular();
     final controller = _popular;
-    if (controller == null) return;
-    final fullIndex = controller.sites.indexWhere((s) => s.id == siteId);
-    if (fullIndex >= 0) {
-      controller.tabController.animateTo(fullIndex);
-      if (mounted) setState(() => _siteIndex = fullIndex);
+    if (controller != null) {
+      final fullIndex = controller.sites.indexWhere((s) => s.id == siteId);
+      if (fullIndex >= 0) {
+        controller.tabController.animateTo(fullIndex);
+        if (mounted) setState(() => _siteIndex = fullIndex);
+      }
+    }
+    // 平台即全局站点上下文:分区页同步切到同一站点(存在时)。
+    _bindAreas();
+    if (_areas != null) {
+      final areasIndex = _areas!.sites.indexWhere((s) => s.id == siteId);
+      if (areasIndex >= 0) _areas!.tabController.animateTo(areasIndex);
     }
   }
 
   List<Site> get _sites => _popular?.sites ?? const <Site>[];
 
+  /// 当前站点 id 按激活页取源:分区页跟 AreasController,其余跟热门页。
   String? get _currentSiteId {
+    if (widget.index == HomeMenu.areas.index) {
+      final sites = _areas?.sites ?? const <Site>[];
+      if (_areasSiteIndex >= 0 && _areasSiteIndex < sites.length) return sites[_areasSiteIndex].id;
+      return null;
+    }
     final sites = _sites;
     if (_siteIndex < 0 || _siteIndex >= sites.length) return null;
     return sites[_siteIndex].id;
+  }
+
+  /// 内容区:热门/关注/分区已迁 zishu 视图,录制仍走旧页面体。
+  Widget _contentForMenu(int menuIndex, String? currentSiteId) {
+    if (menuIndex == HomeMenu.popular.index && currentSiteId != null) {
+      return ZishuBrowseView(siteId: currentSiteId);
+    }
+    if (menuIndex == HomeMenu.favorites.index) {
+      return const ZishuFollowView();
+    }
+    if (menuIndex == HomeMenu.areas.index) {
+      return const ZishuAreasView();
+    }
+    return widget.body;
   }
 
   /// 平台入口渲染表:严格按 `savedPlatformIds` 顺序;未保存(隐藏)的站点
@@ -174,13 +229,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
                       onSelectMenu: widget.onDestinationSelected,
                     ),
                     const VerticalDivider(width: 1, thickness: 1),
-                    Expanded(
-                      // 热门页:内容区用 zishu 浏览视图(网格/卡片/分页),
-                      // 其余 tab 仍走旧页面体,后续批逐个迁入 zishu_app。
-                      child: widget.index == HomeMenu.popular.index && _currentSiteId != null
-                          ? ZishuBrowseView(siteId: _currentSiteId!)
-                          : widget.body,
-                    ),
+                    Expanded(child: _contentForMenu(widget.index, _currentSiteId)),
                   ],
                 ),
               ),
@@ -235,13 +284,18 @@ class _TopBar extends StatelessWidget {
           _TopNavTool(
             tooltip: i18n('search_live'),
             icon: Remix.search_line,
-            onTap: () => Get.toNamed(RoutePath.kSearch),
+            onTap: () => showZishuSearchDialog(context),
           ),
           const SizedBox(width: AppSpacing.xs),
           _TopNavTool(
             tooltip: i18n('settings_title'),
             icon: Remix.settings_5_line,
-            onTap: () => Get.toNamed(RoutePath.kSettings),
+            onTap: () => Get.to(
+              () => Scaffold(
+                appBar: AppBar(title: Text(i18n('settings_title'))),
+                body: const ZishuSettingsView(embedded: true),
+              ),
+            ),
           ),
         ],
       ),
