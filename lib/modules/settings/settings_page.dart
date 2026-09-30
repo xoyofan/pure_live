@@ -10,6 +10,7 @@ import 'package:pure_live/modules/settings/pages/local_config_preveiw.dart';
 import 'package:pure_live/modules/settings/pages/general_settings_page.dart';
 import 'package:pure_live/modules/settings/pages/platform_settings_page.dart';
 import 'package:pure_live/modules/settings/pages/navigation_settings_page.dart';
+import 'package:pure_live/modules/settings/pages/platform_order_settings_page.dart';
 import 'package:pure_live/modules/settings/pages/cache_data_settings_page.dart';
 import 'package:pure_live/modules/settings/pages/network_proxy_settings_page.dart';
 import 'package:pure_live/modules/settings/pages/player_kernel_settings_page.dart';
@@ -146,6 +147,12 @@ class SettingsPage extends GetView<SettingsService> {
               title: i18n("navigation_display_settings"),
               subtitle: i18n("navigation_display_settings_desc"),
               onTap: () => Get.to(() => NavigationSettingsPage()),
+            ),
+            context.buildTile(
+              icon: Remix.sort_asc,
+              title: i18n("platform_order_settings"),
+              subtitle: i18n("platform_order_settings_desc"),
+              onTap: () => Get.to(() => const PlatformOrderSettingsPage()),
             ),
             context.buildTile(
               icon: Remix.apps_2_line,

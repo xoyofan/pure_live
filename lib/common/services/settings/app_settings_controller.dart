@@ -68,11 +68,20 @@ class AppSettingsController extends GetxController {
 
   late final RxList<String> savedMenuIds = hiveStringList('savedMenuIds', HomeMenu.values.map((e) => e.id).toList());
 
+  /// 外壳平台入口(顶栏平台 tab + 侧栏色块)的顺序与可见性:值为站点 id,
+  /// 不在列表内 = 隐藏。默认全量、顺序同 [Sites.supportSites]。
+  late final RxList<String> savedPlatformIds = hiveStringList(
+    'savedPlatformIds',
+    Sites.supportSites.map((e) => e.id).toList(),
+  );
+
   @override
   void onInit() {
     super.onInit();
     final normalizedMenus = normalizeMenuIds(savedMenuIds.v);
     if (!listEquals(savedMenuIds.v, normalizedMenus)) savedMenuIds.v = normalizedMenus;
+    final normalizedPlatforms = normalizePlatformIds(savedPlatformIds.v);
+    if (!listEquals(savedPlatformIds.v, normalizedPlatforms)) savedPlatformIds.v = normalizedPlatforms;
     if (audienceMetricMigration.v < 1) {
       if (!realOnlinePlatforms.contains('twitch')) realOnlinePlatforms.add('twitch');
       audienceMetricMigration.v = 1;
@@ -152,6 +161,17 @@ class AppSettingsController extends GetxController {
     return normalized.isEmpty ? [HomeMenu.favorites.id] : normalized;
   }
 
+  /// 站点 id 白名单过滤 + 去重;清空时回退全量。
+  static List<String> normalizePlatformIds(Iterable<String> platformIds) {
+    final supported = Sites.supportSites.map((e) => e.id).toSet();
+    final normalized = <String>[];
+    for (final rawId in platformIds) {
+      final id = rawId.trim().toLowerCase();
+      if (supported.contains(id) && !normalized.contains(id)) normalized.add(id);
+    }
+    return normalized.isEmpty ? Sites.supportSites.map((e) => e.id).toList() : normalized;
+  }
+
   @override
   void onClose() {
     _refreshRateModeWorker?.dispose();
@@ -172,6 +192,17 @@ class AppSettingsController extends GetxController {
       current.removeWhere((id) => id == menu.id);
     }
     savedMenuIds.v = current;
+  }
+
+  void togglePlatformVisibility(String siteId, bool visible) {
+    final current = normalizePlatformIds(savedPlatformIds.v);
+    if (visible) {
+      if (!current.contains(siteId)) current.add(siteId);
+    } else {
+      if (current.length <= 1 && current.contains(siteId)) return;
+      current.removeWhere((id) => id == siteId);
+    }
+    savedPlatformIds.v = current;
   }
 
   bool isRealOnlineEnabledFor(String? platform) => resolvedRealOnlinePlatforms.contains(platform?.trim().toLowerCase());
@@ -209,6 +240,7 @@ class AppSettingsController extends GetxController {
       'preferRealOnlineCounts': preferRealOnlineCounts.v,
       'realOnlinePlatforms': resolvedRealOnlinePlatforms,
       'savedMenuIds': savedMenuIds.v,
+      'savedPlatformIds': normalizePlatformIds(savedPlatformIds.v),
       'enableMultiView': enableMultiView.v,
       'enableNewWindowPlay': enableNewWindowPlay.v,
     };
@@ -239,6 +271,9 @@ class AppSettingsController extends GetxController {
       'savedMenuIds': typed<List<String>>(
         normalizeMenuIds(List<String>.from(json['savedMenuIds'] ?? HomeMenu.values.map((e) => e.id).toList())),
       ),
+      'savedPlatformIds': typed<List<String>>(
+        normalizePlatformIds(List<String>.from(json['savedPlatformIds'] ?? Sites.supportSites)),
+      ),
       'enableMultiView': typed<bool>(json['enableMultiView'] ?? true),
       'enableNewWindowPlay': typed<bool>(json['enableNewWindowPlay'] ?? true),
     };
@@ -262,6 +297,7 @@ class AppSettingsController extends GetxController {
     realOnlinePlatforms.v = parsed['realOnlinePlatforms'];
     _repairRealOnlinePlatforms();
     savedMenuIds.v = parsed['savedMenuIds'];
+    savedPlatformIds.v = parsed['savedPlatformIds'];
     enableMultiView.v = parsed['enableMultiView'];
     enableNewWindowPlay.v = parsed['enableNewWindowPlay'];
   }
@@ -289,6 +325,7 @@ class AppSettingsController extends GetxController {
       'savedMenuIds': normalizeMenuIds(
         List<String>.from(app['savedMenuIds'] ?? HomeMenu.values.map((menu) => menu.id).toList()),
       ),
+      'savedPlatformIds': normalizePlatformIds(List<String>.from(app['savedPlatformIds'] ?? Sites.supportSites)),
       'enableMultiView': app['enableMultiView'] ?? true,
       'enableNewWindowPlay': app['enableNewWindowPlay'] ?? true,
     };

@@ -91,19 +91,47 @@ class _ZishuHomeShellState extends State<ZishuHomeShell> {
     super.dispose();
   }
 
-  void _selectSite(int siteIndex) {
+  void _selectSiteId(String siteId) {
     if (widget.index != HomeMenu.popular.index) {
       widget.onDestinationSelected(HomeMenu.popular.index);
     }
     _bindPopular();
     final controller = _popular;
-    if (controller != null && siteIndex >= 0 && siteIndex < controller.sites.length) {
-      controller.tabController.animateTo(siteIndex);
-      if (mounted) setState(() => _siteIndex = siteIndex);
+    if (controller == null) return;
+    final fullIndex = controller.sites.indexWhere((s) => s.id == siteId);
+    if (fullIndex >= 0) {
+      controller.tabController.animateTo(fullIndex);
+      if (mounted) setState(() => _siteIndex = fullIndex);
     }
   }
 
   List<Site> get _sites => _popular?.sites ?? const <Site>[];
+
+  String? get _currentSiteId {
+    final sites = _sites;
+    if (_siteIndex < 0 || _siteIndex >= sites.length) return null;
+    return sites[_siteIndex].id;
+  }
+
+  /// 平台入口渲染表:`savedPlatformIds` 顺序优先;热门页新增站点(不在
+  /// 保存表)追加在尾部,保证新平台默认可见。
+  List<Site> _visibleSites() {
+    final saved = SettingsService.to.app.savedPlatformIds.v;
+    final all = _sites;
+    final visible = <Site>[];
+    for (final id in saved) {
+      for (final site in all) {
+        if (site.id == id) {
+          visible.add(site);
+          break;
+        }
+      }
+    }
+    for (final site in all) {
+      if (!visible.any((v) => v.id == site.id)) visible.add(site);
+    }
+    return visible;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,50 +151,55 @@ class _ZishuHomeShellState extends State<ZishuHomeShell> {
     return Scaffold(
       backgroundColor: tokens.background,
       body: SafeArea(
-        child: Column(
-          children: [
-            _TopBar(
-              index: widget.index,
-              sites: _sites,
-              siteIndex: _siteIndex,
-              onSelectMenu: widget.onDestinationSelected,
-              onSelectSite: _selectSite,
-            ),
-            const Divider(height: 1, thickness: 1),
-            Expanded(
-              child: Row(
-                children: [
-                  _Sidebar(
-                    index: widget.index,
-                    sites: _sites,
-                    siteIndex: _siteIndex,
-                    onSelectSite: _selectSite,
-                    onSelectMenu: widget.onDestinationSelected,
-                  ),
-                  const VerticalDivider(width: 1, thickness: 1),
-                  Expanded(child: widget.body),
-                ],
+        // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表,设置里
+        // 改排序/显隐即时反映到顶栏与侧栏。
+        child: Obx(() {
+          final visibleSites = _visibleSites();
+          return Column(
+            children: [
+              _TopBar(
+                index: widget.index,
+                sites: visibleSites,
+                currentSiteId: _currentSiteId,
+                onSelectMenu: widget.onDestinationSelected,
+                onSelectSite: _selectSiteId,
               ),
-            ),
-          ],
-        ),
+              const Divider(height: 1, thickness: 1),
+              Expanded(
+                child: Row(
+                  children: [
+                    _Sidebar(
+                      index: widget.index,
+                      sites: visibleSites,
+                      currentSiteId: _currentSiteId,
+                      onSelectSite: _selectSiteId,
+                      onSelectMenu: widget.onDestinationSelected,
+                    ),
+                    const VerticalDivider(width: 1, thickness: 1),
+                    Expanded(child: widget.body),
+                  ],
+                ),
+              ),
+            ],
+          );
+        }),
       ),
     );
   }
 }
 
-/// 44px 顶栏:surface 底,主导航图标组 | 平台 tab 居中 | 工具区。
+/// 44px 顶栏:surface 底,主导航图标组 | 平台 tab 居中 | 工具区(关注/搜索/设置)。
 class _TopBar extends StatelessWidget {
   final int index;
   final List<Site> sites;
-  final int siteIndex;
+  final String? currentSiteId;
   final void Function(int) onSelectMenu;
-  final void Function(int) onSelectSite;
+  final void Function(String) onSelectSite;
 
   const _TopBar({
     required this.index,
     required this.sites,
-    required this.siteIndex,
+    required this.currentSiteId,
     required this.onSelectMenu,
     required this.onSelectSite,
   });
@@ -182,13 +215,19 @@ class _TopBar extends StatelessWidget {
         children: [
           _TopNavBrand(index: index, onSelectMenu: onSelectMenu),
           const Spacer(),
-          for (var i = 0; i < sites.length; i++)
+          for (final site in sites)
             _PlatformTab(
-              site: sites[i],
-              selected: i == siteIndex && index == HomeMenu.popular.index,
-              onTap: () => onSelectSite(i),
+              site: site,
+              selected: site.id == currentSiteId && index == HomeMenu.popular.index,
+              onTap: () => onSelectSite(site.id),
             ),
           const Spacer(),
+          _TopNavTool(
+            tooltip: i18n('favorites_title'),
+            icon: Remix.heart_3_fill,
+            color: index == HomeMenu.favorites.index ? tokens.brand : null,
+            onTap: () => onSelectMenu(HomeMenu.favorites.index),
+          ),
           _TopNavTool(
             tooltip: i18n('search_live'),
             icon: Remix.search_line,
@@ -206,7 +245,7 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-/// 品牌字 + 主导航图标组(首页/分区/关注)。
+/// 品牌字 + 主导航图标组(首页/分区);关注等工具入口在顶栏右侧。
 class _TopNavBrand extends StatelessWidget {
   final int index;
   final void Function(int) onSelectMenu;
@@ -241,12 +280,6 @@ class _TopNavBrand extends StatelessWidget {
           tooltip: i18n('areas_title'),
           color: index == HomeMenu.areas.index ? tokens.textPrimary : tokens.textSecondary,
           onTap: () => onSelectMenu(HomeMenu.areas.index),
-        ),
-        _TopNavIcon(
-          icon: Remix.heart_3_fill,
-          tooltip: i18n('favorites_title'),
-          color: index == HomeMenu.favorites.index ? tokens.brand : tokens.textSecondary,
-          onTap: () => onSelectMenu(HomeMenu.favorites.index),
         ),
       ],
     );
@@ -314,16 +347,17 @@ class _PlatformTab extends StatelessWidget {
 class _TopNavTool extends StatelessWidget {
   final String tooltip;
   final IconData icon;
+  final Color? color;
   final VoidCallback onTap;
 
-  const _TopNavTool({required this.tooltip, required this.icon, required this.onTap});
+  const _TopNavTool({required this.tooltip, required this.icon, required this.onTap, this.color});
 
   @override
   Widget build(BuildContext context) {
     return IconButton(
       tooltip: tooltip,
       onPressed: onTap,
-      icon: Icon(icon, size: 18, color: Theme.of(context).extension<ZishuTokens>()!.textSecondary),
+      icon: Icon(icon, size: 18, color: color ?? Theme.of(context).extension<ZishuTokens>()!.textSecondary),
       constraints: const BoxConstraints.tightFor(width: 32, height: 32),
       padding: EdgeInsets.zero,
       splashRadius: 18,
@@ -335,14 +369,14 @@ class _TopNavTool extends StatelessWidget {
 class _Sidebar extends StatelessWidget {
   final int index;
   final List<Site> sites;
-  final int siteIndex;
-  final void Function(int) onSelectSite;
+  final String? currentSiteId;
+  final void Function(String) onSelectSite;
   final void Function(int) onSelectMenu;
 
   const _Sidebar({
     required this.index,
     required this.sites,
-    required this.siteIndex,
+    required this.currentSiteId,
     required this.onSelectSite,
     required this.onSelectMenu,
   });
@@ -360,11 +394,11 @@ class _Sidebar extends StatelessWidget {
             spacing: AppSpacing.sm,
             runSpacing: AppSpacing.sm,
             children: [
-              for (var i = 0; i < sites.length; i++)
+              for (final site in sites)
                 _PlatformBlock(
-                  site: sites[i],
-                  selected: i == siteIndex && index == HomeMenu.popular.index,
-                  onTap: () => onSelectSite(i),
+                  site: site,
+                  selected: site.id == currentSiteId && index == HomeMenu.popular.index,
+                  onTap: () => onSelectSite(site.id),
                 ),
             ],
           ),
