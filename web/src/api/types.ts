@@ -75,6 +75,34 @@ export interface ResolveRequest {
   roomId: string;
 }
 
+/** Category leaf (api.md 4.6.1), mirroring Flutter LiveArea. */
+export interface AreaItem {
+  platform: string | null;
+  areaType: string | null;
+  typeName: string | null;
+  areaId: string | null;
+  areaName: string | null;
+  areaPic: string | null;
+  shortName: string | null;
+}
+
+/** GET /directory/{platform}/categories */
+export interface Category {
+  id: string;
+  name: string;
+  children: AreaItem[];
+}
+
+/** Slim room entry of every 4.6 list (subset of Room). */
+export type RoomListItem = Room;
+
+/** Paged list shared by recommend / category rooms / search (api.md 4.6). */
+export interface RoomListResult {
+  page: number;
+  hasMore: boolean;
+  rooms: RoomListItem[];
+}
+
 /** POST /rooms/{platform}/play-urls request body */
 export interface PlayUrlsRequest {
   roomId: string;

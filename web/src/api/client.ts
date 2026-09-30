@@ -1,6 +1,7 @@
 import {
   ApiError,
   type ApiErrorCode,
+  type Category,
   type Health,
   type PlayUrls,
   type PlayUrlsRequest,
@@ -8,6 +9,7 @@ import {
   type Quality,
   type ResolveRequest,
   type Room,
+  type RoomListResult,
 } from './types';
 
 /** Same-origin base path; in dev the Vite proxy forwards /api -> 127.0.0.1:8787. */
@@ -114,6 +116,61 @@ export function getPlayUrls(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Directory & search (contract section 4.6)
+// ---------------------------------------------------------------------------
+
+const MAX_PAGE_SIZE = 50;
+
+/** GET /directory/{platform}/categories */
+export function getCategories(platform: string): Promise<{ categories: Category[] }> {
+  return request<{ categories: Category[] }>(
+    `/directory/${encodeURIComponent(platform)}/categories`,
+  );
+}
+
+/** GET /directory/{platform}/recommend?page=&pageSize= */
+export function getRecommendRooms(platform: string, page: number, pageSize = 30): Promise<RoomListResult> {
+  const query = new URLSearchParams({ page: String(page), pageSize: String(Math.min(pageSize, MAX_PAGE_SIZE)) });
+  return request<RoomListResult>(`/directory/${encodeURIComponent(platform)}/recommend?${query.toString()}`);
+}
+
+interface CategoryRoomsArgs {
+  areaId: string;
+  areaType?: string;
+  typeName?: string;
+  areaName?: string;
+}
+
+/** GET /directory/{platform}/categories/{areaId}/rooms */
+export function getCategoryRooms(
+  platform: string,
+  area: CategoryRoomsArgs,
+  page: number,
+  pageSize = 30,
+): Promise<RoomListResult> {
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(Math.min(pageSize, MAX_PAGE_SIZE)),
+  });
+  if (area.areaType) query.set('areaType', area.areaType);
+  if (area.typeName) query.set('typeName', area.typeName);
+  if (area.areaName) query.set('areaName', area.areaName);
+  return request<RoomListResult>(
+    `/directory/${encodeURIComponent(platform)}/categories/${encodeURIComponent(area.areaId)}/rooms?${query.toString()}`,
+  );
+}
+
+/** GET /search/{platform}?keyword=&page=&pageSize= */
+export function searchRooms(platform: string, keyword: string, page: number, pageSize = 30): Promise<RoomListResult> {
+  const query = new URLSearchParams({
+    keyword,
+    page: String(page),
+    pageSize: String(Math.min(pageSize, MAX_PAGE_SIZE)),
+  });
+  return request<RoomListResult>(`/search/${encodeURIComponent(platform)}?${query.toString()}`);
 }
 
 // ---------------------------------------------------------------------------
