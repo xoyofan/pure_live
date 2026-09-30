@@ -74,13 +74,9 @@ function liveStatusText(liveStatus: Room['liveStatus']): string | null {
 }
 
 function formatViewers(value: number): string {
+  if (value >= 1e8) return `${(value / 1e8).toFixed(1)}亿`;
   if (value >= 10000) return `${(value / 10000).toFixed(1)}万`;
   return String(Math.round(value));
-}
-
-/** Recommend-list meta value: totalViewers (cumulative viewers) beats legacy watching. */
-function recommendViewers(room: RoomListItem): string {
-  return (room.totalViewers ?? '').trim() || (room.watching ?? '').trim();
 }
 
 function danmakuStatusText(status: ReturnType<typeof useDanmaku>['status']): string | null {
@@ -223,6 +219,7 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
   const [videoPaused, setVideoPaused] = useState(false);
   const [videoMuted, setVideoMuted] = useState(true);
   const [videoVolume, setVideoVolume] = useState(1);
+  const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape');
 
   const playSeqRef = useRef(0);
   const resolveSeqRef = useRef(0);
@@ -371,12 +368,12 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
     setDanmakuPrefs(next);
   };
 
-  // Sidebar audience line: a live danmaku count wins; otherwise totalViewers
-  // (cumulative head count) beats the legacy `watching`, with the unit label
-  // (人气 heat vs 观看 head count) following audienceMetricType.
+  // Sidebar audience line: a live danmaku count wins (0 -> no real count);
+  // otherwise totalViewers (cumulative head count) beats the legacy `watching`
+  // via audienceDisplay, which blanks '0'/empty so the line hides itself.
   const audience = room ? audienceDisplay(room) : { value: '', label: '人气' };
   const viewerText =
-    danmaku.onlineValue !== null
+    danmaku.onlineValue
       ? formatViewers(danmaku.onlineValue)
       : audience.value;
 
@@ -533,12 +530,14 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
       <button type="button" className="btn-ghost" onClick={onLeave}>
         ← 返回
       </button>
-      {room?.area ? (
+      {room ? (
         (() => {
-          const style = categoryStyle(room.area);
+          // 分类缺失时(douyin resolve 实测 area 为 '')徽标兜底为 未分类。
+          const areaLabel = (room.area ?? '').trim() || '未分类';
+          const style = categoryStyle(areaLabel);
           return style ? (
             <span className="area-flag" style={{ background: style.background, color: style.foreground }}>
-              {room.area}
+              {areaLabel}
             </span>
           ) : null;
         })()
@@ -580,9 +579,17 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
         <div className={`room-grid${sideCollapsed ? " side-collapsed" : ""}`}>
           <div className="player-col">
             {headerNode}
-            <div className="player-stage" ref={stageRef}>
+            <div className={`player-stage${orientation === "portrait" ? " portrait" : ""}`} ref={stageRef}>
               {coverNode}
-              {source && <Player source={source} onError={handlePlayerError} onStall={handleStall} onPlaying={handlePlaying} />}
+              {source && (
+                <Player
+                  source={source}
+                  onError={handlePlayerError}
+                  onStall={handleStall}
+                  onPlaying={handlePlaying}
+                  onOrientation={setOrientation}
+                />
+              )}
               {playable && source && (
                 <DanmakuCanvas
                   chatQueueRef={danmaku.chatQueueRef}
@@ -701,7 +708,15 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
           <aside className="play-side" hidden={sideCollapsed}>
             <div className="side-header">
               {room.avatar ? (
-                <img className="avatar" src={room.avatar} alt="" referrerPolicy="no-referrer" />
+                <img
+                  className="avatar"
+                  src={room.avatar}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
               ) : (
                 <div className="avatar placeholder" />
               )}
@@ -710,16 +725,21 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
                   <span className={`dot dot-${danmaku.status}`} title={danmakuStatusText(danmaku.status) ?? ''} />
                   {room.nick || '未知主播'}
                 </p>
-                <p className="watching">
-                  {viewerText ? `${formatWatching(viewerText)} ${audience.label}` : ''}
-                  {Number(room.followers ?? '') > 0 ? ` · ${formatWatching(room.followers ?? '')} 粉丝` : ''}
-                  {liveStatusText(room.liveStatus) ? ' · 未开播' : ''}
-                </p>
-                {room.introduction ? (
-                  <p className="side-intro" title={room.introduction.replace(/<[^>]*>/g, '')}>
-                    {room.introduction.replace(/<[^>]*>/g, '')}
-                  </p>
-                ) : null}
+                {(() => {
+                  // Segments join with " · " so no dangling separator appears
+                  // when the audience count is hidden ('0'/empty).
+                  const segments: string[] = [];
+                  if (viewerText) segments.push(`${viewerText} ${audience.label}`);
+                  if (Number(room.followers ?? '') > 0) segments.push(`${formatWatching(room.followers ?? '')} 粉丝`);
+                  if (liveStatusText(room.liveStatus)) segments.push('未开播');
+                  return segments.length > 0 ? <p className="watching">{segments.join(' · ')}</p> : null;
+                })()}
+                {(() => {
+                  // 剥标签后判空再渲染:B站实测 introduction 可为 '<p><br></p>',
+                  // 原样渲染会留下空签名行。
+                  const intro = (room.introduction ?? '').replace(/<[^>]*>/g, '').trim();
+                  return intro ? <p className="side-intro" title={intro}>{intro}</p> : null;
+                })()}
               </div>
               <div className="side-follow-btns">
                 <button
@@ -844,33 +864,36 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
                 {!recommendLoading && recommendRooms.length === 0 && (
                   <p className="danmaku-empty">暂时没有推荐房间</p>
                 )}
-                {recommendRooms.map((room) => (
-                  <button
-                    key={`${room.platform}:${room.roomId}`}
-                    type="button"
-                    className="recommend-item"
-                    onClick={() => onOpenRoom(room.platform || platform, room.roomId)}
-                  >
-                    {room.cover ? (
-                      <img
-                        src={room.cover}
-                        alt=""
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          e.currentTarget.style.visibility = 'hidden';
-                        }}
-                      />
-                    ) : null}
-                    <span className="recommend-item-info">
-                      <span className="recommend-item-title">{room.title || room.nick}</span>
-                      <span className="recommend-item-meta">
-                        {room.nick}
-                        {recommendViewers(room) ? ` · ${recommendViewers(room)}` : ''}
+                {recommendRooms.map((room) => {
+                  const itemAudience = audienceDisplay(room);
+                  return (
+                    <button
+                      key={`${room.platform}:${room.roomId}`}
+                      type="button"
+                      className="recommend-item"
+                      onClick={() => onOpenRoom(room.platform || platform, room.roomId)}
+                    >
+                      {room.cover ? (
+                        <img
+                          src={room.cover}
+                          alt=""
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            e.currentTarget.style.visibility = 'hidden';
+                          }}
+                        />
+                      ) : null}
+                      <span className="recommend-item-info">
+                        <span className="recommend-item-title">{room.title || room.nick}</span>
+                        <span className="recommend-item-meta">
+                          {room.nick}
+                          {itemAudience.value ? ` · ${itemAudience.value}` : ''}
+                        </span>
                       </span>
-                    </span>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <div className="side-settings">

@@ -1195,6 +1195,14 @@ select {
   aspect-ratio: auto;
 }
 
+/* portrait streams (douyin-style): shrink the container to the video shape
+   instead of stretching 16:9 with huge side letterboxes */
+.player-stage.portrait {
+  aspect-ratio: 9 / 16;
+  width: min(100%, calc(min(82vh, 900px) * 9 / 16));
+  margin: 0 auto;
+}
+
 .player-video {
   position: absolute;
   inset: 0;

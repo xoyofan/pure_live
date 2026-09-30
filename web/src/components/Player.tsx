@@ -18,6 +18,8 @@ interface Props {
   onStall: () => void;
   /** Playback actually started -> room cancels the pending auto re-fetch. */
   onPlaying: () => void;
+  /** Fires on loadedmetadata/resize with the video orientation. */
+  onOrientation?: (orientation: 'landscape' | 'portrait') => void;
 }
 
 /**
@@ -25,7 +27,7 @@ interface Props {
  * contract `protocol` field and rebuilt whenever url/protocol/nonce changes,
  * so quality switches swap the source without a page reload.
  */
-export default function Player({ source, onError, onStall, onPlaying }: Props) {
+export default function Player({ source, onError, onStall, onPlaying, onOrientation }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -47,14 +49,23 @@ export default function Player({ source, onError, onStall, onPlaying }: Props) {
       });
     };
 
+    const reportOrientation = () => {
+      if (!onOrientation || video.videoWidth === 0) return;
+      onOrientation(video.videoHeight > video.videoWidth ? 'portrait' : 'landscape');
+    };
+
     const bindMediaEvents = () => {
       const onWaiting = () => onStall();
       const onStalled = () => onStall();
       const onPlayingEvt = () => onPlaying();
+      video.addEventListener('loadedmetadata', reportOrientation);
+      video.addEventListener('resize', reportOrientation);
       video.addEventListener('waiting', onWaiting);
       video.addEventListener('stalled', onStalled);
       video.addEventListener('playing', onPlayingEvt);
       cleanupFns.push(() => {
+        video.removeEventListener('loadedmetadata', reportOrientation);
+        video.removeEventListener('resize', reportOrientation);
         video.removeEventListener('waiting', onWaiting);
         video.removeEventListener('stalled', onStalled);
         video.removeEventListener('playing', onPlayingEvt);

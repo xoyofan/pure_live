@@ -20,7 +20,9 @@ const GENERIC_AREAS = new Set(['热门推荐', '推荐', '直播']);
 export default function RoomCard({ room, platformName, onOpen }: Props) {
   const isLive = room.liveStatus === 'live' || room.status;
   const area = (room.area ?? '').trim();
-  const areaStyle = GENERIC_AREAS.has(area) ? null : categoryStyle(area);
+  // 解析层未给出分类时(douyin resolve 实测 area 为 '')徽标仍渲染,文案兜底为 未分类。
+  const areaLabel = area || '未分类';
+  const areaStyle = GENERIC_AREAS.has(area) ? null : categoryStyle(areaLabel);
   const audience = audienceDisplay(room);
 
   return (
@@ -43,9 +45,9 @@ export default function RoomCard({ room, platformName, onOpen }: Props) {
           />
         ) : null}
         <div className="cover-tag-row">
-          {areaStyle && area && (
+          {areaStyle && (
             <span className="tag-area" style={{ background: areaStyle.background, color: areaStyle.foreground }}>
-              {area}
+              {areaLabel}
             </span>
           )}
           {isLive && <span className="tag-live">直播</span>}
