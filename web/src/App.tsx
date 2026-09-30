@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import DiscoverPage, { type CategorySelection } from './pages/DiscoverPage';
 import CategoryIndexPage from './pages/CategoryIndexPage';
 import FollowPage from './pages/FollowPage';
+import MyCategoriesPage from './pages/MyCategoriesPage';
 import { readTheme, toggleTheme, type ThemeMode } from './lib/theme';
+import { listMyCategories, subscribeMyCategories, type MyCategoryEntry } from './lib/myCategories';
 import RoomPage from './pages/RoomPage';
 import { getCategories, getPlatforms } from './api/client';
 import type { AreaItem, Platform } from './api/types';
@@ -10,6 +12,7 @@ import type { AreaItem, Platform } from './api/types';
 type Route =
   | { page: 'discover'; platform: string; keyword: string | null; area: CategorySelection | null }
   | { page: 'categoryIndex'; platform: string }
+  | { page: 'myCategories'; platform: string }
   | { page: 'follow'; platform: string }
   | { page: 'room'; platform: string; roomId: string };
 
@@ -59,6 +62,9 @@ function routeFromLocation(): Route {
   if (segments.length === 1 && segments[0] === 'follow') {
     return { page: 'follow', platform: 'douyin' };
   }
+  if (segments.length === 1 && segments[0] === 'my-categories') {
+    return { page: 'myCategories', platform: 'douyin' };
+  }
   if (segments.length >= 2 && segments[1] === 'category') {
     if (segments[2]) {
       const { areaType, typeName, areaName } = queryAreaOf(window.location.search);
@@ -98,6 +104,7 @@ export default function App() {
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [hotAreas, setHotAreas] = useState<AreaItem[]>([]);
   const [hotCollapsed, setHotCollapsed] = useState(false);
+  const [myCategories, setMyCategories] = useState<MyCategoryEntry[]>(listMyCategories);
   const [theme, setTheme] = useState<ThemeMode>(readTheme);
 
   useEffect(() => {
@@ -116,6 +123,10 @@ export default function App() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
+
+  // My-categories entries change on the category index page; refresh the
+  // rail ★ markers through the store subscription.
+  useEffect(() => subscribeMyCategories(() => setMyCategories(listMyCategories())), []);
 
   useEffect(() => {
     let disposed = false;
@@ -170,7 +181,9 @@ export default function App() {
           ? `/${encodeURIComponent(next.platform)}/category`
           : next.page === 'follow'
             ? '/follow'
-            : discoverUrl(next.platform, next.keyword, next.area);
+            : next.page === 'myCategories'
+              ? '/my-categories'
+              : discoverUrl(next.platform, next.keyword, next.area);
     window.history.pushState(null, '', url);
   }, []);
 
@@ -216,6 +229,14 @@ export default function App() {
         </button>
         <button
           type="button"
+          className={`side-nav-item${route.page === 'myCategories' ? ' active' : ''}`}
+          onClick={() => navigate({ page: 'myCategories', platform: route.platform })}
+        >
+          <span className="side-nav-icon">♥</span>
+          <span className="side-nav-label">我的分类</span>
+        </button>
+        <button
+          type="button"
           className={`side-nav-item${route.page === 'follow' ? ' active' : ''}`}
           onClick={() => navigate({ page: 'follow', platform: route.platform })}
         >
@@ -226,7 +247,7 @@ export default function App() {
       <div className="side-section-label">平台</div>
       <div className="side-platforms">
         {tabs.map((p) => {
-          const activePlatform = route.page === 'follow' ? '' : route.platform;
+          const activePlatform = route.page === 'follow' || route.page === 'myCategories' ? '' : route.platform;
           return (
             <button
               key={p.id}
@@ -254,6 +275,9 @@ export default function App() {
             <div className="side-hot">
               {hotAreas.map((area) => {
                 const active = route.page === 'discover' && route.area?.areaId === area.areaId;
+                const saved = myCategories.some(
+                  (e) => e.platform === route.platform && e.areaId === (area.areaId ?? ''),
+                );
                 return (
                   <button
                     key={area.areaId}
@@ -269,6 +293,7 @@ export default function App() {
                     }
                   >
                     {area.areaName || area.typeName || area.areaId}
+                    {saved && <span className="hot-star">★</span>}
                   </button>
                 );
               })}
@@ -286,9 +311,49 @@ export default function App() {
     </aside>
   );
 
+  // Mobile-only bottom navigation (zishu bottom_nav): mirrors the rail nav row
+  // for <768px where the sidebar is hidden; the play page stays full-bleed.
+  const bottomNav = route.page !== 'room' && (
+    <nav className="bottom-nav">
+      <button
+        type="button"
+        className={`bottom-nav-item${route.page === 'discover' && route.area === null && route.keyword === null ? ' active' : ''}`}
+        onClick={() => showDiscover(route.platform, null, null)}
+      >
+        <span className="bottom-nav-icon">⌂</span>
+        <span className="bottom-nav-label">首页</span>
+      </button>
+      <button
+        type="button"
+        className={`bottom-nav-item${route.page === 'categoryIndex' ? ' active' : ''}`}
+        onClick={() => navigate({ page: 'categoryIndex', platform: route.platform })}
+      >
+        <span className="bottom-nav-icon">▦</span>
+        <span className="bottom-nav-label">分类</span>
+      </button>
+      <button
+        type="button"
+        className={`bottom-nav-item${route.page === 'follow' ? ' active' : ''}`}
+        onClick={() => navigate({ page: 'follow', platform: route.platform })}
+      >
+        <span className="bottom-nav-icon">★</span>
+        <span className="bottom-nav-label">关注</span>
+      </button>
+      <button
+        type="button"
+        className={`bottom-nav-item${route.page === 'myCategories' ? ' active' : ''}`}
+        onClick={() => navigate({ page: 'myCategories', platform: route.platform })}
+      >
+        <span className="bottom-nav-icon">▤</span>
+        <span className="bottom-nav-label">我的分类</span>
+      </button>
+    </nav>
+  );
+
   return (
     <div className={`app${route.page === 'room' ? ' app-play' : ''}`}>
       {sidebar}
+      {bottomNav}
       <div className="app-body">
         <header className="app-header">
           <nav className="platform-tabs">
@@ -341,6 +406,13 @@ export default function App() {
               key={`categoryIndex:${route.platform}`}
               platform={route.platform}
               onOpenCategory={(platform, area) => showDiscover(platform, null, area)}
+            />
+          ) : route.page === 'myCategories' ? (
+            <MyCategoriesPage
+              key="myCategories"
+              platformName={platformName}
+              onOpenCategory={(platform, area) => showDiscover(platform, null, area)}
+              onOpenCategoryIndex={() => navigate({ page: 'categoryIndex', platform: route.platform })}
             />
           ) : route.page === 'follow' ? (
             <FollowPage key="follow" onEnterRoom={enterRoom} platformName={platformName} />

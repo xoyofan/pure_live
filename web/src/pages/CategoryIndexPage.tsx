@@ -3,6 +3,7 @@ import { getCategories } from '../api/client';
 import { isApiError } from '../api/types';
 import type { AreaItem, Category } from '../api/types';
 import { categoryStyle } from '../lib/categoryColor';
+import { addMyCategory, listMyCategories, removeMyCategory, subscribeMyCategories } from '../lib/myCategories';
 
 interface Props {
   platform: string;
@@ -17,6 +18,10 @@ interface Props {
 export default function CategoryIndexPage({ platform, onOpenCategory }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [myCats, setMyCats] = useState(listMyCategories);
+
+  // Save/remove happens here; the subscription keeps the ★ state current.
+  useEffect(() => subscribeMyCategories(() => setMyCats(listMyCategories())), []);
 
   useEffect(() => {
     let disposed = false;
@@ -42,6 +47,21 @@ export default function CategoryIndexPage({ platform, onOpenCategory }: Props) {
     }
   }
 
+  const savedKeys = new Set(myCats.filter((e) => e.platform === platform).map((e) => e.areaId));
+
+  const toggleSave = (area: AreaItem) => {
+    const areaId = area.areaId ?? '';
+    if (savedKeys.has(areaId)) removeMyCategory(platform, areaId);
+    else
+      addMyCategory({
+        platform,
+        areaId,
+        areaType: area.areaType ?? undefined,
+        typeName: area.typeName ?? undefined,
+        areaName: area.areaName ?? undefined,
+      });
+  };
+
   return (
     <div className="discover">
       <h2 className="category-index-title">全部分类</h2>
@@ -50,30 +70,40 @@ export default function CategoryIndexPage({ platform, onOpenCategory }: Props) {
       <div className="category-tiles">
         {leaves.map((area) => {
           const style = categoryStyle(area.areaName || area.typeName || '');
+          const saved = savedKeys.has(area.areaId ?? '');
           return (
-            <button
-              key={area.areaId}
-              type="button"
-              className="category-tile"
-              onClick={() =>
-                onOpenCategory(platform, {
-                  areaId: area.areaId ?? '',
-                  areaType: area.areaType ?? undefined,
-                  typeName: area.typeName ?? undefined,
-                  areaName: area.areaName ?? undefined,
-                })
-              }
-            >
-              {area.areaPic ? (
-                <img src={area.areaPic} alt="" loading="lazy" referrerPolicy="no-referrer" />
-              ) : null}
-              <span
-                className="category-tile-name"
-                style={style ? { background: style.background, color: style.foreground } : undefined}
+            <div key={area.areaId} className="category-tile-cell">
+              <button
+                type="button"
+                className="category-tile"
+                onClick={() =>
+                  onOpenCategory(platform, {
+                    areaId: area.areaId ?? '',
+                    areaType: area.areaType ?? undefined,
+                    typeName: area.typeName ?? undefined,
+                    areaName: area.areaName ?? undefined,
+                  })
+                }
               >
-                {area.areaName || area.typeName || area.areaId}
-              </span>
-            </button>
+                {area.areaPic ? (
+                  <img src={area.areaPic} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                ) : null}
+                <span
+                  className="category-tile-name"
+                  style={style ? { background: style.background, color: style.foreground } : undefined}
+                >
+                  {area.areaName || area.typeName || area.areaId}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`category-fav-btn${saved ? ' saved' : ''}`}
+                title={saved ? '取消收藏' : '收藏分类'}
+                onClick={() => toggleSave(area)}
+              >
+                ★
+              </button>
+            </div>
           );
         })}
       </div>

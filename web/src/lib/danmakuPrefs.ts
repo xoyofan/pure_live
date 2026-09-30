@@ -1,0 +1,66 @@
+/**
+ * Danmaku display preferences (font size / opacity / speed), persisted in
+ * localStorage. Defaults mirror the fixed behaviour before the settings
+ * panel existed: scale 1, full opacity, 9s crossing time.
+ */
+
+export interface DanmakuPrefs {
+  /** Multiplier on the 20px base danmaku font size (0.7 ~ 1.5). */
+  fontSizeScale: number;
+  /** Overall overlay opacity (0.2 ~ 1). */
+  opacity: number;
+  /** Seconds for a message to cross the canvas (5 ~ 15; smaller = faster). */
+  durationSec: number;
+}
+
+const KEY = 'purelive.danmakuPrefs.v1';
+
+/** Slider bounds + defaults, shared by the settings panel and the loader. */
+export const DANMAKU_PREFS_LIMITS = {
+  fontSizeScale: { min: 0.7, max: 1.5, step: 0.05, default: 1 },
+  opacity: { min: 0.2, max: 1, step: 0.05, default: 1 },
+  durationSec: { min: 5, max: 15, step: 1, default: 9 },
+} as const;
+
+const DEFAULTS: DanmakuPrefs = {
+  fontSizeScale: DANMAKU_PREFS_LIMITS.fontSizeScale.default,
+  opacity: DANMAKU_PREFS_LIMITS.opacity.default,
+  durationSec: DANMAKU_PREFS_LIMITS.durationSec.default,
+};
+
+function clampPref(value: unknown, key: keyof typeof DANMAKU_PREFS_LIMITS): number {
+  const limits = DANMAKU_PREFS_LIMITS[key];
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return limits.default;
+  // Clamp into range, then snap to the slider step so a hand-edited
+  // localStorage value cannot leave the slider thumb between steps.
+  const clamped = Math.min(limits.max, Math.max(limits.min, n));
+  if (limits.step <= 0) return clamped;
+  const snapped = limits.min + Math.round((clamped - limits.min) / limits.step) * limits.step;
+  return Math.min(limits.max, Math.max(limits.min, snapped));
+}
+
+export function loadDanmakuPrefs(): DanmakuPrefs {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return { ...DEFAULTS };
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return { ...DEFAULTS };
+    const data = parsed as Record<string, unknown>;
+    return {
+      fontSizeScale: clampPref(data.fontSizeScale, 'fontSizeScale'),
+      opacity: clampPref(data.opacity, 'opacity'),
+      durationSec: clampPref(data.durationSec, 'durationSec'),
+    };
+  } catch {
+    return { ...DEFAULTS };
+  }
+}
+
+export function saveDanmakuPrefs(prefs: DanmakuPrefs): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(prefs));
+  } catch {
+    // storage unavailable (private mode) — prefs stay session-local
+  }
+}

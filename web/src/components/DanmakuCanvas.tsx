@@ -6,7 +6,9 @@ interface ActiveItem {
   text: string;
   x: number;
   y: number;
-  speed: number;
+  /** Total px to cross (container width at spawn + text width); speed is
+   * derived per frame so duration changes rescale in-flight items too. */
+  travel: number;
   width: number;
   color: string;
 }
@@ -18,6 +20,10 @@ interface Props {
   muted: boolean;
   /** Seconds for a message to cross the canvas. */
   durationSec?: number;
+  /** Multiplier on the 20px base font size (1 = unchanged). */
+  fontSizeScale?: number;
+  /** Overall overlay opacity, 0.2 ~ 1 (1 = unchanged). */
+  opacity?: number;
 }
 
 const ROW_HEIGHT = 34;
@@ -33,11 +39,27 @@ const TEXT_COLORS = ['#ffffff', '#ffe082', '#80d8ff', '#ccff90', '#f8bbd0', '#b3
  * Messages whose text would collide with the previous one in every track are
  * dropped, which together with the queue cap bounds memory and paint cost.
  */
-export default function DanmakuCanvas({ chatQueueRef, muted, durationSec = 9 }: Props) {
+export default function DanmakuCanvas({
+  chatQueueRef,
+  muted,
+  durationSec = 9,
+  fontSizeScale = 1,
+  opacity = 1,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
+  // Latest-value refs for the preference props: slider changes take effect on
+  // the next frame without restarting the effect, which would wipe in-flight
+  // messages (item speed is derived from travel / duration each frame, so a
+  // duration change rescales everything already on screen).
+  const durationRef = useRef(durationSec);
+  durationRef.current = durationSec;
+  const fontScaleRef = useRef(fontSizeScale);
+  fontScaleRef.current = fontSizeScale;
+  const opacityRef = useRef(opacity);
+  opacityRef.current = opacity;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -76,7 +98,8 @@ export default function DanmakuCanvas({ chatQueueRef, muted, durationSec = 9 }: 
     const spawn = (item: DanmakuChatItem) => {
       const label =
         item.text.length > 40 ? `${item.text.slice(0, 40)}…` : item.text;
-      ctx.font = '20px system-ui, "Microsoft YaHei", sans-serif';
+      const fontSize = 20 * fontScaleRef.current;
+      ctx.font = `${fontSize}px system-ui, "Microsoft YaHei", sans-serif`;
       const textWidth = ctx.measureText(label).width;
       const freeTracks: number[] = [];
       for (let t = 0; t < trackCount; t++) {
@@ -85,13 +108,12 @@ export default function DanmakuCanvas({ chatQueueRef, muted, durationSec = 9 }: 
       }
       if (freeTracks.length === 0) return; // all tracks busy -> drop this message
       const track = freeTracks[Math.floor(Math.random() * freeTracks.length)];
-      const speed = (width + textWidth) / durationSec;
       const x = width + Math.random() * JITTER_PX;
       items.push({
         text: label,
         x,
         y: track * ROW_HEIGHT + ROW_HEIGHT / 2 + 6,
-        speed,
+        travel: width + textWidth,
         width: textWidth,
         color: TEXT_COLORS[colorIndex],
       });
@@ -114,14 +136,15 @@ export default function DanmakuCanvas({ chatQueueRef, muted, durationSec = 9 }: 
       }
 
       ctx.clearRect(0, 0, width, height);
-      ctx.font = '20px system-ui, "Microsoft YaHei", sans-serif';
+      ctx.globalAlpha = opacityRef.current;
+      ctx.font = `${20 * fontScaleRef.current}px system-ui, "Microsoft YaHei", sans-serif`;
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
 
       for (let i = items.length - 1; i >= 0; i--) {
         const item = items[i];
-        item.x -= item.speed * dt;
+        item.x -= (item.travel / durationRef.current) * dt;
         if (item.x + item.width < 0) {
           items.splice(i, 1);
           continue;
@@ -148,7 +171,7 @@ export default function DanmakuCanvas({ chatQueueRef, muted, durationSec = 9 }: 
       items.length = 0;
       chatQueueRef.current = [];
     };
-  }, [chatQueueRef, durationSec]);
+  }, [chatQueueRef]); // pref props flow through refs above, not this dep list
 
   return (
     <div ref={containerRef} className="danmaku-overlay" aria-hidden="true">

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getPlayUrls, getQualities, getRecommendRooms, resolveRoom, toPlaybackUrl } from '../api/client';
+import { getCategories, getCategoryRooms, getPlayUrls, getQualities, getRecommendRooms, resolveRoom, toPlaybackUrl } from '../api/client';
 import { formatWatching } from '../lib/format';
 import { isApiError } from '../api/types';
-import type { PlayUrls, Quality, Room, RoomListItem } from '../api/types';
+import type { Category, PlayUrls, Quality, Room, RoomListItem } from '../api/types';
 import { useDanmaku } from '../hooks/useDanmaku';
 import DanmakuCanvas from '../components/DanmakuCanvas';
 import Player, { type PlaybackSource } from '../components/Player';
 import * as followStore from '../lib/followStore';
+import { DANMAKU_PREFS_LIMITS, loadDanmakuPrefs, saveDanmakuPrefs } from '../lib/danmakuPrefs';
+import type { DanmakuPrefs } from '../lib/danmakuPrefs';
 import { categoryStyle } from '../lib/categoryColor';
 import type { FollowEntry } from '../lib/followStore';
 
@@ -25,6 +27,10 @@ type ResolvePhase =
 
 /** Stall duration before the single automatic play-urls re-fetch kicks in. */
 const AUTO_RECOVER_DELAY_MS = 5_000;
+
+/** Speed slider runs reversed (right = shorter duration = faster). */
+const SPEED_RANGE_SUM =
+  DANMAKU_PREFS_LIMITS.durationSec.min + DANMAKU_PREFS_LIMITS.durationSec.max;
 
 function describeApiError(err: unknown, fallback: string): string {
   if (isApiError(err)) {
@@ -88,6 +94,50 @@ function danmakuStatusText(status: ReturnType<typeof useDanmaku>['status']): str
       return '弹幕连接异常';
     default:
       return null;
+  }
+}
+
+/** Category-rooms query matched from the directory tree (client.getCategoryRooms args). */
+interface MatchedArea {
+  areaId: string;
+  areaType?: string;
+  typeName?: string;
+  areaName?: string;
+}
+
+/** First directory leaf whose areaName equals `areaName`, or null. */
+function matchCategoryArea(categories: Category[], areaName: string): MatchedArea | null {
+  for (const category of categories) {
+    for (const child of category.children) {
+      if (child.areaId && child.areaName === areaName) {
+        return {
+          areaId: child.areaId,
+          areaType: child.areaType ?? undefined,
+          typeName: child.typeName ?? undefined,
+          areaName: child.areaName ?? undefined,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+/** Room list of the category matching `areaName`; null when the room has no
+ * area name, the directory has no such entry, or either call fails — the
+ * caller then falls back to the platform recommend stream. */
+async function loadSameCategoryRooms(
+  platform: string,
+  areaName: string,
+): Promise<RoomListItem[] | null> {
+  if (!areaName) return null;
+  try {
+    const tree = await getCategories(platform);
+    const area = matchCategoryArea(tree.categories ?? [], areaName);
+    if (!area) return null;
+    const res = await getCategoryRooms(platform, area, 1, 20);
+    return res.rooms ?? [];
+  } catch {
+    return null;
   }
 }
 
@@ -159,6 +209,8 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
   const [danmakuMuted, setDanmakuMuted] = useState(false);
+  /** Danmaku display prefs (font size / opacity / speed), persisted locally. */
+  const [danmakuPrefs, setDanmakuPrefs] = useState<DanmakuPrefs>(() => loadDanmakuPrefs());
   /** CDN line index within the current play.urls list (0-based). */
   const [line, setLine] = useState(0);
   /** Mirrors the video element state for the custom transport bar. */
@@ -305,6 +357,14 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
   // --- danmaku --------------------------------------------------------------
   const danmaku = useDanmaku(playable ? platform : null, playable ? roomId : null);
 
+  const updateDanmakuPref = (key: keyof DanmakuPrefs, value: number) => {
+    // Persist on change only (not on mount); slider events are discrete so
+    // building `next` from the current closure state is safe.
+    const next = { ...danmakuPrefs, [key]: value };
+    saveDanmakuPrefs(next);
+    setDanmakuPrefs(next);
+  };
+
   const viewerText =
     danmaku.onlineValue !== null
       ? formatViewers(danmaku.onlineValue)
@@ -338,6 +398,8 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
   // Recommend list loads once per room when its tab first opens. The guard is
   // a ref (not state): under StrictMode's double-mount the first run's
   // cleanup must not leave the second run deadlocked on a stale loading flag.
+  // Rooms come from the room's own category when room.area matches the
+  // directory tree; the platform recommend stream is the fallback.
   const recommendFetchRef = useRef(false);
   useEffect(() => {
     setRecommendRooms([]);
@@ -346,12 +408,15 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
   }, [platform, roomId]);
 
   useEffect(() => {
-    if (sideTab !== 'recommend' || recommendFetchRef.current) return;
+    // `room` in the guard: after a room switch with the tab still open, wait
+    // for the new room to resolve so its area drives the category fetch.
+    if (!room || sideTab !== 'recommend' || recommendFetchRef.current) return;
     recommendFetchRef.current = true;
     setRecommendLoading(true);
-    getRecommendRooms(platform, 1, 20)
-      .then((res) => {
-        setRecommendRooms((res.rooms ?? []).filter((r) => r.roomId !== roomId));
+    loadSameCategoryRooms(platform, room.area ?? '')
+      .then((rooms) => rooms ?? getRecommendRooms(platform, 1, 20).then((res) => res.rooms ?? []))
+      .then((rooms) => {
+        setRecommendRooms(rooms.filter((r) => r.roomId !== roomId));
       })
       .catch(() => {
         setRecommendRooms([]);
@@ -360,7 +425,7 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
         recommendFetchRef.current = false;
         setRecommendLoading(false);
       });
-  }, [sideTab, platform, roomId]);
+  }, [sideTab, platform, roomId, room]);
 
   const reloadStream = () => setNonce((n) => n + 1);
 
@@ -508,7 +573,15 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
             <div className="player-stage" ref={stageRef}>
               {coverNode}
               {source && <Player source={source} onError={handlePlayerError} onStall={handleStall} onPlaying={handlePlaying} />}
-              {playable && source && <DanmakuCanvas chatQueueRef={danmaku.chatQueueRef} muted={danmakuMuted} />}
+              {playable && source && (
+                <DanmakuCanvas
+                  chatQueueRef={danmaku.chatQueueRef}
+                  muted={danmakuMuted}
+                  fontSizeScale={danmakuPrefs.fontSizeScale}
+                  opacity={danmakuPrefs.opacity}
+                  durationSec={danmakuPrefs.durationSec}
+                />
+              )}
               {room && !playable && (
                 <div className="player-state">
                   <p className="banner banner-state">{liveStatusText(room.liveStatus)}</p>
@@ -799,6 +872,57 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
                     {danmakuMuted ? '关闭' : '开启'}
                   </button>
                 </label>
+                <div className="settings-slider">
+                  <div className="settings-slider-head">
+                    <span>弹幕字号</span>
+                    <span className="settings-slider-value">
+                      {Math.round(danmakuPrefs.fontSizeScale * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    aria-label="弹幕字号"
+                    min={DANMAKU_PREFS_LIMITS.fontSizeScale.min}
+                    max={DANMAKU_PREFS_LIMITS.fontSizeScale.max}
+                    step={DANMAKU_PREFS_LIMITS.fontSizeScale.step}
+                    value={danmakuPrefs.fontSizeScale}
+                    onChange={(e) => updateDanmakuPref('fontSizeScale', Number(e.target.value))}
+                  />
+                </div>
+                <div className="settings-slider">
+                  <div className="settings-slider-head">
+                    <span>弹幕不透明度</span>
+                    <span className="settings-slider-value">
+                      {Math.round(danmakuPrefs.opacity * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    aria-label="弹幕不透明度"
+                    min={DANMAKU_PREFS_LIMITS.opacity.min}
+                    max={DANMAKU_PREFS_LIMITS.opacity.max}
+                    step={DANMAKU_PREFS_LIMITS.opacity.step}
+                    value={danmakuPrefs.opacity}
+                    onChange={(e) => updateDanmakuPref('opacity', Number(e.target.value))}
+                  />
+                </div>
+                <div className="settings-slider">
+                  <div className="settings-slider-head">
+                    <span>弹幕速度</span>
+                    <span className="settings-slider-value">{danmakuPrefs.durationSec} 秒</span>
+                  </div>
+                  <input
+                    type="range"
+                    aria-label="弹幕速度"
+                    min={DANMAKU_PREFS_LIMITS.durationSec.min}
+                    max={DANMAKU_PREFS_LIMITS.durationSec.max}
+                    step={DANMAKU_PREFS_LIMITS.durationSec.step}
+                    value={SPEED_RANGE_SUM - danmakuPrefs.durationSec}
+                    onChange={(e) =>
+                      updateDanmakuPref('durationSec', SPEED_RANGE_SUM - Number(e.target.value))
+                    }
+                  />
+                </div>
                 <p className="settings-hint">弹幕状态:{danmakuStatusText(danmaku.status) ?? '未连接'}</p>
               </div>
             )}
