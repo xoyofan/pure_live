@@ -6,16 +6,22 @@ import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/empty_view.dart' as zishu;
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
+import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
 
-/// zishu 播放页侧栏骨架(对齐 zishu play_side_panel):
-/// surface 底 + 左缘描边;头部(头像 + 名称 + 人气)+「聊天/关注/推荐/设置」
-/// 四等分 tab(高 32,默认聊天)。
+/// 会话级侧栏 tab 记忆(zishu `PlaySidePanelPrefs.tabIndex` 的最小等价物):
+/// 文件级可变 int 记录上次停留 tab,切房重建侧栏时作为 initialIndex 恢复,
+/// dispose 时由 [_SidePanelTabMemory] 回写。仅进程内记忆,不做持久化。
+int _lastSidePanelTab = 0;
+
+/// zishu 播放页侧栏(对齐 zishu play_side_panel):
+/// surface 底 + 左缘描边;头部(头像 + 名称 + 统计行)+ 关注/超关双 chip +
+/// 「聊天/关注/推荐/设置」四等分 tab(高 32,默认聊天)。
 ///
-/// 内容接线点(本轮全部占位,见各 tab 注释):
+/// 内容接线:
 /// - 聊天 → 既有 `DanmakuTabView()`(含弹幕列表/超级 chat/弹幕设置/屏蔽);
 /// - 关注 → `FavoriteController` 数据源;
 /// - 推荐 → 热门页 `PopularController` 分类房间流;
-/// - 设置 → 跳既有 pure_live 设置路由。
+/// - 设置 → 就地渲染弹幕设置(对齐 zishu settings_panel,非跳转列表)。
 class ZishuPlaySidePanel extends StatelessWidget {
   const ZishuPlaySidePanel({super.key, required this.room, required this.isLive});
 
@@ -35,83 +41,141 @@ class ZishuPlaySidePanel extends StatelessWidget {
         border: Border(left: BorderSide(color: tokens.border)),
       ),
       child: DefaultTabController(
+        // 会话记忆:切房(pushReplacement)重建侧栏后,右侧仍停在上次的
+        // tab(如「关注」),不再退回聊天(对齐 zishu initialIndex 口径)。
+        initialIndex: _lastSidePanelTab.clamp(0, 3),
         length: 4,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _SideHeader(room: room, isLive: isLive),
-            // 高度对齐 web `--el-tabs-header-height: 2rem`(32px)。
-            SizedBox(
-              height: 32,
-              child: TabBar(
-                tabs: [
-                  Tab(text: i18n('danmaku')),
-                  Tab(text: i18n('favorites_title')),
-                  Tab(text: i18n('recommended')),
-                  Tab(text: i18n('settings_title')),
-                ],
-                labelColor: tokens.accent,
-                unselectedLabelColor: tokens.textSecondary,
-                indicatorColor: tokens.accent,
-                indicatorWeight: 2,
-                dividerColor: tokens.border,
-                labelStyle: const TextStyle(fontSize: AppFontSize.body, fontWeight: FontWeight.w600, height: 1.15),
-                unselectedLabelStyle: const TextStyle(
-                  fontSize: AppFontSize.body,
-                  fontWeight: FontWeight.w500,
-                  height: 1.15,
+        child: _SidePanelTabMemory(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SideHeader(room: room, isLive: isLive),
+              // 关注/超关双 chip:横排于头部下方,高约 28。
+              _SideChipsRow(room: room),
+              // 高度对齐 web `--el-tabs-header-height: 2rem`(32px)。
+              SizedBox(
+                height: 32,
+                child: TabBar(
+                  tabs: [
+                    Tab(text: i18n('danmaku')),
+                    Tab(text: i18n('favorites_title')),
+                    Tab(text: i18n('recommended')),
+                    Tab(text: i18n('settings_title')),
+                  ],
+                  labelColor: tokens.accent,
+                  unselectedLabelColor: tokens.textSecondary,
+                  indicatorColor: tokens.accent,
+                  indicatorWeight: 2,
+                  dividerColor: tokens.border,
+                  labelStyle: const TextStyle(fontSize: AppFontSize.body, fontWeight: FontWeight.w600, height: 1.15),
+                  unselectedLabelStyle: const TextStyle(
+                    fontSize: AppFontSize.body,
+                    fontWeight: FontWeight.w500,
+                    height: 1.15,
+                  ),
+                  labelPadding: EdgeInsets.zero,
+                  splashFactory: NoSplash.splashFactory,
+                  overlayColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.focused)) return tokens.accent.withValues(alpha: 0.24);
+                    if (states.contains(WidgetState.pressed)) return tokens.accent.withValues(alpha: 0.16);
+                    if (states.contains(WidgetState.hovered)) return tokens.surfaceRaised;
+                    return null;
+                  }),
                 ),
-                labelPadding: EdgeInsets.zero,
-                splashFactory: NoSplash.splashFactory,
-                overlayColor: WidgetStateProperty.resolveWith((states) {
-                  if (states.contains(WidgetState.focused)) return tokens.accent.withValues(alpha: 0.24);
-                  if (states.contains(WidgetState.pressed)) return tokens.accent.withValues(alpha: 0.16);
-                  if (states.contains(WidgetState.hovered)) return tokens.surfaceRaised;
-                  return null;
-                }),
               ),
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  // 聊天:既有弹幕页签整体复用(弹幕列表/超级chat/设置/屏蔽),
-                  // GetView<LivePlayController> 与播放路由同实例。
-                  const DanmakuTabView(),
-                  _FollowTab(room: room),
-                  _RecommendTab(platform: room.platform ?? ''),
-                  const _SettingsEntries(),
-                ],
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    // 聊天:既有弹幕页签整体复用(弹幕列表/超级chat/设置/屏蔽),
+                    // GetView<LivePlayController> 与播放路由同实例。
+                    const DanmakuTabView(),
+                    _FollowTab(room: room),
+                    _RecommendTab(platform: room.platform ?? ''),
+                    const _SettingsPanel(),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
+/// 监听 DefaultTabController 的落定索引,把最后停留 tab 写回文件级
+/// `_lastSidePanelTab`(dispose 时兜底回写);仅会话记忆,不持久化。
+class _SidePanelTabMemory extends StatefulWidget {
+  const _SidePanelTabMemory({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_SidePanelTabMemory> createState() => _SidePanelTabMemoryState();
+}
+
+class _SidePanelTabMemoryState extends State<_SidePanelTabMemory> {
+  TabController? _controller;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = DefaultTabController.maybeOf(context);
+    if (!identical(controller, _controller)) {
+      _controller?.removeListener(_handleTick);
+      _controller = controller;
+      _controller?.addListener(_handleTick);
+    }
+  }
+
+  void _handleTick() {
+    final controller = _controller;
+    // indexIsChanging = true 是动画中途;落定(=false)才记,避免中途值。
+    if (controller == null || controller.indexIsChanging) return;
+    _lastSidePanelTab = controller.index.clamp(0, 3);
+  }
+
+  @override
+  void dispose() {
+    final controller = _controller;
+    if (controller != null) {
+      // dispose 时回写(子 widget 先于 DefaultTabController 销毁,索引仍有效)。
+      if (!controller.indexIsChanging) {
+        _lastSidePanelTab = controller.index.clamp(0, 3);
+      }
+      controller.removeListener(_handleTick);
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// 切换当前房间收藏:头部关注 chip 与关注 tab 共用同一数据源与语义
+/// (`SettingsService.to.fav` 本机持久化,复用 RoomCard 同款
+/// addRoomDurably/removeRoomDurably)。
+Future<void> _toggleRoomFavorite(LiveRoom room) async {
+  final favorites = SettingsService.to.fav;
+  try {
+    if (favorites.isFavorite(room)) {
+      final changed = await favorites.removeRoomDurably(room);
+      if (changed) EventBus.instance.emit('changeFavorite', false);
+    } else {
+      final changed = await favorites.addRoomDurably(room);
+      if (changed) EventBus.instance.emit('changeFavorite', true);
+    }
+  } catch (_) {
+    ToastUtil.show(i18n('favorite_changes_save_failed'));
+  }
+}
+
 /// 关注 tab:当前房间收藏操作 + 「关注中(开播)」房间行,点击换房。
-/// 数据源 `SettingsService.to.fav`(本机持久化),复用 RoomCard 同款
-/// addRoomDurably/removeRoomDurably 语义。
+/// 数据源 `SettingsService.to.fav`(本机持久化)。
 class _FollowTab extends StatelessWidget {
   const _FollowTab({required this.room});
 
   final LiveRoom room;
-
-  Future<void> _toggleFavorite() async {
-    final favorites = SettingsService.to.fav;
-    try {
-      if (favorites.isFavorite(room)) {
-        final changed = await favorites.removeRoomDurably(room);
-        if (changed) EventBus.instance.emit('changeFavorite', false);
-      } else {
-        final changed = await favorites.addRoomDurably(room);
-        if (changed) EventBus.instance.emit('changeFavorite', true);
-      }
-    } catch (_) {
-      ToastUtil.show(i18n('favorite_changes_save_failed'));
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +188,7 @@ class _FollowTab extends StatelessWidget {
         children: [
           // 当前房间收藏:大操作行(星标 + 文案 + 状态)。
           InkWell(
-            onTap: _toggleFavorite,
+            onTap: () => _toggleRoomFavorite(room),
             borderRadius: AppRadius.allSm,
             hoverColor: tokens.surfaceRaised,
             child: Container(
@@ -274,7 +338,7 @@ class _RecommendRow extends StatelessWidget {
                       const SizedBox(width: 3),
                       Flexible(
                         child: Text(
-                          room.onlineViewers ?? room.popularity ?? '—',
+                          readableCount(room.onlineViewers ?? room.popularity ?? '—'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: context.textCaption.copyWith(
@@ -295,21 +359,30 @@ class _RecommendRow extends StatelessWidget {
   }
 }
 
-/// 侧栏信息头:头像贴边出血(64 宽 × 72 高)+ 名称 + 人气行。
-/// 对齐 zishu _SideHeader 的排版口径(本轮省略分类/关注/超关操作区)。
+/// 侧栏信息头:头像贴边出血(64 宽 × 72 高)+ 名称 + 统计行。
+/// 统计行对齐 zishu side_panel_header 的统计区排版(图标 + 数值列):
+/// 人气 + 关注数两列;VIP/SVIP 两列 pure_live 的 LiveRoom 无数据源,本轮跳过。
 class _SideHeader extends StatelessWidget {
   const _SideHeader({required this.room, required this.isLive});
 
   final LiveRoom room;
   final bool isLive;
 
-  /// 人气取值:各平台字段不齐,按 人气/观看/在线/累计 择先非空,缺省「—」。
+  /// 人气取值:各平台字段不齐,按 人气/观看/在线/累计 择先非空,缺省「—」;
+  /// 展示统一万进制:过 readableCount(空/非数字原样返回,「—」不变)。
   String get _popularityLabel {
     for (final value in [room.popularity, room.watching, room.onlineViewers, room.totalViewers]) {
       final v = value?.trim() ?? '';
-      if (v.isNotEmpty) return v;
+      if (v.isNotEmpty) return readableCount(v);
     }
     return '—';
+  }
+
+  /// 关注数:`room.followers` 非空才渲染该列(null/空白 = 无数据,不伪造)。
+  String? get _followersText {
+    final v = room.followers?.trim() ?? '';
+    if (v.isEmpty) return null;
+    return readableCount(v);
   }
 
   @override
@@ -318,6 +391,7 @@ class _SideHeader extends StatelessWidget {
     final nick = room.nick?.trim() ?? '';
     final avatar = room.avatar?.trim() ?? '';
     final fallbackText = nick.isEmpty ? '?' : nick.substring(0, 1);
+    final followersText = _followersText;
     Widget avatarContent = avatar.isEmpty
         ? ColoredBox(
             color: tokens.surfaceRaised,
@@ -384,20 +458,33 @@ class _SideHeader extends StatelessWidget {
                       color: isLive ? tokens.liveBadge : tokens.textPrimary,
                     ),
                   ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.visibility_outlined, size: 13, color: tokens.statAudience),
-                      const SizedBox(width: 3),
-                      Flexible(
-                        child: Text(
-                          _popularityLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.textBody.copyWith(fontSize: AppFontSize.body, color: tokens.statAudience),
-                        ),
+                  // 统计行:FittedBox(scaleDown) 兜底窄栏/大字号溢出
+                  // (对齐 zishu 统计区的等比缩放策略)。
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _SideStatValue(
+                            icon: Icons.visibility_outlined,
+                            value: _popularityLabel,
+                            color: tokens.statAudience,
+                            tooltip: i18n('audience_popularity'),
+                          ),
+                          if (followersText != null) ...[
+                            const SizedBox(width: AppSpacing.xs),
+                            _SideStatValue(
+                              icon: Icons.favorite_rounded,
+                              value: followersText,
+                              color: tokens.textSecondary,
+                              tooltip: i18n('audience_followers'),
+                            ),
+                          ],
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ),
@@ -410,34 +497,421 @@ class _SideHeader extends StatelessWidget {
   }
 }
 
-/// 设置 tab:几行入口,跳既有 pure_live 设置路由(路由均已在 app_pages 注册)。
-class _SettingsEntries extends StatelessWidget {
-  const _SettingsEntries();
+/// 统计列:图标 + 数值(对齐 zishu _StatValue 的紧凑排版)。
+class _SideStatValue extends StatelessWidget {
+  const _SideStatValue({required this.icon, required this.value, required this.color, this.tooltip});
+
+  final IconData icon;
+  final String value;
+  final Color color;
+
+  /// 悬浮说明(列名);null = 不加 Tooltip。
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
-    final entries = <({String label, IconData icon, String route})>[
-      (label: i18n('settings_title'), icon: Icons.settings_outlined, route: RoutePath.kSettings),
-      (label: i18n('danmaku_filter'), icon: Icons.filter_alt_outlined, route: RoutePath.kSettingsDanmuShield),
-      (label: i18n('history'), icon: Icons.history_rounded, route: RoutePath.kHistory),
-      (label: i18n('about'), icon: Icons.info_outline_rounded, route: RoutePath.kAbout),
-    ];
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.sm),
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        for (final entry in entries)
-          _EntryRow(label: entry.label, icon: entry.icon, onTap: () => Get.toNamed(entry.route)),
+        Icon(icon, size: 13, color: color.withValues(alpha: 0.88)),
+        const SizedBox(width: 2),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: context.textBody.copyWith(fontSize: AppFontSize.body, height: 1, color: color),
+        ),
+      ],
+    );
+    final message = tooltip;
+    if (message == null) return content;
+    return Tooltip(message: message, child: content);
+  }
+}
+
+/// 头部下方双 chip 行(语义对齐 zishu _SideActions,横排、高约 28):
+/// 关注(红系,接既有房间收藏)+ 超级关注(紫系,本地标记)。
+/// zishu 的提醒/网页按钮 pure_live 无对应能力,不渲染。
+class _SideChipsRow extends StatelessWidget {
+  const _SideChipsRow({required this.room});
+
+  final LiveRoom room;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final superFollow = SuperFollowController.to;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 6),
+      child: SizedBox(
+        height: 28,
+        child: Row(
+          children: [
+            Expanded(
+              child: Obx(() {
+                // isFavorite 内部读 favoriteRooms(Rx),Obx 即时态。
+                final followed = SettingsService.to.fav.isFavorite(room);
+                return _SideActionChip(
+                  selected: followed,
+                  icon: followed ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                  label: followed ? i18n('followed') : i18n('follow'),
+                  colors: _SideChipColors(
+                    background: tokens.playFollowBg,
+                    hoverBackground: tokens.playFollowBgHover,
+                    activeBackground: tokens.playFollowBgActive,
+                    border: tokens.playFollowBorder,
+                    foreground: tokens.playFollowText,
+                    activeForeground: tokens.playFollowTextActive,
+                  ),
+                  onPressed: () => _toggleRoomFavorite(room),
+                );
+              }),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Obx(() {
+                final isSuper = superFollow.isSuper(room);
+                return _SideActionChip(
+                  selected: isSuper,
+                  icon: isSuper ? Icons.star_rounded : Icons.star_border_rounded,
+                  // 「超关/已超关」无既有 i18n key,中文常量(见报告)。
+                  label: isSuper ? '已超关' : '超关',
+                  colors: _SideChipColors(
+                    background: tokens.playSuperBg,
+                    hoverBackground: tokens.playSuperBgHover,
+                    activeBackground: tokens.playSuperBgActive,
+                    border: tokens.playSuperBorder,
+                    foreground: tokens.playSuperText,
+                    activeForeground: tokens.playSuperTextActive,
+                  ),
+                  onPressed: () => superFollow.toggle(room),
+                );
+              }),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 关注 / 超关 chip 的状态配色族(红系 `playFollow*` / 紫系 `playSuper*`)。
+/// 六值全部来自 `context.tokens`(深浅主题各自解析),widget 内不出现裸色值。
+class _SideChipColors {
+  const _SideChipColors({
+    required this.background,
+    required this.hoverBackground,
+    required this.activeBackground,
+    required this.border,
+    required this.foreground,
+    required this.activeForeground,
+  });
+
+  /// 常态底(未选中)。
+  final Color background;
+
+  /// hover 底。
+  final Color hoverBackground;
+
+  /// 已选中底 / 按下底(按下预告选中配色,对齐 zishu)。
+  final Color activeBackground;
+
+  /// 描边(常态与各态共用,不在状态间跳色)。
+  final Color border;
+
+  /// 常态文字与图标。
+  final Color foreground;
+
+  /// 已选中时的文字与图标。
+  final Color activeForeground;
+}
+
+/// 「关注 / 超关」chip:4px 圆角(对齐 zishu _SideActionButton 的 AppRadius.sm),
+/// 底色/描边随 rest / hover / pressed / selected 过渡(只改颜色,不动尺寸)。
+class _SideActionChip extends StatefulWidget {
+  const _SideActionChip({
+    required this.selected,
+    required this.icon,
+    required this.label,
+    required this.colors,
+    required this.onPressed,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final String label;
+  final _SideChipColors colors;
+  final VoidCallback onPressed;
+
+  @override
+  State<_SideActionChip> createState() => _SideActionChipState();
+}
+
+class _SideActionChipState extends State<_SideActionChip> {
+  bool _hovered = false;
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors;
+    // 已选中与按下共用 active 档:按下即「预告」选中配色,视觉不断层。
+    final active = widget.selected || _pressed;
+    final background = active ? colors.activeBackground : (_hovered ? colors.hoverBackground : colors.background);
+    final foreground = active ? colors.activeForeground : colors.foreground;
+    return AnimatedContainer(
+      duration: AppMotion.fast,
+      curve: AppMotion.curve,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: AppRadius.allSm,
+        border: Border.all(color: colors.border),
+      ),
+      child: Material(
+        // 透明壳只为 InkWell 提供墨水宿主;底色/描边由 AnimatedContainer 承担。
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: AppRadius.allSm,
+          onTap: widget.onPressed,
+          onHover: (value) {
+            if (_hovered != value) setState(() => _hovered = value);
+          },
+          onTapDown: (_) {
+            if (!_pressed) setState(() => _pressed = true);
+          },
+          onTapUp: (_) {
+            if (_pressed) setState(() => _pressed = false);
+          },
+          onTapCancel: () {
+            if (_pressed) setState(() => _pressed = false);
+          },
+          // 涟漪/按压覆盖色从 chip 自身文字色推导,不引入外来色相。
+          splashColor: foreground.withValues(alpha: 0.12),
+          highlightColor: foreground.withValues(alpha: 0.06),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(widget.icon, size: 14, color: foreground),
+              const SizedBox(width: 2),
+              Flexible(
+                child: Text(
+                  widget.label,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: AppFontSize.bodySecondary,
+                    height: 1,
+                    fontWeight: FontWeight.w600,
+                    color: foreground,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 设置 tab:就地渲染弹幕设置(对齐 zishu settings_panel 的就地面板,非
+/// 跳转列表)。数据源 `SettingsService.to.danmaku`(Rx 即时态,值经 HiveRx
+/// 自动持久化);末行保留「更多设置」跳既有设置路由。
+class _SettingsPanel extends StatelessWidget {
+  const _SettingsPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final danmaku = SettingsService.to.danmaku;
+    return Obx(() {
+      return ListView(
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        children: [
+          _SettingsGroup(
+            title: i18n('danmaku_settings'),
+            children: [
+              // 行1:弹幕开关(hideDanmaku)。
+              _SettingsRow(
+                label: i18n('danmaku'),
+                trailing: Switch(value: danmaku.hideDanmaku.v, onChanged: (value) => danmaku.hideDanmaku.v = value),
+              ),
+              // 行2:透明度(0-1,百分比显示,对齐既有弹幕设置页口径)。
+              _SettingsSliderRow(
+                label: i18n('opacity'),
+                value: danmaku.danmakuOpacity.v,
+                min: 0,
+                max: 1,
+                valueText: '${(danmaku.danmakuOpacity.v * 100).toInt()}%',
+                onChanged: (value) => danmaku.danmakuOpacity.v = value,
+              ),
+              // 行3:字号(10-30,步进 1)。
+              _SettingsSliderRow(
+                label: i18n('font_size'),
+                value: danmaku.danmakuFontSize.v,
+                min: 10,
+                max: 30,
+                divisions: 20,
+                valueText: '${danmaku.danmakuFontSize.v.toStringAsFixed(1)} px',
+                onChanged: (value) => danmaku.danmakuFontSize.v = value,
+              ),
+              // 行4:速度(20-400 px/s)。
+              _SettingsSliderRow(
+                label: i18n('settings_danmaku_speed'),
+                value: danmaku.danmakuSpeed.v,
+                min: 20,
+                max: 400,
+                valueText: '${danmaku.danmakuSpeed.v.toInt()} px/s',
+                onChanged: (value) => danmaku.danmakuSpeed.v = value,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _SettingsGroup(
+            children: [
+              // 更多设置:跳既有设置路由(用户区入口,文案 settings_title)。
+              _SettingsEntryRow(label: i18n('settings_title'), onTap: () => Get.toNamed(RoutePath.kSettings)),
+            ],
+          ),
+        ],
+      );
+    });
+  }
+}
+
+/// 设置分组卡(对齐 zishu _SettingsGroup:surfaceSoft 卡 + accent 标题)。
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({this.title, required this.children});
+
+  final String? title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 5),
+      decoration: BoxDecoration(
+        color: tokens.surfaceSoft,
+        // 对齐 zishu .settings-group 圆角(--fluent-radius-sm ≈ 8)。
+        borderRadius: AppRadius.allMd,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (title != null) ...[
+            Text(
+              title!,
+              style: TextStyle(
+                fontSize: AppFontSize.body,
+                height: 1.2,
+                color: tokens.accent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 3),
+          ],
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+/// 设置行(label + trailing 控件,对齐 zishu _SettingRow)。
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({required this.label, required this.trailing});
+
+  final String label;
+  final Widget trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.textBody.copyWith(fontSize: AppFontSize.body),
+          ),
+        ),
+        trailing,
+      ],
+    );
+  }
+}
+
+/// 设置滑杆行(对齐 zishu _SettingSliderRow:label 列约 52、滑杆弹性、
+/// 数值右对齐)。
+class _SettingsSliderRow extends StatelessWidget {
+  const _SettingsSliderRow({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.valueText,
+    required this.onChanged,
+    this.divisions,
+  });
+
+  final String label;
+  final double value;
+  final double min;
+  final double max;
+  final String valueText;
+  final ValueChanged<double> onChanged;
+
+  /// null = 连续滑杆(透明度/速度与既有弹幕设置页一致)。
+  final int? divisions;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Row(
+      children: [
+        SizedBox(
+          width: 52,
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.textCaption.copyWith(fontSize: AppFontSize.body),
+          ),
+        ),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 11),
+              showValueIndicator: ShowValueIndicator.never,
+            ),
+            child: Slider(
+              value: value.clamp(min, max).toDouble(),
+              min: min,
+              max: max,
+              divisions: divisions,
+              activeColor: tokens.accent,
+              inactiveColor: tokens.border,
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 64,
+          child: Text(valueText, textAlign: TextAlign.right, style: context.textCaption),
+        ),
       ],
     );
   }
 }
 
 /// 设置入口行:图标 + 文案 + 右缘 chevron,hover 抬到 surfaceRaised。
-class _EntryRow extends StatelessWidget {
-  const _EntryRow({required this.label, required this.icon, required this.onTap});
+class _SettingsEntryRow extends StatelessWidget {
+  const _SettingsEntryRow({required this.label, required this.onTap});
 
   final String label;
-  final IconData icon;
   final VoidCallback onTap;
 
   @override
@@ -451,7 +925,7 @@ class _EntryRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: 7),
         child: Row(
           children: [
-            Icon(icon, size: 16, color: tokens.textSecondary),
+            Icon(Icons.settings_outlined, size: 16, color: tokens.textSecondary),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(

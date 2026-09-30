@@ -121,7 +121,8 @@ class _Cover extends StatelessWidget {
     // effectiveTotalViewers → effectiveOnlineViewers → legacy watching。
     // preferRealOnline:false 表示不启用「真实在线」平台策略(纯展示,与
     // 排序口径解耦);该链会把遗留哨兵 '0' 与 'null' 判空,不会误渲染 0。
-    final onlineText = room.audienceValue(preferRealOnline: false, platformEnabled: false);
+    // 展示统一万进制:readableCount(空/非数字原样返回,不影响下方 isNotEmpty 判断)。
+    final onlineText = readableCount(room.audienceValue(preferRealOnline: false, platformEnabled: false));
     final coverUrl = normalizeNetworkImageUrl(room.cover);
     return AspectRatio(
       aspectRatio: 16 / 9,

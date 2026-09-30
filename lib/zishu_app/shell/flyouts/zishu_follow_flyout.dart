@@ -179,12 +179,13 @@ class _FollowRoomCard extends StatelessWidget {
   }
 
   /// 人气文案:并发在线 → 平台热度 → legacy watching(与关注列表状态列
-  /// `zishu_follow_room_list.dart` 的取值顺序同口径,追加热度兜底)。
+  /// `zishu_follow_room_list.dart` 的取值顺序同口径,追加热度兜底),
+  /// 展示统一万进制:过 readableCount(空/非数字原样返回)。
   String _popularityLabel(LiveRoom room) {
     final online = (room.onlineViewers ?? '').trim();
-    if (online.isNotEmpty) return online;
+    if (online.isNotEmpty) return readableCount(online);
     final popularity = (room.popularity ?? '').trim();
-    if (popularity.isNotEmpty) return popularity;
-    return (room.watching ?? '').trim();
+    if (popularity.isNotEmpty) return readableCount(popularity);
+    return readableCount((room.watching ?? '').trim());
   }
 }

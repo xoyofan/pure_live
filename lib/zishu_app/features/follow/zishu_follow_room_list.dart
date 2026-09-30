@@ -263,7 +263,10 @@ class ZishuFollowRowItem extends StatelessWidget {
     if (live) {
       final online = (room.onlineViewers ?? '').trim();
       final watching = (room.watching ?? '').trim();
-      label = online.isNotEmpty ? online : (watching.isNotEmpty ? watching : i18n('online_room_title'));
+      // 人数统一万进制:取值先过 readableCount(空串兜底顺序与 i18n 兜底不变)。
+      label = online.isNotEmpty
+          ? readableCount(online)
+          : (watching.isNotEmpty ? readableCount(watching) : i18n('online_room_title'));
       color = tokens.liveBadge;
     } else if (replay) {
       label = i18n('replay');
