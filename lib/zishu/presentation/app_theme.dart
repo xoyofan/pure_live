@@ -17,12 +17,12 @@ abstract final class ZishuTheme {
     final tokens = tokensFor(base.brightness);
     return base.copyWith(
       scaffoldBackgroundColor: tokens.background,
-      // 通用控件强调色统一紫霄品牌紫(对照 zishu 口径:金色 brand 只保留给
-      // 收藏星等 web 功能性颜色,不充当控件色)。
+      // 控件强调色:对齐 pure_live web 线用户拍板的金色 accent(#f3d04e,
+      // zishu exe 截图基线;zishu 代码后改紫霄紫,如需切换改回 tokens.accent)。
       colorScheme: base.colorScheme.copyWith(
-        primary: tokens.accent,
-        onPrimary: AppOnBright.white,
-        secondary: tokens.accent,
+        primary: tokens.brand,
+        onPrimary: AppOnBright.text,
+        secondary: tokens.brand,
         surface: tokens.surface,
         onSurface: tokens.textPrimary,
         surfaceContainerHighest: tokens.surfaceRaised,

@@ -9,7 +9,7 @@ import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/common/consts/app_consts.dart';
 import 'package:pure_live/modules/areas/areas_page.dart';
 import 'package:pure_live/modules/home/home_drawer_view.dart';
-import 'package:pure_live/modules/home/home_sidebar_view.dart';
+import 'package:pure_live/modules/home/zishu_home_shell.dart';
 import 'package:pure_live/common/global/initialized.dart';
 import 'package:pure_live/player/models/player_engine.dart';
 import 'package:pure_live/modules/popular/popular_page.dart';
@@ -251,7 +251,7 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
                     activeMenuIds: activeMenuIds,
                     onDestinationSelected: onDestinationSelected,
                   )
-                : HomeSidebarView(
+                : ZishuHomeShell(
                     body: currentWidget,
                     index: adjustedIndex,
                     activeMenuIds: activeMenuIds,
