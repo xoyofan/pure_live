@@ -4,8 +4,16 @@ import RoomPage from './pages/RoomPage';
 
 type Route = { page: 'home' } | { page: 'room'; platform: string; roomId: string };
 
-/** Read ?platform=...&roomId=... into a route (deep link). */
+/**
+ * Derive the route from the URL. Supported deep-link forms:
+ *   /{platform}/{roomId}        (path style, canonical)
+ *   /?platform=...&roomId=...   (legacy query style, still honored)
+ */
 function routeFromLocation(): Route {
+  const segments = window.location.pathname.split('/').filter(Boolean);
+  if (segments.length === 2) {
+    return { page: 'room', platform: decodeURIComponent(segments[0]), roomId: decodeURIComponent(segments[1]) };
+  }
   const params = new URLSearchParams(window.location.search);
   const platform = params.get('platform');
   const roomId = params.get('roomId');
@@ -16,13 +24,7 @@ function routeFromLocation(): Route {
 }
 
 function syncUrl(route: Route) {
-  const params = new URLSearchParams();
-  if (route.page === 'room') {
-    params.set('platform', route.platform);
-    params.set('roomId', route.roomId);
-  }
-  const query = params.toString();
-  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}`;
+  const nextUrl = route.page === 'room' ? `/${encodeURIComponent(route.platform)}/${encodeURIComponent(route.roomId)}` : '/';
   window.history.pushState(null, '', nextUrl);
 }
 
@@ -32,7 +34,7 @@ export default function App() {
   const [lastPlatform, setLastPlatform] = useState('bilibili');
   const [lastRoomId, setLastRoomId] = useState('');
 
-  // Browser back/forward re-derives the route from the URL query.
+  // Browser back/forward re-derives the route from the URL.
   useEffect(() => {
     const onPopState = () => setRoute(routeFromLocation());
     window.addEventListener('popstate', onPopState);
