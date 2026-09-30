@@ -74,7 +74,6 @@ export default function DiscoverPage({
 }: Props) {
   const [feed, setFeed] = useState<Feed>({ kind: 'loading' });
   const [categories, setCategories] = useState<Category[]>([]);
-  const [searchInput, setSearchInput] = useState(keyword ?? '');
   const loadSeqRef = useRef(0);
   const loadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -214,33 +213,14 @@ export default function DiscoverPage({
             </button>
           ))}
         </div>
-        <form
-          className="discover-search"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const kw = searchInput.trim();
-            if (kw.length > 0) onSearch(platform, kw);
-          }}
-        >
-          <input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={`搜索${platformName}直播间`}
-          />
-          <button type="submit" className="btn-small" disabled={searchInput.trim().length === 0}>
-            搜索
-          </button>
-          {mode === 'search' && (
-            <button type="button" className="btn-small" onClick={() => onSearch(platform, '')}>
-              取消
-            </button>
-          )}
-        </form>
       </div>
 
       {mode === 'search' && keyword !== null && (
         <p className="discover-heading">
           “{keyword}” 的搜索结果
+          <button type="button" className="btn-small" onClick={() => onSearch(platform, '')}>
+            取消
+          </button>
         </p>
       )}
       {mode === 'category' && area !== null && (

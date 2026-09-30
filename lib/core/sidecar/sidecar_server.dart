@@ -155,6 +155,7 @@ Map<String, dynamic> _roomToJson(LiveRoom room) {
     'avatar': room.avatar ?? '',
     'cover': room.cover ?? '',
     'watching': room.watching ?? '',
+    'area': room.area ?? '',
     'link': room.link ?? '',
     'status': room.status,
     'liveStatus': room.liveStatus?.name ?? 'unknown',

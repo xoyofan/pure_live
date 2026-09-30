@@ -31,6 +31,8 @@ export interface DanmakuHandle {
   chatQueueRef: MutableRefObject<DanmakuChatItem[]>;
   /** Bounded recent-chat mirror for side-panel list rendering. */
   chatList: DanmakuChatItem[];
+  /** Drop the upstream socket and reconnect from scratch. */
+  reconnect: () => void;
 }
 
 /** Side-panel list cap; older entries drop off the head. */
@@ -50,6 +52,7 @@ export function useDanmaku(
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [onlineValue, setOnlineValue] = useState<number | null>(null);
   const [chatList, setChatList] = useState<DanmakuChatItem[]>([]);
+  const [sessionNonce, setSessionNonce] = useState(0);
   const chatQueueRef = useRef<DanmakuChatItem[]>([]);
 
   useEffect(() => {
@@ -215,7 +218,14 @@ export function useDanmaku(
       chatQueueRef.current = [];
       setChatList([]);
     };
-  }, [platform, roomId]);
+  }, [platform, roomId, sessionNonce]);
 
-  return { status, statusMessage, onlineValue, chatQueueRef, chatList };
+  return {
+    status,
+    statusMessage,
+    onlineValue,
+    chatQueueRef,
+    chatList,
+    reconnect: () => setSessionNonce((n) => n + 1),
+  };
 }

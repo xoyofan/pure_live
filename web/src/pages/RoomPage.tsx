@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getPlayUrls, getQualities, resolveRoom, toPlaybackUrl } from '../api/client';
+import { getPlayUrls, getQualities, getRecommendRooms, resolveRoom, toPlaybackUrl } from '../api/client';
 import { isApiError } from '../api/types';
-import type { PlayUrls, Quality, Room } from '../api/types';
+import type { PlayUrls, Quality, Room, RoomListItem } from '../api/types';
 import { useDanmaku } from '../hooks/useDanmaku';
 import DanmakuCanvas from '../components/DanmakuCanvas';
 import Player, { type PlaybackSource } from '../components/Player';
@@ -10,6 +10,8 @@ interface Props {
   platform: string;
   roomId: string;
   onLeave: () => void;
+  /** Open another room from the side-panel recommend list. */
+  onOpenRoom: (platform: string, roomId: string) => void;
 }
 
 type ResolvePhase =
@@ -85,7 +87,7 @@ function danmakuStatusText(status: ReturnType<typeof useDanmaku>['status']): str
   }
 }
 
-export default function RoomPage({ platform, roomId, onLeave }: Props) {
+export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Props) {
   const [phase, setPhase] = useState<ResolvePhase>({ kind: 'loading' });
   const [qualities, setQualities] = useState<Quality[]>([]);
   const [currentQuality, setCurrentQuality] = useState<string | null>(null);
@@ -247,7 +249,9 @@ export default function RoomPage({ platform, roomId, onLeave }: Props) {
         })()
       : null;
 
-  const [sideTab, setSideTab] = useState<'chat' | 'settings'>('chat');
+  const [sideTab, setSideTab] = useState<'chat' | 'recommend' | 'settings'>('chat');
+  const [recommendRooms, setRecommendRooms] = useState<RoomListItem[]>([]);
+  const [recommendLoading, setRecommendLoading] = useState(false);
   const chatListRef = useRef<HTMLDivElement | null>(null);
   const chatStuckRef = useRef(true);
 
@@ -257,6 +261,33 @@ export default function RoomPage({ platform, roomId, onLeave }: Props) {
     if (!node || sideTab !== 'chat') return;
     if (chatStuckRef.current) node.scrollTop = node.scrollHeight;
   }, [danmaku.chatList, sideTab]);
+
+  // Recommend list loads once per room when its tab first opens. The guard is
+  // a ref (not state): under StrictMode's double-mount the first run's
+  // cleanup must not leave the second run deadlocked on a stale loading flag.
+  const recommendFetchRef = useRef(false);
+  useEffect(() => {
+    setRecommendRooms([]);
+    setRecommendLoading(false);
+    recommendFetchRef.current = false;
+  }, [platform, roomId]);
+
+  useEffect(() => {
+    if (sideTab !== 'recommend' || recommendFetchRef.current) return;
+    recommendFetchRef.current = true;
+    setRecommendLoading(true);
+    getRecommendRooms(platform, 1, 20)
+      .then((res) => {
+        setRecommendRooms((res.rooms ?? []).filter((r) => r.roomId !== roomId));
+      })
+      .catch(() => {
+        setRecommendRooms([]);
+      })
+      .finally(() => {
+        recommendFetchRef.current = false;
+        setRecommendLoading(false);
+      });
+  }, [sideTab, platform, roomId]);
 
   const reloadStream = () => setNonce((n) => n + 1);
 
@@ -426,6 +457,13 @@ export default function RoomPage({ platform, roomId, onLeave }: Props) {
               </button>
               <button
                 type="button"
+                className={`side-tab${sideTab === 'recommend' ? ' active' : ''}`}
+                onClick={() => setSideTab('recommend')}
+              >
+                推荐
+              </button>
+              <button
+                type="button"
                 className={`side-tab${sideTab === 'settings' ? ' active' : ''}`}
                 onClick={() => setSideTab('settings')}
               >
@@ -434,24 +472,74 @@ export default function RoomPage({ platform, roomId, onLeave }: Props) {
             </div>
 
             {sideTab === 'chat' ? (
-              <div
-                className="chat-list"
-                ref={chatListRef}
-                onScroll={(e) => {
-                  const node = e.currentTarget;
-                  chatStuckRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 40;
-                }}
-              >
-                {danmaku.chatList.length === 0 && (
-                  <p className="danmaku-empty">
-                    {playable ? '还没有弹幕,来说点什么…' : '房间未开播,弹幕服务未连接'}
-                  </p>
+              <>
+                <div className="chat-status-row">
+                  <span className={`dot dot-${danmaku.status}`} />
+                  <span className="chat-status-text">
+                    {danmakuStatusText(danmaku.status) ?? '弹幕未连接'}
+                  </span>
+                  <button
+                    type="button"
+                    className="ctrl-btn ghost"
+                    title="重新连接弹幕"
+                    onClick={() => danmaku.reconnect?.()}
+                  >
+                    ↻
+                  </button>
+                </div>
+                <div
+                  className="chat-list"
+                  ref={chatListRef}
+                  onScroll={(e) => {
+                    const node = e.currentTarget;
+                    chatStuckRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 40;
+                  }}
+                >
+                  {danmaku.chatList.length === 0 && (
+                    <p className="danmaku-empty">
+                      {playable ? '还没有弹幕,来说点什么…' : '房间未开播,弹幕服务未连接'}
+                    </p>
+                  )}
+                  {danmaku.chatList.map((item, index) => (
+                    <p key={index} className="chat-item">
+                      <span className="chat-user">{item.userName}:</span>
+                      <span className="chat-text">{item.text}</span>
+                    </p>
+                  ))}
+                </div>
+              </>
+            ) : sideTab === 'recommend' ? (
+              <div className="recommend-list">
+                {recommendLoading && <p className="danmaku-empty">正在获取推荐…</p>}
+                {!recommendLoading && recommendRooms.length === 0 && (
+                  <p className="danmaku-empty">暂时没有推荐房间</p>
                 )}
-                {danmaku.chatList.map((item, index) => (
-                  <p key={index} className="chat-item">
-                    <span className="chat-user">{item.userName}:</span>
-                    <span className="chat-text">{item.text}</span>
-                  </p>
+                {recommendRooms.map((room) => (
+                  <button
+                    key={`${room.platform}:${room.roomId}`}
+                    type="button"
+                    className="recommend-item"
+                    onClick={() => onOpenRoom(room.platform || platform, room.roomId)}
+                  >
+                    {room.cover ? (
+                      <img
+                        src={room.cover}
+                        alt=""
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.style.visibility = 'hidden';
+                        }}
+                      />
+                    ) : null}
+                    <span className="recommend-item-info">
+                      <span className="recommend-item-title">{room.title || room.nick}</span>
+                      <span className="recommend-item-meta">
+                        {room.nick}
+                        {room.watching ? ` · ${room.watching}` : ''}
+                      </span>
+                    </span>
+                  </button>
                 ))}
               </div>
             ) : (

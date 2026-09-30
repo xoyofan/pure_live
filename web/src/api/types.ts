@@ -94,7 +94,10 @@ export interface Category {
 }
 
 /** Slim room entry of every 4.6 list (subset of Room). */
-export type RoomListItem = Room;
+export type RoomListItem = Room & {
+  /** Category/area display name ('' when the platform does not supply one). */
+  area?: string;
+};
 
 /** Paged list shared by recommend / category rooms / search (api.md 4.6). */
 export interface RoomListResult {
