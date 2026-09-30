@@ -10,8 +10,8 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { ApiError, roomClosed, upstreamError } from '../errors.js';
 import type { LiveRoomInfo, PlayUrlsResult, QualityInfo, ResolverBackend } from './types.js';
-import { DouyinBackend, getCookie, playbackHeaders } from './douyin.js';
-import { BilibiliBackend } from './bilibili.js';
+import { bilibiliCdnHostSuffixes, playbackHeaders as bilibiliPlaybackHeaders } from './bilibili.js';
+import { douyinCdnHostSuffixes, getCookie, playbackHeaders as douyinPlaybackHeaders } from './douyin.js';
 
 interface SidecarCall {
   resolve: (value: unknown) => void;
@@ -170,13 +170,49 @@ const computeExpireAt = (urls: string[]): string => {
   return new Date(now + 10 * 60 * 1000).toISOString();
 };
 
-/** Wraps one sidecar platform; delegates headers/CDN lists to the TS twin. */
+const CDN_SUFFIXES: Record<string, readonly string[]> = {
+  douyin: douyinCdnHostSuffixes(),
+  bilibili: bilibiliCdnHostSuffixes(),
+};
+
+const PLATFORM_NAMES: Record<string, string> = { douyin: 'Douyin', bilibili: 'BiliBili' };
+
+const HEADER_POLICY: Record<string, (roomId: string) => Promise<Record<string, string>>> = {
+  douyin: async (roomId) => douyinPlaybackHeaders(roomId, await getCookie().catch(() => '')),
+  bilibili: async () => bilibiliPlaybackHeaders(''),
+};
+
+/** Builds sidecar-backed implementations for the given platforms. */
+export function createDartSidecarBackends(platforms: readonly string[]): SidecarRegistration | null {
+  const exePath = process.env.PARSER_SIDECAR_PATH ?? DEFAULT_SIDECAR_PATH;
+  if (!existsSync(exePath)) return null;
+
+  const sidecar = new SidecarProcess(exePath);
+  // Warm the process (spawn + banner) so the first real request pays only
+  // its own upstream cost.
+  void sidecar.call('health', {}).catch(() => {});
+
+  const backends = platforms
+    .filter((platform) => PLATFORM_NAMES[platform])
+    .map(
+      (platform) =>
+        new DartSidecarPlatformBackend(
+          platform,
+          PLATFORM_NAMES[platform] ?? platform,
+          sidecar,
+          HEADER_POLICY[platform] ?? (async () => ({})),
+        ),
+    );
+  if (backends.length === 0) return null;
+  return { process: sidecar, backends };
+}
+
+/** Wraps one sidecar platform; playback headers stay a host-side policy. */
 class DartSidecarPlatformBackend implements ResolverBackend {
   constructor(
     readonly id: string,
     readonly name: string,
     private readonly sidecar: SidecarProcess,
-    private readonly tsTwin: ResolverBackend,
     private readonly headersFor: (roomId: string) => Promise<Record<string, string>>,
     readonly capabilities: readonly import('./types.js').PlatformCapability[] = ['resolve', 'play-urls', 'qualities'],
   ) {}
@@ -213,7 +249,7 @@ class DartSidecarPlatformBackend implements ResolverBackend {
   }
 
   cdnHostSuffixes(): readonly string[] {
-    return this.tsTwin.cdnHostSuffixes();
+    return CDN_SUFFIXES[this.id] ?? [];
   }
 }
 
@@ -226,41 +262,6 @@ const DEFAULT_SIDECAR_PATH = fileURLToPath(new URL('../../../build/sidecar/pure-
 
 /**
  * Builds sidecar-backed implementations for the given platforms when the exe
- * exists. Returns null when the sidecar is disabled (missing exe or
- * STREAMING_PARSER=ts), leaving the registry untouched.
+ * exists (build via tool/sidecar). Returns null when missing, leaving the
+ * registry without resolution for those platforms.
  */
-export function createDartSidecarBackends(platforms: readonly string[]): SidecarRegistration | null {
-  if (process.env.STREAMING_PARSER === 'ts') return null;
-  const exePath = process.env.PARSER_SIDECAR_PATH ?? DEFAULT_SIDECAR_PATH;
-  if (!existsSync(exePath)) return null;
-
-  const sidecar = new SidecarProcess(exePath);
-  // Warm the process (spawn + banner) so the first real request pays only
-  // its own upstream cost.
-  void sidecar.call('health', {}).catch(() => {});
-  const douyinTwin = new DouyinBackend();
-  const bilibiliTwin = new BilibiliBackend();
-  const twins: Record<string, { twin: ResolverBackend; name: string; headers: (roomId: string) => Promise<Record<string, string>> }> = {
-    douyin: {
-      twin: douyinTwin,
-      name: 'Douyin',
-      // Header policy only (no re-resolution): UA/origin/referer/cookie.
-      headers: async (roomId) => playbackHeaders(roomId, await getCookie().catch(() => '')),
-    },
-    bilibili: {
-      twin: bilibiliTwin,
-      name: 'BiliBili',
-      headers: async () => ({}), // bilibili streams need no restricted headers
-    },
-  };
-
-  const backends = platforms
-    .map((platform) => ({ platform, spec: twins[platform] }))
-    .filter((entry): entry is { platform: string; spec: NonNullable<(typeof twins)[string]> } => entry.spec != null)
-    .map(
-      ({ platform, spec }) =>
-        new DartSidecarPlatformBackend(platform, spec.name, sidecar, spec.twin, spec.headers),
-    );
-  if (backends.length === 0) return null;
-  return { process: sidecar, backends };
-}

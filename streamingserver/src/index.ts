@@ -9,34 +9,21 @@ import cors from 'cors';
 import type { Server } from 'node:http';
 
 import { registry } from './backends/types.js';
-import { BilibiliBackend, buvidState, exportedWbiSign } from './backends/bilibili.js';
-import { DouyinBackend } from './backends/douyin.js';
+import { buvidState, exportedWbiSign } from './backends/bilibili.js';
 import { createDartSidecarBackends } from './backends/dart_sidecar.js';
 import { BilibiliDanmakuSource, bindBilibiliHelpers } from './danmaku/bilibili.js';
 import { createRestRouter, errorMiddleware } from './routes/rest.js';
 import { registerProxyRoute } from './routes/proxy.js';
 import { attachDanmakuWs } from './routes/danmaku.js';
-import { sm3SelfTest } from './sign/sm3.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const TOKEN = process.env.STREAMING_SERVER_TOKEN ?? '';
 
-// Fail fast if the SM3 primitive used by the a_bogus signer regressed.
-if (!sm3SelfTest()) {
-  console.error('[streaming-server] SM3 self test failed; aborting');
-  process.exit(1);
-}
-
 /* ------------------------------- registration -------------------------------- */
 
-const bilibiliBackend = new BilibiliBackend();
-const douyinBackend = new DouyinBackend();
-registry.registerBackend(bilibiliBackend);
-registry.registerBackend(douyinBackend);
-
-// Dart sidecar backends override their TS twins when the exe exists: the
-// Flutter app and this server then run the SAME lib/core parsing sources.
-// STREAMING_PARSER=ts forces the pure-TS path (comparison / fallback).
+// Resolution runs through the Dart sidecar (the SAME lib/core sources the
+// Flutter app uses). Without the exe the registry has no resolvers and room
+// routes answer PLATFORM_UNSUPPORTED — build it via tool/sidecar.
 const sidecarRegistration = createDartSidecarBackends(['bilibili', 'douyin']);
 if (sidecarRegistration) {
   for (const backend of sidecarRegistration.backends) {
@@ -45,11 +32,11 @@ if (sidecarRegistration) {
   console.log(`[streaming-server] dart sidecar active for: ${sidecarRegistration.backends.map((b) => b.id).join(', ')}`);
   process.on('exit', () => sidecarRegistration.process.dispose());
 } else {
-  console.log('[streaming-server] dart sidecar not found; using TS resolvers (build it via tool/sidecar)');
+  console.error('[streaming-server] dart sidecar exe missing (build via tool/sidecar); resolution disabled');
 }
 
 bindBilibiliHelpers(exportedWbiSign, buvidState);
-registry.registerDanmakuSource(bilibiliBackend.id, new BilibiliDanmakuSource());
+registry.registerDanmakuSource('bilibili', new BilibiliDanmakuSource());
 
 /* --------------------------------- express ----------------------------------- */
 
