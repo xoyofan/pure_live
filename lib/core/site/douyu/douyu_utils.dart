@@ -4,11 +4,11 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:meta/meta.dart';
+import 'package:pure_live/common/services/settings/cookie_value.dart';
 import 'package:pure_live/core/common/core_log.dart';
 import 'package:pure_live/core/common/http_client.dart';
-import 'package:pure_live/common/services/settings/cookie_value.dart';
-import 'package:pure_live/common/services/utils/hive_rx.dart';
-import 'package:pure_live/common/services/settings_service.dart';
+import 'package:pure_live/core/common/parser_config.dart';
+import 'package:pure_live/core/common/site_ids.dart';
 
 /// How much of a login a stored Douyu cookie actually carries.
 ///
@@ -98,6 +98,10 @@ class DouyuUtils {
   /// both to settings.
   @visibleForTesting
   static void Function(String cookie, DateTime savedAt)? debugCookiePersister;
+
+  /// Host-injected persistence for renewed web-login cookies. The app binding
+  /// wires this to the settings store; hosts without a store leave it null.
+  static void Function(String cookie, DateTime savedAt)? webCookiePersister;
 
   static Map<String, dynamic> _encKey = <String, dynamic>{};
   static Future<void>? _encKeyRefresh;
@@ -324,7 +328,7 @@ class DouyuUtils {
 
   static String? _storedLtp0() {
     try {
-      return _nonBlank(SettingsService.to.cookieManager.douyuLtp0.v);
+      return _nonBlank(ParserConfig.instance?.auxiliaryFor(SiteIds.douyuSite, 'douyuLtp0') as String?);
     } catch (_) {
       return null;
     }
@@ -332,7 +336,7 @@ class DouyuUtils {
 
   static String? _storedDid() {
     try {
-      return _nonBlank(SettingsService.to.cookieManager.douyuDid.v);
+      return _nonBlank(ParserConfig.instance?.auxiliaryFor(SiteIds.douyuSite, 'douyuDid') as String?);
     } catch (_) {
       return null;
     }
@@ -495,15 +499,10 @@ class DouyuUtils {
       injected(cookie, savedAt);
       return;
     }
-    try {
-      final cookies = SettingsService.to.cookieManager;
-      cookies.douyuCookie.v = cookie;
-      // Remember when, or the seven-day rule has nothing to count from.
-      cookies.douyuCookieSavedAt.v = savedAt.millisecondsSinceEpoch ~/ 1000;
-    } catch (_) {
-      // No settings store (a unit test, a headless run): the renewed cookie is
-      // still returned to the caller, so this request benefits either way.
-    }
+    // Persisted by the host (app binding wires SettingsService; the sidecar
+    // and unit tests leave it null -> the renewed cookie is still returned to
+    // the caller, so this request benefits either way).
+    webCookiePersister?.call(cookie, savedAt);
   }
 
   static Map<String, String> requestHeaders([String roomId = '']) {
@@ -574,7 +573,7 @@ class DouyuUtils {
   /// point, and the app says "unknown" instead of inventing one.
   static DateTime? storedSessionSavedAt({int? savedAtSeconds}) {
     try {
-      final seconds = savedAtSeconds ?? SettingsService.to.cookieManager.douyuCookieSavedAt.v;
+      final seconds = savedAtSeconds ?? ParserConfig.instance?.auxiliaryFor(SiteIds.douyuSite, 'douyuCookieSavedAt') as int? ?? 0;
       return seconds > 0 ? DateTime.fromMillisecondsSinceEpoch(seconds * 1000) : null;
     } catch (_) {
       return null;
@@ -583,7 +582,7 @@ class DouyuUtils {
 
   static String _configuredAccountCookie() {
     try {
-      return SettingsService.to.cookieManager.douyuCookie.value;
+      return ParserConfig.instance?.cookieFor(SiteIds.douyuSite) ?? '';
     } catch (_) {
       return '';
     }

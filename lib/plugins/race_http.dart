@@ -2,10 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
-import 'package:charset_converter/charset_converter.dart';
 
 class RaceHttp {
   static final http.Client _client = http.Client();
+
+  /// Host-injected GBK fallback decoder (Flutter charset_converter in the
+  /// app binding). Hosts without a decoder fall back to malformed-tolerant
+  /// UTF-8; only non-UTF-8 mirror responses ever reach this path.
+  static Future<String> Function(List<int> bytes)? gbkDecoder;
 
   static Future<Map<String, dynamic>?> fetchJson(
     List<String> urls, {
@@ -91,7 +95,8 @@ class RaceHttp {
           return utf8.decode(bytes);
         } catch (_) {
           // 🔥 fallback GBK
-          return await CharsetConverter.decode("gbk", bytes);
+          final decoder = gbkDecoder;
+          return decoder != null ? await decoder(bytes) : utf8.decode(bytes, allowMalformed: true);
         }
       },
     );

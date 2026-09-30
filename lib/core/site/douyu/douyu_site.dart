@@ -1,6 +1,11 @@
 import 'dart:convert';
 
-import 'package:pure_live/common/index.dart';
+import 'package:meta/meta.dart';
+import 'package:pure_live/common/models/live_area.dart';
+import 'package:pure_live/common/models/live_message.dart';
+import 'package:pure_live/common/models/live_room.dart';
+import 'package:pure_live/core/common/parser_config.dart';
+import 'package:pure_live/core/common/site_ids.dart';
 import 'package:html_unescape/html_unescape.dart';
 import 'package:pure_live/model/live_category.dart';
 import 'package:pure_live/model/live_anchor_item.dart';
@@ -25,7 +30,7 @@ class DouyuSite
         LivePlayUrlCursorResolver,
         LivePlayLeaseMetadata {
   @override
-  String id = Sites.douyuSite;
+  String id = SiteIds.douyuSite;
 
   /// Anonymous original-quality URLs carry `expire=300`: the CDN closes the
   /// stream 300 s after the URL was issued. The URL has no absolute time, so
@@ -68,7 +73,7 @@ class DouyuSite
 
   @override
   LiveDanmaku getDanmaku() => DouyuDanmaku(
-    filterSuspectedAutomatedMessages: () => SettingsService.to.danmaku.filterDouyuSuspectedAutomatedMessages.v,
+    filterSuspectedAutomatedMessages: () => ParserConfig.instance?.auxiliaryFor(SiteIds.douyuSite, 'filterSuspectedAutomatedMessages') as bool? ?? false,
   );
 
   @override
@@ -87,7 +92,7 @@ class DouyuSite
             areaId: element["cate2Id"].toString(),
             typeName: cate1Name.toString(),
             areaType: cate1Id.toString(),
-            platform: Sites.douyuSite,
+            platform: SiteIds.douyuSite,
             areaName: element["cate2Name"].toString(),
           ),
         );
@@ -113,7 +118,7 @@ class DouyuSite
           areaId: item["cid2"].toString(),
           typeName: liveCategory.name,
           areaType: liveCategory.id,
-          platform: Sites.douyuSite,
+          platform: SiteIds.douyuSite,
           areaName: item["cname2"].toString(),
         ),
       );
@@ -146,7 +151,7 @@ class DouyuSite
         liveStatus: LiveStatus.live,
         avatar: item['av'].toString().isNotEmpty ? 'https://apic.douyucdn.cn/upload/${item['av']}_middle.jpg' : '',
         status: true,
-        platform: Sites.douyuSite,
+        platform: SiteIds.douyuSite,
       );
       items.add(roomItem);
     }
@@ -187,7 +192,7 @@ class DouyuSite
         qualities.add(
           LivePlayQuality(
             quality: LiveQualityLabel.normalize(
-              platform: Sites.douyuSite,
+              platform: SiteIds.douyuSite,
               rawLabel: name?.isNotEmpty == true ? name! : '',
               id: rate,
             ),
@@ -202,7 +207,7 @@ class DouyuSite
       final rate = _asInt(playData['rate']) ?? -1;
       qualities.add(
         LivePlayQuality(
-          quality: LiveQualityLabel.normalize(platform: Sites.douyuSite, rawLabel: 'default', id: rate),
+          quality: LiveQualityLabel.normalize(platform: SiteIds.douyuSite, rawLabel: 'default', id: rate),
           id: rate,
           sort: 1,
           data: DouyuPlayData(rate, List.unmodifiable(cdns)),
@@ -466,7 +471,7 @@ class DouyuSite
           nick: item['nn'].toString(),
           area: item['c2name'].toString(),
           avatar: item['av'] ?? '',
-          platform: Sites.douyuSite,
+          platform: SiteIds.douyuSite,
           status: true,
           liveStatus: LiveStatus.live,
         );
@@ -551,7 +556,7 @@ class DouyuSite
       status: live,
       danmakuData: roomInfo["room_id"].toString(),
       data: null,
-      platform: Sites.douyuSite,
+      platform: SiteIds.douyuSite,
       link: "https://www.douyu.com/$roomId",
       isRecord: replay,
     );
@@ -599,7 +604,7 @@ class DouyuSite
         liveStatus: isLive ? LiveStatus.live : LiveStatus.offline,
         status: isLive,
         nick: item["nickName"].toString(),
-        platform: Sites.douyuSite,
+        platform: SiteIds.douyuSite,
         watching: item["hot"].toString(),
         popularity: item["hot"].toString(),
         audienceMetricType: AudienceMetricType.popularity,

@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
+
+import 'package:meta/meta.dart';
 import 'package:pure_live/core/common/core_log.dart';
 import 'package:pure_live/core/site/huya/huya_utils.dart';
 import 'package:pure_live/common/models/live_message.dart';

@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:charset_converter/charset_converter.dart';
 import 'package:logger/logger.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/core/common/core_error.dart';
@@ -7,6 +10,8 @@ import 'package:pure_live/core/common/log.dart';
 import 'package:pure_live/core/common/parser_config.dart';
 import 'package:pure_live/core/common/proxy_routing.dart';
 import 'package:pure_live/core/common/site_ids.dart';
+import 'package:pure_live/core/site/douyu/douyu_utils.dart';
+import 'package:pure_live/plugins/race_http.dart';
 import 'package:pure_live/common/services/settings/cookie_settings_controller.dart';
 import 'package:pure_live/common/services/settings/log_controller.dart';
 import 'package:pure_live/player/core/live_room_volume_manager.dart';
@@ -29,6 +34,14 @@ void bindParserRuntimeToApp() {
     );
   };
   ParserConfig.instance = _AppCookieConfig();
+  RaceHttp.gbkDecoder = (bytes) => CharsetConverter.decode('gbk', Uint8List.fromList(bytes));
+  // Douyu web-login cookie renewal persists into the settings store.
+  DouyuUtils.webCookiePersister = (cookie, savedAt) {
+    final cookies = SettingsService.to.cookieManager;
+    cookies.douyuCookie.v = cookie;
+    // Remember when, or the seven-day rule has nothing to count from.
+    cookies.douyuCookieSavedAt.v = savedAt.millisecondsSinceEpoch ~/ 1000;
+  };
   HttpError.statusCodeFormatter = (statusCode) {
     const known = {400, 401, 403, 404, 500, 502, 503};
     final key = known.contains(statusCode) ? 'http_error_$statusCode' : 'http_error_default';
@@ -91,6 +104,18 @@ class _AppCookieConfig implements ParserConfig {
   Object? auxiliaryFor(String platform, String key) {
     if (platform == SiteIds.bilibiliSite && key == 'bilibiliUid') {
       return _cookies.bilibiliUid.v;
+    }
+    if (platform == SiteIds.douyuSite) {
+      switch (key) {
+        case 'douyuLtp0':
+          return _cookies.douyuLtp0.v;
+        case 'douyuDid':
+          return _cookies.douyuDid.v;
+        case 'douyuCookieSavedAt':
+          return _cookies.douyuCookieSavedAt.v;
+        case 'filterSuspectedAutomatedMessages':
+          return SettingsService.to.danmaku.filterDouyuSuspectedAutomatedMessages.v;
+      }
     }
     return null;
   }

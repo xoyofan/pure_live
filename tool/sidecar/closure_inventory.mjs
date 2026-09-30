@@ -10,6 +10,8 @@ const BAD = /package:(flutter|get\/|easy_localization|hive_ce|hive|window_manage
 const start = [
   'lib/core/site/bilibili/bilibili_site.dart',
   'lib/core/site/douyin/douyin_site.dart',
+  'lib/core/site/huya/huya_site.dart',
+  'lib/core/site/douyu/douyu_site.dart',
 ];
 
 function importsOf(file) {

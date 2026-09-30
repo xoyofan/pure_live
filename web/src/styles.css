@@ -21,9 +21,11 @@
   --danger: #e55050;
   --ok: #32c874;
   --warn: #f5b041;
-  /* platform brand colors */
+  /* platform brand colors (zishu ZishuColors.platform) */
   --platform-douyin: #fe2c55;
   --platform-bilibili: #00a1d6;
+  --platform-huya: #ffb800;
+  --platform-douyu: #ff6b00;
   /* Fluent radius scale */
   --radius-sm: 4px;
   --radius: 8px;
@@ -170,6 +172,18 @@ select {
   background: rgba(0, 161, 214, 0.08);
 }
 
+.side-platform[data-platform='huya'].active {
+  border-color: var(--platform-huya);
+  color: var(--platform-huya);
+  background: rgba(255, 184, 0, 0.08);
+}
+
+.side-platform[data-platform='douyu'].active {
+  border-color: var(--platform-douyu);
+  color: var(--platform-douyu);
+  background: rgba(255, 107, 0, 0.08);
+}
+
 .side-hot {
   display: flex;
   flex-direction: column;
@@ -233,7 +247,17 @@ select {
   border-bottom-color: var(--platform-bilibili);
 }
 
-.platform-tab.active:not([data-platform='douyin']):not([data-platform='bilibili']) {
+.platform-tab[data-platform='huya'].active {
+  color: var(--platform-huya);
+  border-bottom-color: var(--platform-huya);
+}
+
+.platform-tab[data-platform='douyu'].active {
+  color: var(--platform-douyu);
+  border-bottom-color: var(--platform-douyu);
+}
+
+.platform-tab.active:not([data-platform]):not([data-platform='douyin']):not([data-platform='bilibili']):not([data-platform='huya']):not([data-platform='douyu']) {
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
@@ -414,7 +438,16 @@ select {
   background: var(--platform-bilibili);
 }
 
-.tag-platform:not(.platform-douyin):not(.platform-bilibili) {
+.tag-platform.platform-huya {
+  background: var(--platform-huya);
+  color: #1a1400;
+}
+
+.tag-platform.platform-douyu {
+  background: var(--platform-douyu);
+}
+
+.tag-platform:not(.platform-douyin):not(.platform-bilibili):not(.platform-huya):not(.platform-douyu) {
   background: rgba(0, 0, 0, 0.62);
 }
 
@@ -610,6 +643,15 @@ select {
 
 .platform-chip.platform-bilibili {
   background: var(--platform-bilibili);
+}
+
+.platform-chip.platform-huya {
+  background: var(--platform-huya);
+  color: #1a1400;
+}
+
+.platform-chip.platform-douyu {
+  background: var(--platform-douyu);
 }
 
 .play-title {

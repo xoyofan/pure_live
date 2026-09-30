@@ -200,13 +200,48 @@ const computeExpireAt = (urls: string[]): string => {
 const CDN_SUFFIXES: Record<string, readonly string[]> = {
   douyin: douyinCdnHostSuffixes(),
   bilibili: bilibiliCdnHostSuffixes(),
+  // huya signed URLs 302 onto third-party edges (ByteDance CDN observed in
+  // practice); keep the known families on the /proxy allowlist.
+  huya: ['huya.com', 'bytefcdnrd.com', 'huyacdn.com', 'hifihuya.com', 'msstatic.com'],
+  douyu: ['douyucdn.cn', 'douyucdn2.cn', 'douyu.com'],
 };
 
-const PLATFORM_NAMES: Record<string, string> = { douyin: 'Douyin', bilibili: 'BiliBili' };
+const PLATFORM_NAMES: Record<string, string> = {
+  douyin: 'Douyin',
+  bilibili: 'BiliBili',
+  huya: 'Huya',
+  douyu: 'Douyu',
+};
+
+// huya: the app falls back to the bundled hysdk UA when the refreshed signer
+// UA is unavailable (lib/core/site/huya/huya_request_params.dart:18).
+const HUYA_DEFAULT_UA =
+  'HYSDK(Windows,30000002)_APP(pc_exe&7090000&official)_SDK(trans&2.35.0.5996)';
+
+// douyu: mirrors DouyuUtils.userAgent + cookieHeader() with the deterministic
+// defaultDeviceId (the app uses a random per-session did when none is stored).
+const DOUYU_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+const DOUYU_DEFAULT_DID = '10000000000000000000000000001501';
 
 const HEADER_POLICY: Record<string, (roomId: string) => Promise<Record<string, string>>> = {
   douyin: async (roomId) => douyinPlaybackHeaders(roomId, await getCookie().catch(() => '')),
   bilibili: async () => bilibiliPlaybackHeaders(''),
+  huya: async (roomId) => ({
+    'user-agent': process.env.PARSER_HUYA_UA ?? HUYA_DEFAULT_UA,
+    origin: 'https://www.huya.com',
+    referer: roomId ? `https://www.huya.com/${roomId}` : 'https://www.huya.com/',
+    ...(process.env.PARSER_HUYA_COOKIE ? { cookie: process.env.PARSER_HUYA_COOKIE } : {}),
+  }),
+  douyu: async (roomId) => {
+    const cookie = (process.env.PARSER_DOUYU_COOKIE ?? '').trim();
+    return {
+      origin: 'https://www.douyu.com',
+      referer: roomId ? `https://www.douyu.com/${roomId}` : 'https://www.douyu.com/',
+      'user-agent': DOUYU_UA,
+      cookie: `dy_did=${DOUYU_DEFAULT_DID}; acf_did=${DOUYU_DEFAULT_DID}${cookie ? `; ${cookie}` : ''}`,
+    };
+  },
 };
 
 /** Builds sidecar-backed implementations for the given platforms. */

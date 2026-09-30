@@ -19,10 +19,11 @@ import 'package:pure_live/core/common/convert_helper.dart';
 import 'package:pure_live/core/common/parser_config.dart';
 import 'package:pure_live/core/site/bilibili/bilibili_site.dart';
 import 'package:pure_live/core/site/douyin/douyin_site.dart';
+import 'package:pure_live/core/site/huya/huya_site.dart';
+import 'package:pure_live/core/site/douyu/douyu_site.dart';
 import 'package:pure_live/core/danmaku/douyin_danmaku.dart';
 import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/model/live_play_quality.dart';
-import 'package:pure_live/model/live_category.dart';
 import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_message.dart';
 import 'package:pure_live/common/models/live_room.dart';
@@ -144,6 +145,8 @@ Map<String, dynamic> _roomListResult(List<LiveRoom> rooms, int page, int pageSiz
 final Map<String, LiveSite> _sites = {
   'bilibili': BiliBiliSite(),
   'douyin': DouyinSite(),
+  'huya': HuyaSite(),
+  'douyu': DouyuSite(),
 };
 
 Map<String, dynamic> _roomToJson(LiveRoom room) {

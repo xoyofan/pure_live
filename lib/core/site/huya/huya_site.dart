@@ -3,9 +3,13 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:pure_live/common/index.dart';
+import 'package:meta/meta.dart';
+import 'package:pure_live/common/models/live_area.dart';
+import 'package:pure_live/common/models/live_message.dart';
+import 'package:pure_live/common/models/live_room.dart';
+import 'package:pure_live/core/common/parser_config.dart';
+import 'package:pure_live/core/common/site_ids.dart';
 import 'package:pure_live/core/tars/types.dart';
-import 'package:pure_live/core/common/log.dart';
 import 'package:pure_live/plugins/race_http.dart';
 import 'package:pure_live/model/live_category.dart';
 import 'package:pure_live/core/common/core_log.dart';
@@ -35,7 +39,7 @@ class HuyaSite
         LivePlayLeaseMetadata,
         LiveSiteWarmUp {
   @override
-  String id = Sites.huyaSite;
+  String id = SiteIds.huyaSite;
   static const baseUrl = HuyaRequestParams.baseUrl;
   @override
   String name = "虎牙直播";
@@ -184,7 +188,7 @@ class HuyaSite
         areaId: gid!,
         areaName: item["gameFullName"].toString(),
         areaType: liveCategory.id,
-        platform: Sites.huyaSite,
+        platform: SiteIds.huyaSite,
         areaPic: "https://huyaimg.msstatic.com/cdnimage/game/$gid-MS.jpg",
         typeName: liveCategory.name,
       );
@@ -205,7 +209,7 @@ class HuyaSite
         "gameId": category.areaId,
         "page": page,
       },
-      header: {"user-agent": kUserAgent, "Cookie": SettingsService.to.cookieManager.huyaCookie.v},
+      header: {"user-agent": kUserAgent, "Cookie": ParserConfig.instance?.cookieFor(SiteIds.huyaSite) ?? ''},
     );
     var result = json.decode(resultText);
     var items = <LiveRoom>[];
@@ -230,7 +234,7 @@ class HuyaSite
         area: item["gameFullName"].toString(),
         liveStatus: LiveStatus.live,
         status: true,
-        platform: Sites.huyaSite,
+        platform: SiteIds.huyaSite,
       );
       items.add(roomItem);
     }
@@ -260,7 +264,7 @@ class HuyaSite
         .map(
           (rate) => LivePlayQuality(
             quality: LiveQualityLabel.normalize(
-              platform: Sites.huyaSite,
+              platform: SiteIds.huyaSite,
               rawLabel: rate.name,
               id: rate.bitRate,
               bitrate: rate.bitRate > 0 ? rate.bitRate * 1000 : null,
@@ -312,7 +316,7 @@ class HuyaSite
     required LivePlayQuality quality,
   }) async {
     final roomId = detail.roomId?.trim() ?? '';
-    final platform = detail.platform?.trim().isNotEmpty == true ? detail.platform! : Sites.huyaSite;
+    final platform = detail.platform?.trim().isNotEmpty == true ? detail.platform! : SiteIds.huyaSite;
     if (roomId.isEmpty) return LivePlayUrlResolution(urls: const <String>[], appliedQualityData: quality.selectionId);
 
     // Reacquire the room snapshot and build a fresh signature. HLS uses its
@@ -371,7 +375,7 @@ class HuyaSite
     final data = await RaceHttp.fetchJson(urls);
     final ua = data?['huya']?['user_agent']?.toString().trim();
     playUserAgent = ua == null || ua.isEmpty ? nativePlayUserAgent : ua;
-    Log.d("HuyaSite: getHuYaUA: $playUserAgent");
+    CoreLog.i("HuyaSite: getHuYaUA: $playUserAgent");
     return playUserAgent!;
   }
 
@@ -527,7 +531,7 @@ class HuyaSite
         queryParameters: {"m": "LiveList", "do": "getLiveListByPage", "tagAll": 0, "page": page},
         header: {
           "user-agent": kUserAgent,
-          "Cookie": SettingsService.to.cookieManager.huyaCookie.v,
+          "Cookie": ParserConfig.instance?.cookieFor(SiteIds.huyaSite) ?? '',
           "Origin": "https://www.huya.com",
           "Referer": "https://www.huya.com/",
         },
@@ -554,7 +558,7 @@ class HuyaSite
           watching: item["totalCount"].toString(),
           popularity: item["totalCount"].toString(),
           audienceMetricType: AudienceMetricType.popularity,
-          platform: Sites.huyaSite,
+          platform: SiteIds.huyaSite,
           liveStatus: LiveStatus.live,
           status: true,
         );
@@ -601,7 +605,7 @@ class HuyaSite
         'Sec-Fetch-Mode': 'cors',
         'Sec-Fetch-Site': 'same-site',
         "user-agent": kUserAgent,
-        "Cookie": SettingsService.to.cookieManager.huyaCookie.v,
+        "Cookie": ParserConfig.instance?.cookieFor(SiteIds.huyaSite) ?? '',
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache',
       },
@@ -722,7 +726,7 @@ class HuyaSite
         isRecord: normalizedLiveState == 'REPLAY',
         status: normalizedLiveState == 'ON',
         liveStatus: parseHuyaLiveStatus(normalizedLiveState),
-        platform: Sites.huyaSite,
+        platform: SiteIds.huyaSite,
         data: HuyaUrlDataModel(url: "", lines: huyaLines, bitRates: huyaBiterates, uid: "", isXingxiu: isXingxiu),
         danmakuData: HuyaDanmakuArgs(
           uid: int.tryParse(data["profileInfo"]?["uid"]?.toString() ?? "") ?? 0,
@@ -819,7 +823,7 @@ class HuyaSite
         'Sec-Fetch-Mode': 'cors',
         'Sec-Fetch-Site': 'same-site',
         'user-agent': kUserAgent,
-        'Cookie': SettingsService.to.cookieManager.huyaCookie.v,
+        'Cookie': ParserConfig.instance?.cookieFor(SiteIds.huyaSite) ?? '',
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache',
       },
@@ -851,7 +855,7 @@ class HuyaSite
       isRecord: state == 'REPLAY',
       status: liveStatus == LiveStatus.live,
       liveStatus: liveStatus,
-      platform: Sites.huyaSite,
+      platform: SiteIds.huyaSite,
       link: 'https://www.huya.com/$roomId',
     );
   }
@@ -913,7 +917,7 @@ class HuyaSite
         watching: item["game_total_count"].toString(),
         popularity: item["game_total_count"].toString(),
         audienceMetricType: AudienceMetricType.popularity,
-        platform: Sites.huyaSite,
+        platform: SiteIds.huyaSite,
       );
       items.add(roomItem);
     }
@@ -980,7 +984,7 @@ class HuyaSite
   /// the viewer. The official web client uses `yyuid` for an account session
   /// and the UID returned by `anonymousLogin` otherwise.
   Future<HuyaViewerIdentity> resolveViewerIdentity({String? cookie}) async {
-    final resolvedCookie = cookie ?? SettingsService.to.cookieManager.huyaCookie.v;
+    final resolvedCookie = cookie ?? ParserConfig.instance?.cookieFor(SiteIds.huyaSite) ?? '';
     final accountUid = parseViewerUidFromCookie(resolvedCookie);
     if (accountUid != null) {
       return HuyaViewerIdentity(uid: accountUid, guid: _viewerGuid, isAnonymous: false);
@@ -1052,7 +1056,7 @@ class HuyaSite
   @override
   Future<List<LiveSuperChatMessage>> getSuperChatMessage({required String roomId}) async {
     List<LiveSuperChatMessage> ls = [];
-    LiveRoom detail = await getRoomDetail(roomId: roomId, platform: Sites.huyaSite);
+    LiveRoom detail = await getRoomDetail(roomId: roomId, platform: SiteIds.huyaSite);
     HuyaDanmakuArgs args = detail.danmakuData as HuyaDanmakuArgs;
     if (args.topSid != 0) {
       ls = await getHuyaSuperChatMessageList(lPid: args.topSid, first: true);
@@ -1201,7 +1205,7 @@ class HuyaSite
   }
 
   Future<HuyaCdnTokenLease> _fetchCdnTokenInfoEx(HuyaLineModel line, HuyaViewerIdentity viewer) async {
-    final cookie = SettingsService.to.cookieManager.huyaCookie.v.trim();
+    final cookie = ParserConfig.instance?.cookieFor(SiteIds.huyaSite) ?? ''.trim();
     final request = buildPlaybackTokenRequest(line, viewer, cookie: cookie);
     final tokenClient = createCdnTokenClient(<String, String>{
       'Origin': baseUrl,

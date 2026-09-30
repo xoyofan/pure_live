@@ -34,6 +34,8 @@ const KEEP = new Set([
   'source_span',
   'term_glyph',
   'mime',
+  'http',
+  'html_unescape',
 ]);
 
 function absoluteUri(rootUri) {

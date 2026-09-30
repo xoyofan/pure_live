@@ -25,7 +25,7 @@ const TOKEN = process.env.STREAMING_SERVER_TOKEN ?? '';
 // Resolution runs through the Dart sidecar (the SAME lib/core sources the
 // Flutter app uses). Without the exe the registry has no resolvers and room
 // routes answer PLATFORM_UNSUPPORTED — build it via tool/sidecar.
-const sidecarRegistration = createDartSidecarBackends(['bilibili', 'douyin']);
+const sidecarRegistration = createDartSidecarBackends(['bilibili', 'douyin', 'huya', 'douyu']);
 if (sidecarRegistration) {
   for (const backend of sidecarRegistration.backends) {
     registry.registerBackend(backend);

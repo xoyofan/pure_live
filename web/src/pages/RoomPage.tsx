@@ -8,6 +8,7 @@ import Player, { type PlaybackSource } from '../components/Player';
 
 interface Props {
   platform: string;
+  platformName: string;
   roomId: string;
   onLeave: () => void;
   /** Open another room from the side-panel recommend list. */
@@ -87,7 +88,7 @@ function danmakuStatusText(status: ReturnType<typeof useDanmaku>['status']): str
   }
 }
 
-export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Props) {
+export default function RoomPage({ platform, platformName, roomId, onLeave, onOpenRoom }: Props) {
   const [phase, setPhase] = useState<ResolvePhase>({ kind: 'loading' });
   const [qualities, setQualities] = useState<Quality[]>([]);
   const [currentQuality, setCurrentQuality] = useState<string | null>(null);
@@ -332,7 +333,7 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
         <button type="button" className="btn-ghost" onClick={onLeave}>
           ← 返回
         </button>
-        <span className={`platform-chip platform-${platform}`}>{platform === 'douyin' ? 'Douyin' : 'BiliBili'}</span>
+        <span className={`platform-chip platform-${platform}`}>{platformName}</span>
         <span className="play-title">{room?.title || `${platform} ${roomId}`}</span>
       </div>
 

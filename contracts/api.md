@@ -192,5 +192,5 @@ M2 逐步扩展:`huya`、`douyu`、`cc`、`soop`、`yy`、`twitch`、`iptv` 等�
 
 - **M1(本轮并行实现)**:契约全部 M1 端点;bilibili + douyin 的 resolve/play-urls/qualities;proxy;bilibili 弹幕 WS;web 播放间(输入/URL 直达 → 房间页:播放器 + 弹幕 + 清晰度切换)。
 - **M1.5(本轮追加)**:sidecar 全量站点能力暴露(categories/categoryRooms/recommendRooms/searchRooms);4.6 发现与搜索端点;web 平台首页(推荐/分类网格)+ 搜索;抖音弹幕改走 sidecar 推帧(与 app 同一份 `lib/core/danmaku/douyin_danmaku.dart`,chat+online);可选 `PARSER_<PLATFORM>_COOKIE` 环境变量注入登录 cookie(对齐 app 登录态解析,如抖音搜索)。
-- **M2**:huya/douyu 弹幕(TARS/签名)、更多平台进 sidecar。
+- **M2**:huya/douyu 弹幕(TARS/签名);huya/douyu 解析已随 M1.6 进 sidecar(categories/recommend/resolve/playUrls 实测),弹幕仍待接。
 - **M3**:C++ addon 替换 `ResolverBackend`、录制、鉴权强化。
