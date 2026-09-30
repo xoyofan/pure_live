@@ -348,6 +348,7 @@ class _CategoryDetailHeader extends StatelessWidget {
             onTap: onBack,
             radius: 16,
             hoverColor: tokens.surfaceRaised,
+            focusColor: Theme.of(context).focusColor,
             child: Tooltip(
               message: i18n('back'),
               child: SizedBox(

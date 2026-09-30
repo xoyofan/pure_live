@@ -505,6 +505,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
                                     child: InkWell(
                                       onTap: () => setState(() => _collapsed = !_collapsed),
                                       borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+                                      focusColor: Theme.of(context).focusColor,
                                       child: SizedBox(
                                         width: AppDirectoryDrawer.toggleWidth,
                                         height: AppDirectoryDrawer.toggleHeight,
@@ -797,6 +798,7 @@ class _PlatformTab extends StatelessWidget {
               onTap: onTap,
               radius: 18,
               hoverColor: tokens.surfaceRaised,
+              focusColor: Theme.of(context).focusColor,
               child: Tooltip(
                 message: site.name,
                 child: Container(
@@ -1042,6 +1044,7 @@ class _BrowseSidebar extends StatelessWidget {
               onTap: () => onSelectSite(site.id),
               radius: 18,
               hoverColor: tokens.surfaceRaised,
+              focusColor: Theme.of(context).focusColor,
               child: Tooltip(
                 message: site.name,
                 child: Container(
@@ -1069,6 +1072,7 @@ class _BrowseSidebar extends StatelessWidget {
           onTap: () => onSelectMenu(HomeMenu.record.index),
           radius: 18,
           hoverColor: tokens.surfaceRaised,
+          focusColor: Theme.of(context).focusColor,
           child: Tooltip(
             message: i18n('record_center'),
             child: SizedBox(
@@ -1148,6 +1152,7 @@ class _PlatformBlock extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: AppRadius.allMd,
+        focusColor: Theme.of(context).focusColor,
         child: Container(
           width: 44,
           height: 44,
@@ -1179,6 +1184,7 @@ class _CategoryRow extends StatelessWidget {
       onTap: onTap,
       borderRadius: AppRadius.allSm,
       hoverColor: tokens.surfaceRaised,
+      focusColor: Theme.of(context).focusColor,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: 5),
         child: Row(

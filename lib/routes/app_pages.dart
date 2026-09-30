@@ -26,7 +26,6 @@ import 'package:pure_live/modules/version/version_binding.dart';
 import 'package:pure_live/modules/web_dav/web_dav_binding.dart';
 import 'package:pure_live/modules/toolbox/boolbox_binding.dart';
 import 'package:pure_live/modules/tags/tag_management_page.dart';
-import 'package:pure_live/modules/hot_areas/hot_areas_page.dart';
 import 'package:pure_live/modules/shield/danmu_shield_page.dart';
 import 'package:pure_live/modules/multiview/multiview_page.dart';
 import 'package:pure_live/modules/account/yy/yy_cookie_page.dart';
@@ -35,7 +34,6 @@ import 'package:pure_live/modules/settings/settings_binding.dart';
 import 'package:pure_live/modules/areas/favorite_areas_page.dart';
 import 'package:pure_live/modules/area_rooms/area_rooms_page.dart';
 import 'package:pure_live/modules/tags/tag_management_binding.dart';
-import 'package:pure_live/modules/hot_areas/hot_areas_binding.dart';
 import 'package:pure_live/modules/shield/danmu_shield_binding.dart';
 import 'package:pure_live/modules/account/yy/yy_cookie_binding.dart';
 import 'package:pure_live/modules/areas/favorite_areas_binding.dart';
@@ -127,12 +125,6 @@ class AppPages {
       page: _smoothPage(() => const DanmuShieldPage()),
       bindings: [DanmuShieldBinding()],
     ),
-    GetPage(
-      name: RoutePath.kSettingsHotAreas,
-      page: _smoothPage(() => const HotAreasPage()),
-      bindings: [HotAreasBinding()],
-    ),
-
     GetPage(name: RoutePath.kVersionHistory, page: _smoothPage(() => const VersionHistoryPage())),
 
     GetPage(name: RoutePath.kToolbox, page: _smoothPage(() => const ToolBoxPage()), bindings: [ToolBoxBinding()]),

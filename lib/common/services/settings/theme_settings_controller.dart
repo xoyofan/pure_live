@@ -5,7 +5,7 @@ import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:pure_live/common/services/settings/font_settings_controller.dart';
 
 class ThemeSettingsController extends GetxController {
-  static const String defaultThemeModeName = 'System';
+  static const String defaultThemeModeName = 'Dark';
   static const String defaultLanguageName = '简体中文';
   static const double defaultSpacing = 6;
   static const double minSpacing = 0;

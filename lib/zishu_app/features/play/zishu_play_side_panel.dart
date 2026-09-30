@@ -193,6 +193,7 @@ class _FollowTab extends StatelessWidget {
             onTap: () => _toggleRoomFavorite(room),
             borderRadius: AppRadius.allSm,
             hoverColor: tokens.surfaceRaised,
+            focusColor: Theme.of(context).focusColor,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.md),
               decoration: BoxDecoration(
@@ -299,6 +300,7 @@ class _RecommendRow extends StatelessWidget {
       onTap: () => AppNavigator.toLiveRoomDetail(liveRoom: room),
       borderRadius: AppRadius.allSm,
       hoverColor: tokens.surfaceRaised,
+      focusColor: Theme.of(context).focusColor,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
@@ -728,6 +730,7 @@ class _SideActionChipState extends State<_SideActionChip> {
           // 涟漪/按压覆盖色从 chip 自身文字色推导,不引入外来色相。
           splashColor: foreground.withValues(alpha: 0.12),
           highlightColor: foreground.withValues(alpha: 0.06),
+          focusColor: Theme.of(context).focusColor,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -966,6 +969,7 @@ class _SettingsEntryRow extends StatelessWidget {
       onTap: onTap,
       borderRadius: AppRadius.allSm,
       hoverColor: tokens.surfaceRaised,
+      focusColor: Theme.of(context).focusColor,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: 7),
         child: Row(

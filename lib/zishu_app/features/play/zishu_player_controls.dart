@@ -841,29 +841,33 @@ class _PopoverSwitch extends StatelessWidget {
     final track = AppOnVideo.accent;
     return Semantics(
       toggled: value,
-      child: GestureDetector(
-        onTap: () => onChanged(!value),
-        child: AnimatedContainer(
-          duration: AppMotion.fast,
-          curve: AppMotion.curve,
-          width: 30,
-          height: 16,
-          decoration: BoxDecoration(
-            color: value ? track : Colors.transparent,
-            borderRadius: AppRadius.allMd,
-            border: Border.all(color: value ? track : AppOnVideo.textMuted),
-          ),
-          child: AnimatedAlign(
+      // 纯 GestureDetector 无光标反馈:外包 MouseRegion 补手型,不动布局。
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => onChanged(!value),
+          child: AnimatedContainer(
             duration: AppMotion.fast,
             curve: AppMotion.curve,
-            alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-            child: Container(
-              width: 12,
-              height: 12,
-              margin: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: value ? AppOnBright.white : AppOnVideo.textMuted,
-                shape: BoxShape.circle,
+            width: 30,
+            height: 16,
+            decoration: BoxDecoration(
+              color: value ? track : Colors.transparent,
+              borderRadius: AppRadius.allMd,
+              border: Border.all(color: value ? track : AppOnVideo.textMuted),
+            ),
+            child: AnimatedAlign(
+              duration: AppMotion.fast,
+              curve: AppMotion.curve,
+              alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                width: 12,
+                height: 12,
+                margin: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: value ? AppOnBright.white : AppOnVideo.textMuted,
+                  shape: BoxShape.circle,
+                ),
               ),
             ),
           ),

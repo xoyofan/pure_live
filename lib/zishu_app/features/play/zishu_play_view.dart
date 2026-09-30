@@ -316,6 +316,7 @@ class _ZishuRoomHeader extends StatelessWidget {
                       child: InkWell(
                         onTap: () => AppNavigator.toCategoryDetail(site: Sites.of(siteId), category: matchedCategory),
                         borderRadius: AppRadius.allSm,
+                        focusColor: Theme.of(context).focusColor,
                         child: _BadgeLabel(siteId: siteId, categoryLabel: categoryLabel, color: badgeFg),
                       ),
                     )

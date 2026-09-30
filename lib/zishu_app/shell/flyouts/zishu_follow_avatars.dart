@@ -72,6 +72,7 @@ class ZishuFollowAvatars extends StatelessWidget {
               onTap: onTap,
               radius: 18,
               hoverColor: context.tokens.surfaceRaised,
+              focusColor: Theme.of(context).focusColor,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
                 child: Obx(() {

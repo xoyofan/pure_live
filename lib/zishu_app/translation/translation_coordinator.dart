@@ -9,8 +9,22 @@
 /// 懒加载单例);差异仅两处:
 /// - 裁掉 `translateBody`(依赖 live_parser 的 DanmakuSegment,本仓只做标题);
 /// - HTTP fetcher 就近改用 dart:io HttpClient(与 zishu 生产实现同款),
-///   **不接上游代理**——直连不通的网络(如国内访问 Google/实例)会超时
-///   回退原文,属可接受降级。
+///   并支持环境变量代理:见 [_resolveTranslationProxy] 与
+///   [_httpClientFetcher] 的文档注释(变量、优先级、值格式、失败降级)。
+///
+/// ### 环境变量代理(标题翻译专用)
+///
+/// 支持的变量与优先级(同名变量小写优先,与 dart:io
+/// `HttpClient.findProxyFromEnvironment` 的约定一致):
+///
+///     https_proxy / HTTPS_PROXY  >  http_proxy / HTTP_PROXY  >  all_proxy / ALL_PROXY
+///
+/// - 值格式 `[scheme://][user:password@]host[:port]`(缺省端口 1080,
+///   同 curl 与 dart:io;scheme 仅用于识别,http/https/无 scheme 一律按
+///   HTTP CONNECT 代理使用;dart:io 代理不支持 SOCKS,`socks*://` 值忽略)。
+/// - 变量全缺省或值全部无效 → 不设 findProxy,与改动前完全一致(直连)。
+/// - 代理连不通 → 走既有失败降级链(连接超时 → 引擎返回 null → 负缓存
+///   2 分钟内回原文),不抛出、不阻塞启动与 UI。
 ///
 /// 设计要点(公共翻译实例是志愿者维护的免费服务,必须克制使用):
 /// - **缓存去重**:LRU(text → 译文)。标题重复率不高但列表页滚动重建多,
@@ -477,15 +491,106 @@ class TranslationCoordinator {
 const List<String> kDefaultLingvaBases = ['https://lingva.garudalinux.org', 'https://lingva.lunar.icu'];
 const List<String> kDefaultSimplyTranslateBases = ['https://simplytranslate.org', 'https://translate.jae.fi'];
 
+/// 解析后的翻译代理配置(null = 无代理,直连)。
+class _TranslationProxy {
+  const _TranslationProxy({required this.host, required this.port, required this.findProxy, this.user, this.password});
+
+  /// 代理主机(IPv6 不含方括号)/端口(注册代理认证凭据用)。
+  final String host;
+  final int port;
+
+  /// [HttpClient.findProxy] 的返回值(`PROXY host:port`,IPv6 补方括号)。
+  final String findProxy;
+
+  /// 代理 URI 里的 `user:password@`(可选;password 为空串表示只有用户名)。
+  final String? user;
+  final String? password;
+}
+
+/// 环境变量 → 标题翻译代理配置;变量与优先级见文件头注释。
+///
+/// 同语义变量小写优先;变量缺省或值解析失败顺延取下一个变量,全部无效
+/// 返回 null(直连,行为与无代理完全一致)——单个坏值不至于让代理失效。
+/// [environment] 便于单测注入,缺省读进程环境。
+_TranslationProxy? _resolveTranslationProxy({Map<String, String>? environment}) {
+  final env = environment ?? Platform.environment;
+  const names = <String>[
+    'https_proxy', 'HTTPS_PROXY', // 优先:三个端点全为 https
+    'http_proxy', 'HTTP_PROXY', // 国内常见只设 HTTP_PROXY 的场景
+    'all_proxy', 'ALL_PROXY', // 兜底
+  ];
+  for (final name in names) {
+    final raw = env[name]?.trim();
+    if (raw == null || raw.isEmpty) continue;
+    final proxy = _parseProxyValue(raw);
+    if (proxy != null) return proxy;
+  }
+  return null;
+}
+
+/// 单个代理变量值 → [_TranslationProxy];值不可解析返回 null。
+_TranslationProxy? _parseProxyValue(String value) {
+  // 代理地址不含空白;Dart 的 Uri 解析会把空格静默编码进 host('x y z' →
+  // 'x%20y%20z'),不拦会产出必然连不通的伪代理,按坏值跳过更干净。
+  if (RegExp(r'\s').hasMatch(value)) return null;
+  // 裸 `host[:port]` 按 http scheme 解析,与带 scheme 的值走同一路径。
+  final uri = Uri.tryParse(value.contains('://') ? value : 'http://$value');
+  if (uri == null || uri.host.isEmpty) return null;
+  if (uri.scheme.startsWith('socks')) return null; // dart:io PAC 无 SOCKS 形式
+  final host = uri.host;
+  final port = uri.hasPort ? uri.port : 1080;
+  // IPv6 在 PAC 串里必须带方括号,否则 PROXY 串按最后一个冒号切分会错位。
+  final hostToken = host.contains(':') ? '[$host]' : host;
+  String? user;
+  String? password;
+  if (uri.userInfo.isNotEmpty) {
+    final pair = uri.userInfo.split(':');
+    user = _tryDecodePercent(pair.first);
+    if (pair.length > 1) password = _tryDecodePercent(pair.sublist(1).join(':'));
+  }
+  if (user != null) password ??= ''; // 只有用户名:密码记空串,取用方不再判空
+  return _TranslationProxy(host: host, port: port, findProxy: 'PROXY $hostToken:$port', user: user, password: password);
+}
+
+/// 百分号解码;`%zz` 这类非法序列原样返回(环境变量是用户手写的,
+/// 宁可凭据原样也绝不让坏值在代理配置初始化时抛异常)。
+String _tryDecodePercent(String raw) {
+  try {
+    return Uri.decodeComponent(raw);
+  } catch (_) {
+    return raw;
+  }
+}
+
+/// 进程内解析一次:top-level final 首次被 [_httpClientFetcher] 读取时
+/// 才读环境变量(懒初始化),之后缓存,不再反复查表。
+final _TranslationProxy? _translationProxy = _resolveTranslationProxy();
+
 /// 翻译专用 fetcher:每次请求独立 HttpClient(低频调用,简单可靠)。
 ///
 /// 自 zishu `translation_provider.dart` 的 `_dioFetcher` 就近移植——其实现
 /// 本就是 dart:io HttpClient(注释里的 dio 与实现不符,以实现为准)。
-/// **上游代理未接**:zishu 版按主机消费 live_parser 的 UpstreamProxy,本仓
-/// 无对应设施且本轨道不引入,直连不可达的网络(如国内访问 Google)会
-/// 连接超时 → 引擎返回 null → 负缓存 2 分钟内回退原文,属可接受降级。
+/// 在此之上支持环境变量代理(变量与优先级见文件头注释):仅当解析出
+/// 代理时才设 [HttpClient.findProxy]/认证回调;代理连不通与直连不通一样,
+/// 走既有失败链(超时 → 引擎 null → 负缓存 2 分钟内回原文),不影响
+/// 启动与 UI。
 Future<Object?> _httpClientFetcher(Uri uri) async {
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+  final proxy = _translationProxy;
+  if (proxy != null) {
+    client.findProxy = (_) => proxy.findProxy;
+    final user = proxy.user;
+    if (user != null) {
+      // 代理返回 407 时按 env URI 里的 user:password@ 重试一次
+      // (dart:io 文档的标准配方:authenticateProxy 返回 true 前注册凭据;
+      // realm 用质询原值,保证重试能匹配上)。
+      final password = proxy.password ?? '';
+      client.authenticateProxy = (host, port, scheme, realm) {
+        client.addProxyCredentials(host, port, realm ?? scheme, HttpClientBasicCredentials(user, password));
+        return Future.value(true);
+      };
+    }
+  }
   try {
     final request = await client.getUrl(uri);
     final response = await request.close().timeout(const Duration(seconds: 6));
