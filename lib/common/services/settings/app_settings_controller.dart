@@ -68,12 +68,13 @@ class AppSettingsController extends GetxController {
 
   late final RxList<String> savedMenuIds = hiveStringList('savedMenuIds', HomeMenu.values.map((e) => e.id).toList());
 
+  /// 外壳平台入口默认可见集:支持站点表的**前 10 个**(B站/斗鱼/虎牙/抖音/
+  /// 快手/CC/Twitch/SOOP/YY/AcFun),其余默认隐藏、可在设置里勾选打开。
+  static List<String> get defaultVisiblePlatformIds => Sites.supportSites.map((e) => e.id).take(10).toList();
+
   /// 外壳平台入口(顶栏平台 tab + 侧栏色块)的顺序与可见性:值为站点 id,
-  /// 不在列表内 = 隐藏。默认全量、顺序同 [Sites.supportSites]。
-  late final RxList<String> savedPlatformIds = hiveStringList(
-    'savedPlatformIds',
-    Sites.supportSites.map((e) => e.id).toList(),
-  );
+  /// 不在列表内 = 隐藏。默认前 10 个可见,顺序同 [Sites.supportSites]。
+  late final RxList<String> savedPlatformIds = hiveStringList('savedPlatformIds', defaultVisiblePlatformIds);
 
   @override
   void onInit() {
@@ -169,7 +170,7 @@ class AppSettingsController extends GetxController {
       final id = rawId.trim().toLowerCase();
       if (supported.contains(id) && !normalized.contains(id)) normalized.add(id);
     }
-    return normalized.isEmpty ? Sites.supportSites.map((e) => e.id).toList() : normalized;
+    return normalized.isEmpty ? defaultVisiblePlatformIds : normalized;
   }
 
   @override
@@ -272,7 +273,7 @@ class AppSettingsController extends GetxController {
         normalizeMenuIds(List<String>.from(json['savedMenuIds'] ?? HomeMenu.values.map((e) => e.id).toList())),
       ),
       'savedPlatformIds': typed<List<String>>(
-        normalizePlatformIds(List<String>.from(json['savedPlatformIds'] ?? Sites.supportSites)),
+        normalizePlatformIds(List<String>.from(json['savedPlatformIds'] ?? defaultVisiblePlatformIds)),
       ),
       'enableMultiView': typed<bool>(json['enableMultiView'] ?? true),
       'enableNewWindowPlay': typed<bool>(json['enableNewWindowPlay'] ?? true),
@@ -325,7 +326,7 @@ class AppSettingsController extends GetxController {
       'savedMenuIds': normalizeMenuIds(
         List<String>.from(app['savedMenuIds'] ?? HomeMenu.values.map((menu) => menu.id).toList()),
       ),
-      'savedPlatformIds': normalizePlatformIds(List<String>.from(app['savedPlatformIds'] ?? Sites.supportSites)),
+      'savedPlatformIds': normalizePlatformIds(List<String>.from(app['savedPlatformIds'] ?? defaultVisiblePlatformIds)),
       'enableMultiView': app['enableMultiView'] ?? true,
       'enableNewWindowPlay': app['enableNewWindowPlay'] ?? true,
     };
