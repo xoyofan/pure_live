@@ -1,5 +1,6 @@
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/global/platform_utils.dart';
+import 'package:pure_live/zishu/presentation/app_theme.dart';
 
 const PageTransitionsTheme appPageTransitionsTheme = PageTransitionsTheme(
   builders: <TargetPlatform, PageTransitionsBuilder>{
@@ -110,7 +111,7 @@ class MyTheme {
       primaryTextTheme: textTheme,
     );
 
-    return baseTheme.copyWith(
+    final themed = baseTheme.copyWith(
       splashFactory: NoSplash.splashFactory,
       appBarTheme: AppBarTheme(
         elevation: 0.0,
@@ -182,5 +183,7 @@ class MyTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       ),
     );
+    // zishu 视觉基线最后叠加:SFVideoLive 色板/tokens 覆盖 Material 派生色。
+    return ZishuTheme.decorate(themed);
   }
 }
