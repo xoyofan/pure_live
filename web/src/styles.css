@@ -34,6 +34,21 @@
   --play-sidebar-width: 328px;
 }
 
+/* light theme (zishu light palette: #F7F7F8 scaffold, darkened accent) */
+html[data-theme='light'] {
+  --bg: #f2f3f5;
+  --bg-soft: #eaecef;
+  --bg-raised: #ffffff;
+  --bg-hover: #e5e7eb;
+  --border: #d9dbe0;
+  --text: rgba(0, 0, 0, 0.87);
+  --text-mid: rgba(0, 0, 0, 0.72);
+  --text-dim: rgba(0, 0, 0, 0.5);
+  --accent: #c9a800;
+  --accent-hover: #a88f00;
+  --accent-ink: #ffffff;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -341,6 +356,18 @@ select {
   padding: 16px 24px 40px;
 }
 
+.theme-toggle {
+  border: none;
+  background: none;
+  font-size: 16px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.theme-toggle:hover {
+  background: var(--bg-hover);
+}
+
 /* ---- discover (recommend / category / search) ---- */
 
 .discover {
@@ -592,6 +619,51 @@ select {
 .feed-hint {
   color: var(--text-dim);
   font-size: 13px;
+}
+
+/* follow page cell */
+
+.follow-cell {
+  position: relative;
+}
+
+.follow-star {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.follow-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 11px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.follow-cell:hover .follow-remove {
+  display: inline-flex;
+}
+
+.follow-cell:hover .follow-star {
+  right: 36px;
 }
 
 /* ---- buttons ---- */

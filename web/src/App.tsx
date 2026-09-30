@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import DiscoverPage, { type CategorySelection } from './pages/DiscoverPage';
 import CategoryIndexPage from './pages/CategoryIndexPage';
+import FollowPage from './pages/FollowPage';
+import { readTheme, toggleTheme, type ThemeMode } from './lib/theme';
 import RoomPage from './pages/RoomPage';
 import { getCategories, getPlatforms } from './api/client';
 import type { AreaItem, Platform } from './api/types';
@@ -8,6 +10,7 @@ import type { AreaItem, Platform } from './api/types';
 type Route =
   | { page: 'discover'; platform: string; keyword: string | null; area: CategorySelection | null }
   | { page: 'categoryIndex'; platform: string }
+  | { page: 'follow'; platform: string }
   | { page: 'room'; platform: string; roomId: string };
 
 /** Fallback platform names when /platforms has not loaded yet. */
@@ -53,6 +56,9 @@ function routeFromLocation(): Route {
   if (segments.length === 3 && segments[1] === 'room' && segments[2]) {
     return { page: 'room', platform: segments[0], roomId: segments[2] };
   }
+  if (segments.length === 1 && segments[0] === 'follow') {
+    return { page: 'follow', platform: 'douyin' };
+  }
   if (segments.length >= 2 && segments[1] === 'category') {
     if (segments[2]) {
       const { areaType, typeName, areaName } = queryAreaOf(window.location.search);
@@ -92,6 +98,11 @@ export default function App() {
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [hotAreas, setHotAreas] = useState<AreaItem[]>([]);
   const [hotCollapsed, setHotCollapsed] = useState(false);
+  const [theme, setTheme] = useState<ThemeMode>(readTheme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   // Canonical home URL for the bare "/" root.
   useEffect(() => {
@@ -122,10 +133,11 @@ export default function App() {
 
   // Rail hot-category list: leaves of the platform directory (top 12).
   useEffect(() => {
+    const platform = route.page === 'room' || route.page === 'follow' ? 'douyin' : route.platform;
     if (route.page === 'room') return;
     let disposed = false;
     setHotAreas([]);
-    getCategories(route.platform)
+    getCategories(platform)
       .then((res) => {
         if (disposed) return;
         const leaves: AreaItem[] = [];
@@ -142,7 +154,7 @@ export default function App() {
     return () => {
       disposed = true;
     };
-  }, [route.page, route.platform]);
+  }, [route.page, route.platform, route.page === 'follow']);
 
   const platformName = useCallback(
     (id: string) => platforms.find((p) => p.id === id)?.name ?? FALLBACK_NAMES[id] ?? id,
@@ -156,7 +168,9 @@ export default function App() {
         ? `/${encodeURIComponent(next.platform)}/room/${encodeURIComponent(next.roomId)}`
         : next.page === 'categoryIndex'
           ? `/${encodeURIComponent(next.platform)}/category`
-          : discoverUrl(next.platform, next.keyword, next.area);
+          : next.page === 'follow'
+            ? '/follow'
+            : discoverUrl(next.platform, next.keyword, next.area);
     window.history.pushState(null, '', url);
   }, []);
 
@@ -200,20 +214,31 @@ export default function App() {
           <span className="side-nav-icon">▦</span>
           <span className="side-nav-label">分类</span>
         </button>
+        <button
+          type="button"
+          className={`side-nav-item${route.page === 'follow' ? ' active' : ''}`}
+          onClick={() => navigate({ page: 'follow', platform: route.platform })}
+        >
+          <span className="side-nav-icon">★</span>
+          <span className="side-nav-label">关注</span>
+        </button>
       </nav>
       <div className="side-section-label">平台</div>
       <div className="side-platforms">
-        {tabs.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            data-platform={p.id}
-            className={`side-platform${route.platform === p.id ? ' active' : ''}`}
-            onClick={() => showDiscover(p.id, null, null)}
-          >
-            {TILE_MARKS[p.id] ?? (p.name ?? p.id).slice(0, 2)}
-          </button>
-        ))}
+        {tabs.map((p) => {
+          const activePlatform = route.page === 'follow' ? '' : route.platform;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              data-platform={p.id}
+              className={`side-platform${activePlatform === p.id ? ' active' : ''}`}
+              onClick={() => showDiscover(p.id, null, null)}
+            >
+              {TILE_MARKS[p.id] ?? (p.name ?? p.id).slice(0, 2)}
+            </button>
+          );
+        })}
       </div>
       {hotAreas.length > 0 && (
         <>
@@ -291,6 +316,14 @@ export default function App() {
               搜索
             </button>
           </form>
+          <button
+            type="button"
+            className="theme-toggle"
+            title={theme === 'dark' ? '切换浅色' : '切换深色'}
+            onClick={() => setTheme((m) => toggleTheme(m))}
+          >
+            {theme === 'dark' ? '🌙' : '☀️'}
+          </button>
         </header>
         <main className="app-main">
           {route.page === 'discover' ? (
@@ -309,6 +342,8 @@ export default function App() {
               platform={route.platform}
               onOpenCategory={(platform, area) => showDiscover(platform, null, area)}
             />
+          ) : route.page === 'follow' ? (
+            <FollowPage key="follow" onEnterRoom={enterRoom} platformName={platformName} />
           ) : (
             <RoomPage
               key={`room:${route.platform}:${route.roomId}`}
