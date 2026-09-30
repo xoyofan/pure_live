@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:pure_live/common/index.dart';
+import 'package:pure_live/core/danmaku/empty_danmaku.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
@@ -21,7 +22,9 @@ import 'package:pure_live/zishu_app/features/play/zishu_play_side_panel.dart';
 /// 数据诚实性(沿用侧栏信息头同口径):关注数 `room.followers` 非空才出
 /// 数值、否则「—」;人气按 人气/观看/在线/累计 择先非空、全空「—」;
 /// 开播时间 pure_live 无 `startedAt` 字段、整项省略(与侧栏信息头既定
-/// 移植口径一致);弹幕总数上游无字段,恒为「—」不伪造。
+/// 移植口径一致);弹幕总数上游无字段,恒为「—」不伪造,且弹幕格仅对已
+/// 接入弹幕的平台渲染(真源 play_meta_bar.dart:116 的
+/// `siteSupportsDanmaku` 门控,能力位见 [_danmakuSiteIds])。
 class ZishuPlayMetaBar extends StatelessWidget {
   const ZishuPlayMetaBar({super.key, required this.room, required this.isLive});
 
@@ -39,6 +42,17 @@ class ZishuPlayMetaBar extends StatelessWidget {
 
   /// 统计格图标尺寸(真源 `_kStatIconSize`)。
   static const double _kStatIconSize = 12;
+
+  /// 已接入弹幕的平台集合(pure_live 等价能力位,对应真源
+  /// `platform_display.dart:51` 的 `siteSupportsDanmaku`):由各站点适配器
+  /// `getDanmaku()` 是否返回 EmptyDanmaku 推导并一次性缓存 —— 弹幕能力是
+  /// 平台静态属性,不随会话变化。与运行时判据同源(zishu_chat_tab.dart:106
+  /// 的 `liveDanmaku is! EmptyDanmaku`);退役/未知平台不在
+  /// [Sites.supportSites] 里,自然按不支持处理。
+  static final Set<String> _danmakuSiteIds = {
+    for (final site in Sites.supportSites)
+      if (site.liveSite.getDanmaku() is! EmptyDanmaku) site.id,
+  };
 
   /// 人气取值:与侧栏信息头 `_SideHeader._popularityLabel` 同链路,
   /// 各平台字段不齐,按 人气/观看/在线/累计 择先非空,缺省「—」。
@@ -113,14 +127,17 @@ class ZishuPlayMetaBar extends StatelessWidget {
                         label: '人气',
                         value: _popularityLabel,
                       ),
-                      _MetaStat(
-                        key: const Key('play-meta-stat-danmaku'),
-                        icon: Icons.chat_bubble_outline_rounded,
-                        iconColor: tokens.textSecondary,
-                        label: i18n('danmaku'),
-                        // 弹幕总数上游无字段,恒「—」(真源同口径,不冒充)。
-                        value: '—',
-                      ),
+                      // 真源 play_meta_bar.dart:116 同款门控:平台未接入
+                      // 弹幕(EmptyDanmaku)时整格省略,不摆恒「—」的空格。
+                      if (_danmakuSiteIds.contains(room.normalizedPlatformId))
+                        _MetaStat(
+                          key: const Key('play-meta-stat-danmaku'),
+                          icon: Icons.chat_bubble_outline_rounded,
+                          iconColor: tokens.textSecondary,
+                          label: i18n('danmaku'),
+                          // 弹幕总数上游无字段,恒「—」(真源同口径,不冒充)。
+                          value: '—',
+                        ),
                     ],
                   ),
                 ],

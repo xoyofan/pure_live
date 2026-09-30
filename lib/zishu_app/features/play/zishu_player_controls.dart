@@ -2,9 +2,9 @@
 /// `lib/src/features/play/widgets/player_controls.dart` 的 PlayerControlsBar)。
 ///
 /// 单行 48px,压在视频底部的渐变 scrim 上(transparent → AppOnVideo.scrim
-/// 黑 72%):左组 = 播放/暂停 + 刷新 + 弹幕开关「弹」+ 弹幕设置齿轮 popover
-/// (显示/透明度/字号/速度/区域);右组 = 静音 + 音量滑杆 96px + 画质选盒 +
-/// 线路选盒 + 画中画 + 宽屏 W + 全屏 F。on-video 墨色恒定暗底语义
+/// 黑 72%):左组 = 播放/暂停 + 刷新 + 睡眠定时 + 弹幕开关「弹」+ 弹幕设置
+/// 齿轮 popover (显示/透明度/字号/速度/区域);右组 = 静音 + 音量滑杆 96px +
+/// 画质选盒 + 线路选盒 + 画中画 + 宽屏 W + 全屏 F。on-video 墨色恒定暗底语义
 /// (AppOnVideo),不随应用主题翻转。
 ///
 /// 与真源的差异(移植口径):
@@ -23,11 +23,13 @@ import 'package:pure_live/common/global/platform_utils.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/utils/play_quality_label.dart';
 import 'package:pure_live/modules/live_play/controllers/player_state.dart' show GlobalPlayerState;
+import 'package:pure_live/modules/live_play/dialogs/room_timer_dialog.dart';
 import 'package:pure_live/modules/live_play/states/load_type.dart';
 import 'package:pure_live/modules/live_play/widgets/video_player/video_controller.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
+import 'package:remixicon/remixicon.dart';
 
 /// on-video 控件的 Material 墨色(样式真源 `_onVideoInkTheme`):控制条恒定
 /// 暗底,hover/pressed/focus 覆盖色必须恒定亮色,否则浅色主题下是深色覆盖层,
@@ -150,7 +152,7 @@ class _ZishuPlayerControlsBarState extends State<ZishuPlayerControlsBar> {
     );
   }
 
-  /// 左组:播放/暂停 → 刷新 → 弹幕开关「弹」→ 弹幕设置齿轮。
+  /// 左组:播放/暂停 → 刷新 → 睡眠定时 → 弹幕开关「弹」→ 弹幕设置齿轮。
   Widget _buildLeftGroup() {
     final danmakuEnabled = SettingsService.to.danmaku.enableDanmakuDisplay.v;
     return Row(
@@ -170,6 +172,7 @@ class _ZishuPlayerControlsBarState extends State<ZishuPlayerControlsBar> {
           },
           icon: const Icon(Icons.refresh_rounded, size: 20, color: AppOnVideo.text),
         ),
+        _SleepTimerButton(controller: controller),
         if (danmakuEnabled) ...[
           _DanmakuToggleButton(controller: controller),
           _DanmakuSettingsButton(controller: controller),
@@ -222,6 +225,52 @@ class _PlayPauseButton extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+/// 睡眠定时入口(样式真源 _SleepTimerButton,player_controls.dart:576-631;
+/// R14:此前唯一入口在 legacy 沉浸态头部,常规态不可达)。
+/// 排布对齐真源左组「播放 → 刷新 → 定时 → 弹幕」;月亮图标运行中转实心 +
+/// 品牌紫高亮,数据源与 ZishuSleepTimerBadge 同一 Rx
+/// (`LivePlayController.state` 的 `ui.closeTimeFlag`,参照
+/// zishu_sleep_timer_badge.dart:111-114 的读法)。
+///
+/// 交互未做真源同款时长 popover:其「关闭定时」「自定义…」菜单项文案无既有
+/// i18n key(json 本轮全轨冻结),故复用既有 RoomTimerDialog —— 该对话框已
+/// 接线设定/取消 2s ZishuStageHint 反馈(room_timer_dialog.dart:72-76),并
+/// 统一处理自定义时长与 maxSleepMinutes clamp;真源 tooltip 的剩余时间同样
+/// 不在此重复(倒计时 pill 常驻舞台右上角,见 ZishuSleepTimerBadge 文档)。
+class _SleepTimerButton extends StatelessWidget {
+  const _SleepTimerButton({required this.controller});
+
+  final VideoController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final live = controller.livePlayController;
+    return Obx(() {
+      final active = live.state.value.ui.closeTimeFlag;
+      return IconButton(
+        key: const Key('play-sleep-timer'),
+        style: _onVideoButtonStyle(),
+        tooltip: i18n('sleep_timer'),
+        onPressed: () async {
+          // 对话框打开期间销定控制条(对齐本文件 popover 的 pin/unpin 口径),
+          // 关闭后解除销定并重新武装自动隐藏。
+          _pinControlBar(controller);
+          try {
+            await RoomTimerDialog.show(context: context, controller: live);
+          } finally {
+            _unpinControlBar(controller);
+          }
+        },
+        icon: Icon(
+          active ? RemixIcons.moon_fill : RemixIcons.moon_line,
+          size: 20,
+          color: active ? context.tokens.accent : AppOnVideo.text,
+        ),
+      );
+    });
   }
 }
 

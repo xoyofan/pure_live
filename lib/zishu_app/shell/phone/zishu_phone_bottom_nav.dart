@@ -6,6 +6,7 @@ import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
 import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
+import 'package:pure_live/zishu_app/shell/flyouts/zishu_follow_avatars.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_my_category_flyout.dart';
 
 /// 窄屏(<768)底部主导航:移植 zishu_flutter `lib/src/app/shell/bottom_nav.dart`
@@ -100,7 +101,11 @@ class ZishuPhoneBottomNav extends StatelessWidget {
           ),
           _BottomItem(
             key: const Key('nav-follow'),
-            leading: _bottomIcon(Icons.favorite_rounded, index == HomeMenu.favorites.index, context.tokens),
+            // 真源 bottom_nav.dart:84-92:关注项 leading 是 20px 档在播头像
+            // 堆叠(_NavFollowAvatars(size: bottomSize)),不是爱心图标;数据
+            // 与壳层关注浮层同一份口径(favoriteRooms 在播过滤)。堆叠纯渲染,
+            // 点击仍由本项 InkWell 进关注页(手机无 hover,不需要触发器壳)。
+            leading: const ZishuFollowAvatarStack(size: ZishuFollowAvatars.bottomSize),
             label: i18n('favorites_title'),
             active: index == HomeMenu.favorites.index,
             onTap: () => onSelectMenu(HomeMenu.favorites.index),

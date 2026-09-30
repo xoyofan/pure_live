@@ -6,8 +6,9 @@ import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 
 /// 顶栏「关注」触发器的在播头像堆叠(移植 zishu 真源
 /// `lib/src/app/shell/follow_avatars.dart` 的 `_NavFollowAvatars`,:34-82):
-/// 23.68px 圆头像、相邻左移 32% 宽实现堆叠、上限 3 张;无在播回落星形图标
-/// (真源空态分支,`textSecondary`)。
+/// 默认 23.68px 圆头像(顶栏档,[size] 可覆写,底栏接 20px 档)、相邻左移
+/// 32% 宽实现堆叠、上限 3 张;无在播回落星形图标(真源空态分支,
+/// `textSecondary`)。
 ///
 /// 数据 = `SettingsService.to.fav.favoriteRooms.v` 过滤 [LiveRoom.isLiveNow]
 /// 取前 3(Obx 订阅,与壳层关注浮层 `_buildFlyouts` 的关注分支同一份口径);
@@ -26,10 +27,16 @@ class ZishuFollowAvatars extends StatelessWidget {
     required this.onHoverStart,
     required this.onHoverEnd,
     required this.tooltip,
+    this.size = avatarSize,
   });
 
-  /// 头像边长(zishu web `--nav-follow-avatar-size: 1.48rem` ≈ 23.68px)。
+  /// 头像边长(顶栏档:zishu web `--nav-follow-avatar-size: 1.48rem`
+  /// ≈ 23.68px;真源 `topSize` 同值)。
   static const double avatarSize = 23.68;
+
+  /// 底栏尺寸:56px 高的底栏里再留出文案行,取 20px
+  /// (真源 `bottomSize` 同值,底栏「关注」项接这一档)。
+  static const double bottomSize = 20;
 
   /// 重叠比例(web `--nav-follow-avatar-overlap`):相邻头像左移 size×0.32。
   static const double overlapRatio = 0.32;
@@ -48,6 +55,9 @@ class ZishuFollowAvatars extends StatelessWidget {
 
   /// 悬停提示文案(沿用顶栏原关注钮的 `favorites_title`)。
   final String tooltip;
+
+  /// 头像边长(默认顶栏档 [avatarSize];底栏关注项接 [bottomSize] 档)。
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -75,10 +85,7 @@ class ZishuFollowAvatars extends StatelessWidget {
               focusColor: Theme.of(context).focusColor,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                child: Obx(() {
-                  final live = SettingsService.to.fav.favoriteRooms.v.where((room) => room.isLiveNow).toList();
-                  return _stack(context, live);
-                }),
+                child: ZishuFollowAvatarStack(size: size),
               ),
             ),
           ),
@@ -86,22 +93,45 @@ class ZishuFollowAvatars extends StatelessWidget {
       },
     );
   }
+}
+
+/// 在播头像堆叠(真源 `_NavFollowAvatars` 的渲染部分,尺寸档可调):
+/// 数据 = `SettingsService.to.fav.favoriteRooms.v` 过滤 [LiveRoom.isLiveNow]
+/// 取前 [ZishuFollowAvatars.limit](Obx 订阅,与壳层关注浮层 `_buildFlyouts`
+/// 的关注分支同一份口径);无在播回落星形图标(真源空态分支,`textSecondary`)。
+///
+/// 纯渲染、不带手势/提示:底栏「关注」项直接用它接 20px 档
+/// ([ZishuFollowAvatars.bottomSize]),点击由底栏项自身的 InkWell 承担;
+/// 顶栏触发器 [ZishuFollowAvatars] 负责悬停/点击语义。
+class ZishuFollowAvatarStack extends StatelessWidget {
+  const ZishuFollowAvatarStack({super.key, this.size = ZishuFollowAvatars.avatarSize});
+
+  /// 头像边长(默认顶栏档;底栏接 `ZishuFollowAvatars.bottomSize`)。
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final live = SettingsService.to.fav.favoriteRooms.v.where((room) => room.isLiveNow).toList();
+      return _stack(context, live);
+    });
+  }
 
   /// 在播头像堆叠;无在播回落星形图标(真源空态分支)。
   Widget _stack(BuildContext context, List<LiveRoom> live) {
     if (live.isEmpty) {
       return SizedBox(
-        width: avatarSize,
-        height: avatarSize,
-        child: Icon(Icons.star_border_rounded, size: avatarSize * 0.76, color: context.tokens.textSecondary),
+        width: size,
+        height: size,
+        child: Icon(Icons.star_border_rounded, size: size * 0.76, color: context.tokens.textSecondary),
       );
     }
-    final shown = live.take(limit).toList();
-    final step = avatarSize * (1 - overlapRatio);
-    final width = avatarSize + (shown.length - 1) * step;
+    final shown = live.take(ZishuFollowAvatars.limit).toList();
+    final step = size * (1 - ZishuFollowAvatars.overlapRatio);
+    final width = size + (shown.length - 1) * step;
     return SizedBox(
       width: width,
-      height: avatarSize,
+      height: size,
       child: Stack(
         children: [
           for (var i = 0; i < shown.length; i++)
@@ -109,7 +139,7 @@ class ZishuFollowAvatars extends StatelessWidget {
               // 左起第一个在最上层(web 用 zIndex: length - index 配
               // margin-left 负值,Stack 后画在上同效)。
               left: i * step,
-              child: _FollowAvatarBadge(room: shown[i], size: avatarSize),
+              child: _FollowAvatarBadge(room: shown[i], size: size),
             ),
         ],
       ),

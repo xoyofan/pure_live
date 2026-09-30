@@ -8,13 +8,15 @@ import 'package:pure_live/core/common/site_ids.dart';
 import 'package:pure_live/core/common/core_log.dart';
 import 'package:pure_live/core/common/http_client.dart';
 import 'package:pure_live/core/site/douyin/douyin_audience.dart';
+import 'package:pure_live/core/utils/douyin/douyin_request_params.dart';
 import 'package:pure_live/core/utils/douyin/douyin_utils.dart';
 
 class DouyinSearch {
   static const String host = 'https://live.douyin.com';
-  static const String userAgent =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+  /// 请求头 UA 与 a_bogus 签名实现同源（DouyinRequestParams.kDefaultUserAgent），
+  /// 避免请求头与签名各用不同 Chrome 版本导致的 UA 失配。
+  static const String userAgent = DouyinRequestParams.kDefaultUserAgent;
 
   static const Map<String, dynamic> defaultHeaders = {
     'User-Agent': userAgent,
@@ -115,6 +117,21 @@ class DouyinSearch {
         trimmed.contains('验证码');
   }
 
+  /// 从 cookie 串里取指定字段值（对齐 zishu live_parser search.dart::_cookiePart）。
+  static String _cookieValue(String cookie, String name) {
+    for (final part in cookie.split(';')) {
+      final index = part.indexOf('=');
+
+      if (index <= 0) continue;
+
+      if (part.substring(0, index).trim() == name) {
+        return part.substring(index + 1).trim();
+      }
+    }
+
+    return '';
+  }
+
   /// Requests a signed search endpoint and decodes the body defensively.
   ///
   /// Returns the parsed rooms plus a failure tag ('' on success) so [search]
@@ -126,6 +143,14 @@ class DouyinSearch {
     Map<String, dynamic> params,
     Map<String, dynamic> headers,
   ) async {
+    // 优先复用 cookie 里的真实 msToken（对齐 zishu search.dart 的做法），
+    // 拿不到时由 buildRequestUrl 走缺省随机生成。
+    final cookieMsToken = _cookieValue(await _getCookie(), 'msToken');
+
+    if (cookieMsToken.isNotEmpty) {
+      params['msToken'] = cookieMsToken;
+    }
+
     final targetUrl = DouyinUtils.buildRequestUrl(endpoint, params);
 
     final body = await HttpClient.instance.getText(targetUrl, header: headers);

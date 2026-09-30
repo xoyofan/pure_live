@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/modules/areas/areas_list_controller.dart';
 import 'package:pure_live/routes/app_navigation.dart';
+import 'package:pure_live/zishu/domain/category_display.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/widgets/empty_view.dart' as zishu;
@@ -162,7 +163,8 @@ class _ZishuPhoneCategorySheetState extends State<ZishuPhoneCategorySheet> {
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
-                category.name,
+                // 分组名统一走跨平台中文映射(已有中文名原样返回,海外平台归一)。
+                displayCategoryGroupName(widget.siteId, category.name),
                 style: TextStyle(
                   fontSize: AppFontSize.bodySecondary,
                   fontWeight: FontWeight.w700,
@@ -202,7 +204,8 @@ class _ZishuPhoneCategorySheetState extends State<ZishuPhoneCategorySheet> {
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           child: Text(
-                            area.areaName!,
+                            // chip 名同走映射,areaId 当 cid(soop 等按分类号反查中文名)。
+                            displayCategoryName(widget.siteId, area.areaName, area.areaId),
                             style: TextStyle(fontSize: AppFontSize.bodySecondary, color: tokens.textPrimary),
                           ),
                         ),

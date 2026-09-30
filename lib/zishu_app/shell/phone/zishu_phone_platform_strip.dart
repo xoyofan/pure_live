@@ -195,19 +195,26 @@ class _StripItem extends StatelessWidget {
               ),
             ),
             Container(width: 1, height: iconSize + (landscape ? 0 : 14), color: tokens.border),
-            // ▼ 打开该平台分类底部面板(锚点名沿用真源 `platform-strip-cat-{site}`)。
-            InkWell(
-              key: Key('platform-strip-cat-${site.id}'),
-              onTap: onOpenCategories,
-              onLongPress: onOpenCategories,
-              hoverColor: tokens.surfaceRaised,
-              focusColor: AppStateLayer.focusOf(tokens.accent),
-              splashColor: AppStateLayer.splashOf(tokens.accent),
-              highlightColor: AppStateLayer.pressedOf(tokens.accent),
-              child: SizedBox(
-                width: arrowWidth,
-                height: iconSize + 12,
-                child: Icon(Icons.keyboard_arrow_down_rounded, size: landscape ? 17 : 20, color: tokens.textSecondary),
+            // 旧锚点 `platform-category-{site}`:既有响应式用例仍按它断言入口
+            // 可达,故用 KeyedSubtree 继续提供(点击落到下面 InkWell;真源
+            // platform_strip.dart:177-202 同款过渡期兼容,一个控件两个名字
+            // 是刻意的,勿删)。
+            KeyedSubtree(
+              key: Key('platform-category-${site.id}'),
+              // ▼ 打开该平台分类底部面板(新锚点沿用真源 `platform-strip-cat-{site}`)。
+              child: InkWell(
+                key: Key('platform-strip-cat-${site.id}'),
+                onTap: onOpenCategories,
+                onLongPress: onOpenCategories,
+                hoverColor: tokens.surfaceRaised,
+                focusColor: AppStateLayer.focusOf(tokens.accent),
+                splashColor: AppStateLayer.splashOf(tokens.accent),
+                highlightColor: AppStateLayer.pressedOf(tokens.accent),
+                child: SizedBox(
+                  width: arrowWidth,
+                  height: iconSize + 12,
+                  child: Icon(Icons.keyboard_arrow_down_rounded, size: landscape ? 17 : 20, color: tokens.textSecondary),
+                ),
               ),
             ),
           ],

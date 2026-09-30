@@ -1,5 +1,6 @@
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/modules/areas/areas_list_controller.dart';
+import 'package:pure_live/zishu/domain/category_display.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_flyout_panel.dart';
@@ -113,6 +114,17 @@ class _CategoryBoardState extends State<_CategoryBoard> {
 
   ScrollController _controllerFor(int index) => _scrollControllers.putIfAbsent(index, () => ScrollController());
 
+  /// 分组挂的平台 id:真源该组件由壳层显式传 site,本端站点 id 就写在
+  /// 目录条目的 `LiveArea.platform` 里(各站点适配器同款),取首个非空;
+  /// 全空时回空串,映射函数退化为按名称查跨平台表,原名兜底。
+  String _siteOf(AppLiveCategory group) {
+    for (final area in group.children) {
+      final platform = area.platform?.trim() ?? '';
+      if (platform.isNotEmpty) return platform;
+    }
+    return '';
+  }
+
   @override
   void dispose() {
     for (final controller in _scrollControllers.values) {
@@ -198,7 +210,8 @@ class _CategoryBoardState extends State<_CategoryBoard> {
                 border: Border(bottom: BorderSide(color: tokens.border)),
               ),
               child: Text(
-                group.name,
+                // 分组名统一走跨平台中文映射(已有中文名原样返回,海外平台归一)。
+                displayCategoryGroupName(_siteOf(group), group.name),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -235,7 +248,9 @@ class _CategoryChipState extends State<_CategoryChip> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final label = (widget.area.areaName ?? '').trim();
+    // 条目名统一走跨平台中文映射:站点取条目自带 platform,areaId 当 cid
+    // (soop 等按分类号反查中文名);空名/未命中映射时函数内原样兜底。
+    final label = displayCategoryName(widget.area.platform, widget.area.areaName, widget.area.areaId);
     final onTap = widget.onOpenCategory == null ? null : () => widget.onOpenCategory!(widget.area);
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),

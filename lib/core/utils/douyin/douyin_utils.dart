@@ -8,10 +8,11 @@ import 'abogus.dart';
 import 'douyin_request_params.dart';
 
 class DouyinUtils {
-  // 根据传入长度产生随机字符串
-  static String getMSToken({int randomLength = 184}) {
+  // 生成随机 msToken：缺省长度与字符集对齐 zishu live_parser randomDouyinMsToken
+  // （缺省 107 位，字符集为 '-_' 而非 '='，见 normalize.dart）。
+  static String getMSToken({int randomLength = 107}) {
     if (randomLength < 0) throw ArgumentError.value(randomLength, 'randomLength');
-    const baseStr = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789=';
+    const baseStr = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
     final random = Random.secure();
     final sb = StringBuffer();
     for (var i = 0; i < randomLength; i++) {
@@ -26,7 +27,8 @@ class DouyinUtils {
     final exParams = <String, dynamic>{...parsedUrl.queryParameters, ...params};
     exParams['aid'] = DouyinRequestParams.aidValue;
     exParams['compress'] = 'gzip';
-    exParams['device_platform'] = 'web';
+    // 尊重调用方显式传入的 device_platform（搜索接口用 'webapp'），缺省仍为 'web'。
+    exParams['device_platform'] ??= 'web';
     exParams['browser_language'] = 'zh-CN';
     exParams['browser_platform'] = 'Win32';
     exParams['browser_name'] = 'Edge';
