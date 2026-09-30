@@ -98,6 +98,8 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
   const [danmakuMuted, setDanmakuMuted] = useState(false);
+  /** CDN line index within the current play.urls list (0-based). */
+  const [line, setLine] = useState(0);
 
   const playSeqRef = useRef(0);
   const resolveSeqRef = useRef(0);
@@ -158,6 +160,7 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
         setPlay(res);
         setCurrentQuality(res.quality);
         currentQualityIdRef.current = res.quality;
+        setLine(0);
         setNonce((n) => n + 1);
         if (mode === 'auto') autoRecoveryUsedRef.current = true;
       } catch (err: unknown) {
@@ -245,7 +248,7 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
   const source: PlaybackSource | null =
     play !== null && playable
       ? (() => {
-          const url = toPlaybackUrl(play);
+          const url = toPlaybackUrl(play, line);
           return url ? { url, protocol: play.protocol, nonce } : null;
         })()
       : null;
@@ -385,6 +388,21 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
                           onClick={() => selectQuality(q.selectionId)}
                         >
                           {q.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {(play?.urls.length ?? 0) > 1 && (
+                    <div className="controls-group">
+                      {(play?.urls ?? []).map((_, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          className={`ctrl-chip${index === line ? ' active' : ''}`}
+                          onClick={() => setLine(index)}
+                          title={`线路${index + 1}`}
+                        >
+                          线路{index + 1}
                         </button>
                       ))}
                     </div>

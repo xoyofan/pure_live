@@ -207,14 +207,18 @@ export function buildProxyUrl(url: string, headers: Record<string, string>): str
 }
 
 /**
- * Resolve the URL a media element should load: through /proxy when the
- * upstream requires browser-restricted headers, otherwise direct.
+ * Resolve the URL a media element should load (line `line` of the resolved
+ * list, 0-based): through /proxy when the upstream requires browser-restricted
+ * headers, otherwise direct.
  */
-export function toPlaybackUrl(play: {
-  urls: string[];
-  headers: Record<string, string>;
-}): string | null {
-  const url = play.urls[0];
+export function toPlaybackUrl(
+  play: {
+    urls: string[];
+    headers: Record<string, string>;
+  },
+  line = 0,
+): string | null {
+  const url = play.urls[line];
   if (!url) return null;
   return needsProxy(play.headers) ? buildProxyUrl(url, play.headers) : url;
 }
