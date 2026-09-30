@@ -6,19 +6,19 @@ import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/platform_icon.dart';
 
-/// zishu 首页外壳(宽屏 >680):44px 顶栏 + 200px 左侧栏。
+/// zishu 前端移植主外壳(宽屏 >680):44px 顶栏 + 可折叠浏览侧栏。
 ///
-/// 对齐 zishu exe `exe_now_home` 基线与 pure_live web 线拍板布局:
-/// 顶栏 = 品牌字 + 主导航图标组(首页/分区/关注·金) | 平台 tab 居中 | 工具区
-/// (搜索/设置);侧栏 = 平台品牌色块 2 列 + 「热门分类」Top12 + 录制入口。
-/// 平台 tab/色块点击 → 切到热门页并 animateTo 对应站点 tab。
-class ZishuHomeShell extends StatefulWidget {
+/// 新目录 `lib/zishu_app/` 按"照搬 zishu 前端 + pure_live 解析"路线组建;
+/// 本壳对齐 zishu browse_sidebar:侧栏展开 220 / 收起 52
+/// ([AppDirectoryDrawer]),右缘外挂 13.6×44 突出折叠按钮(仅右侧 4px
+/// 圆角);平台块统一 44×44、横向 Wrap 自动换行。
+class ZishuAppShell extends StatefulWidget {
   final Widget body;
   final int index;
   final List<String> activeMenuIds;
   final void Function(int) onDestinationSelected;
 
-  const ZishuHomeShell({
+  const ZishuAppShell({
     super.key,
     required this.body,
     required this.index,
@@ -27,12 +27,10 @@ class ZishuHomeShell extends StatefulWidget {
   });
 
   @override
-  State<ZishuHomeShell> createState() => _ZishuHomeShellState();
+  State<ZishuAppShell> createState() => _ZishuAppShellState();
 }
 
-class _ZishuHomeShellState extends State<ZishuHomeShell> {
-  /// 侧栏「热门分类」目录:对齐 zishu exe 侧栏视觉(点击暂只切换到分区页,
-  /// 站内分类联动留到浏览批接线)。
+class _ZishuAppShellState extends State<ZishuAppShell> {
   static const List<String> _hotCategories = [
     '英雄联盟',
     '王者荣耀',
@@ -54,6 +52,7 @@ class _ZishuHomeShellState extends State<ZishuHomeShell> {
   PopularController? _popular;
   VoidCallback? _tabListener;
   bool _bound = false;
+  bool _collapsed = false;
   int _siteIndex = 0;
 
   @override
@@ -63,7 +62,7 @@ class _ZishuHomeShellState extends State<ZishuHomeShell> {
   }
 
   @override
-  void didUpdateWidget(covariant ZishuHomeShell oldWidget) {
+  void didUpdateWidget(covariant ZishuAppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
     _bindPopular();
   }
@@ -113,8 +112,7 @@ class _ZishuHomeShellState extends State<ZishuHomeShell> {
     return sites[_siteIndex].id;
   }
 
-  /// 平台入口渲染表:`savedPlatformIds` 顺序优先;热门页新增站点(不在
-  /// 保存表)追加在尾部,保证新平台默认可见。
+  /// 平台入口渲染表:`savedPlatformIds` 顺序优先;热门页新增站点追加在尾部。
   List<Site> _visibleSites() {
     final saved = SettingsService.to.app.savedPlatformIds.v;
     final all = _sites;
@@ -151,8 +149,7 @@ class _ZishuHomeShellState extends State<ZishuHomeShell> {
     return Scaffold(
       backgroundColor: tokens.background,
       body: SafeArea(
-        // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表,设置里
-        // 改排序/显隐即时反映到顶栏与侧栏。
+        // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表。
         child: Obx(() {
           final visibleSites = _visibleSites();
           return Column(
@@ -168,10 +165,12 @@ class _ZishuHomeShellState extends State<ZishuHomeShell> {
               Expanded(
                 child: Row(
                   children: [
-                    _Sidebar(
+                    _BrowseSidebar(
                       index: widget.index,
                       sites: visibleSites,
                       currentSiteId: _currentSiteId,
+                      collapsed: _collapsed,
+                      onToggleCollapsed: () => setState(() => _collapsed = !_collapsed),
                       onSelectSite: _selectSiteId,
                       onSelectMenu: widget.onDestinationSelected,
                     ),
@@ -307,8 +306,7 @@ class _TopNavIcon extends StatelessWidget {
   }
 }
 
-/// 顶栏平台 tab:32×32 悬停 pill 内放平台图标(纯 live 站点 id 对齐 zishu
-/// 品牌表;未收录平台由 PlatformIcon 落品牌金字母兜底)。
+/// 顶栏平台 tab:32×32 悬停 pill 内放平台图标。
 class _PlatformTab extends StatelessWidget {
   final Site site;
   final bool selected;
@@ -365,18 +363,25 @@ class _TopNavTool extends StatelessWidget {
   }
 }
 
-/// 200px 侧栏:surfaceSoft 底,平台色块 2 列 + 热门分类 + 录制入口。
-class _Sidebar extends StatelessWidget {
+/// 可折叠浏览侧栏:展开 220 / 收起 52,右缘外挂突出折叠按钮。
+///
+/// 展开态 = 平台统一色块(44×44,Wrap 横向换行)+ 热门分类 + 录制;
+/// 收起态 = 平台图标竖排 + 折叠按钮。
+class _BrowseSidebar extends StatelessWidget {
   final int index;
   final List<Site> sites;
   final String? currentSiteId;
+  final bool collapsed;
+  final VoidCallback onToggleCollapsed;
   final void Function(String) onSelectSite;
   final void Function(int) onSelectMenu;
 
-  const _Sidebar({
+  const _BrowseSidebar({
     required this.index,
     required this.sites,
     required this.currentSiteId,
+    required this.collapsed,
+    required this.onToggleCollapsed,
     required this.onSelectSite,
     required this.onSelectMenu,
   });
@@ -384,55 +389,148 @@ class _Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return Container(
-      width: 200,
-      color: tokens.surfaceSoft,
-      child: ListView(
-        padding: const EdgeInsets.all(AppSpacing.sm),
+    final width = collapsed ? AppDirectoryDrawer.railWidth : AppDirectoryDrawer.width;
+    return SizedBox(
+      width: width + AppDirectoryDrawer.toggleWidth,
+      child: Stack(
         children: [
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: [
-              for (final site in sites)
-                _PlatformBlock(
-                  site: site,
-                  selected: site.id == currentSiteId && index == HomeMenu.popular.index,
-                  onTap: () => onSelectSite(site.id),
-                ),
-            ],
+          Container(
+            width: width,
+            color: tokens.surfaceSoft,
+            child: collapsed ? _buildCollapsed(context, tokens) : _buildExpanded(context, tokens),
           ),
-          const SizedBox(height: AppSpacing.lg),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.xs),
-            child: Row(
-              children: [
-                Container(
-                  width: 5,
-                  height: 5,
-                  decoration: BoxDecoration(color: tokens.brand, shape: BoxShape.circle),
+          // 突出折叠按钮:贴侧栏右缘外挂 13.6×44,仅右侧 4px 圆角。
+          Positioned(
+            left: width,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: Material(
+                color: tokens.surface,
+                borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+                elevation: 1,
+                child: InkWell(
+                  onTap: onToggleCollapsed,
+                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+                  child: SizedBox(
+                    width: AppDirectoryDrawer.toggleWidth,
+                    height: AppDirectoryDrawer.toggleHeight,
+                    child: Icon(
+                      collapsed ? Remix.arrow_right_s_line : Remix.arrow_left_s_line,
+                      size: 16,
+                      color: tokens.textSecondary,
+                    ),
+                  ),
                 ),
-                const SizedBox(width: AppSpacing.sm),
-                Text('热门分类', style: context.textSecondary),
-              ],
+              ),
             ),
-          ),
-          for (final category in _ZishuHomeShellState._hotCategories)
-            _CategoryRow(name: category, onTap: () => onSelectMenu(HomeMenu.areas.index)),
-          const Divider(height: AppSpacing.xl),
-          _CategoryRow(
-            name: i18n('record_center'),
-            icon: Remix.download_2_line,
-            selected: index == HomeMenu.record.index,
-            onTap: () => onSelectMenu(HomeMenu.record.index),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildExpanded(BuildContext context, ZishuTokens tokens) {
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      children: [
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            for (final site in sites)
+              _PlatformBlock(
+                site: site,
+                selected: site.id == currentSiteId && index == HomeMenu.popular.index,
+                onTap: () => onSelectSite(site.id),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.xs),
+          child: Row(
+            children: [
+              Container(
+                width: 5,
+                height: 5,
+                decoration: BoxDecoration(color: tokens.brand, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text('热门分类', style: context.textSecondary),
+            ],
+          ),
+        ),
+        for (final category in _ZishuAppShellState._hotCategories)
+          _CategoryRow(name: category, onTap: () => onSelectMenu(HomeMenu.areas.index)),
+        const Divider(height: AppSpacing.xl),
+        _CategoryRow(
+          name: i18n('record_center'),
+          icon: Remix.download_2_line,
+          selected: index == HomeMenu.record.index,
+          onTap: () => onSelectMenu(HomeMenu.record.index),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCollapsed(BuildContext context, ZishuTokens tokens) {
+    return Column(
+      children: [
+        const SizedBox(height: AppSpacing.sm),
+        for (final site in sites)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: InkResponse(
+              onTap: () => onSelectSite(site.id),
+              radius: 18,
+              hoverColor: tokens.surfaceRaised,
+              child: Tooltip(
+                message: site.name,
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: site.id == currentSiteId && index == HomeMenu.popular.index
+                        ? tokens.surfaceRaised
+                        : Colors.transparent,
+                    borderRadius: AppRadius.allMd,
+                    border: Border.all(
+                      color: site.id == currentSiteId && index == HomeMenu.popular.index
+                          ? tokens.brand
+                          : Colors.transparent,
+                      width: 1,
+                    ),
+                  ),
+                  child: Center(child: PlatformIcon(id: site.id, size: 26)),
+                ),
+              ),
+            ),
+          ),
+        const Divider(height: AppSpacing.lg),
+        InkResponse(
+          onTap: () => onSelectMenu(HomeMenu.record.index),
+          radius: 18,
+          hoverColor: tokens.surfaceRaised,
+          child: Tooltip(
+            message: i18n('record_center'),
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(
+                Remix.download_2_line,
+                size: 20,
+                color: index == HomeMenu.record.index ? tokens.brand : tokens.textSecondary,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-/// 平台色块:品牌色底 + 平台图标,选中态品牌金描边。
+/// 平台色块:统一 44×44,品牌色底 + 平台图标,选中态品牌金描边。
 class _PlatformBlock extends StatelessWidget {
   final Site site;
   final bool selected;
@@ -451,14 +549,14 @@ class _PlatformBlock extends StatelessWidget {
         onTap: onTap,
         borderRadius: AppRadius.allMd,
         child: Container(
-          width: 82,
-          height: 40,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
             color: color,
             borderRadius: AppRadius.allMd,
             border: Border.all(color: selected ? tokens.brand : Colors.transparent, width: 1.5),
           ),
-          child: Center(child: PlatformIcon(id: site.id, size: 24)),
+          child: Center(child: PlatformIcon(id: site.id, size: 28)),
         ),
       ),
     );
