@@ -58,7 +58,7 @@ M2 逐步扩展:`huya`、`douyu`、`cc`、`soop`、`yy`、`twitch`、`iptv` 等�
 ### 4.2 `GET /platforms` (M1)
 
 ```json
-{ "platforms": [ { "id": "bilibili", "name": "BiliBili", "capabilities": ["resolve", "play-urls", "qualities", "danmaku"] } ] }
+{ "platforms": [ { "id": "bilibili", "name": "BiliBili", "capabilities": ["resolve", "play-urls", "qualities", "danmaku", "search", "directory"] } ] }
 ```
 
 `capabilities` 取值:`resolve` | `play-urls` | `qualities` | `danmaku` | `search` | `directory`。
@@ -115,11 +115,35 @@ M2 逐步扩展:`huya`、`douyu`、`cc`、`soop`、`yy`、`twitch`、`iptv` 等�
 - `protocol`:`flv` | `hls` | `mp4` | `unknown`。
 - `quality` 缺省时返回平台默认清晰度;`qualities` 不再重复返回(用 4.4)。
 
-### 4.6 `GET /search/{platform}?keyword=&page=` (M2)
+### 4.6 发现与搜索 (directory / search)
+
+房间列表条目统一为**瘦身 LiveRoom**(与 4.3 同形,字段可缺省):
 
 ```json
-{ "page": 1, "hasMore": true, "rooms": [ { "platform": "...", "roomId": "...", "title": "...", "nick": "...", "cover": "...", "watching": "...", "status": true, "liveStatus": "live" } ] }
+{ "page": 1, "hasMore": true, "rooms": [ { "platform": "...", "roomId": "...", "title": "...", "nick": "...", "avatar": "...", "cover": "...", "watching": "...", "link": "...", "status": true, "liveStatus": "live" } ] }
 ```
+
+`page` 从 1 起;`hasMore` 以返回条数是否达到 pageSize 估计。`pageSize` 缺省 30,上限 50。
+
+#### 4.6.1 `GET /directory/{platform}/categories`
+
+分类树(Flutter `LiveCategory`/`LiveArea` 序列化;`areaId`/`areaType` 回传给 4.6.3):
+
+```json
+{ "categories": [ { "id": "0", "name": "推荐", "children": [ { "platform": "douyin", "areaType": "0", "typeName": "推荐", "areaId": "0", "areaName": "推荐", "areaPic": "https://...", "shortName": "" } ] } ] }
+```
+
+#### 4.6.2 `GET /directory/{platform}/recommend?page=&pageSize=`
+
+平台推荐流(首页网格数据源)。
+
+#### 4.6.3 `GET /directory/{platform}/categories/{areaId}/rooms?areaType=&typeName=&page=&pageSize=`
+
+分类房间列表;`areaType`/`typeName` 按平台需要回传。
+
+#### 4.6.4 `GET /search/{platform}?keyword=&page=&pageSize=`
+
+按关键字搜房间。
 
 ### 4.7 `GET /proxy?u=<encodeURIComponent(播放地址)>&h=<base64url(JSON headers)>` (M1)
 
@@ -167,5 +191,6 @@ M2 逐步扩展:`huya`、`douyu`、`cc`、`soop`、`yy`、`twitch`、`iptv` 等�
 ## 7. 里程碑
 
 - **M1(本轮并行实现)**:契约全部 M1 端点;bilibili + douyin 的 resolve/play-urls/qualities;proxy;bilibili 弹幕 WS;web 播放间(输入/URL 直达 → 房间页:播放器 + 弹幕 + 清晰度切换)。
-- **M2**:huya/douyu 弹幕(TARS/签名)、search/directory 端点、web 首页发现流、更多平台。
+- **M1.5(本轮追加)**:sidecar 全量站点能力暴露(categories/categoryRooms/recommendRooms/searchRooms);4.6 发现与搜索端点;web 平台首页(推荐/分类网格)+ 搜索。
+- **M2**:huya/douyu 弹幕(TARS/签名)、更多平台进 sidecar。
 - **M3**:C++ addon 替换 `ResolverBackend`、录制、鉴权强化。

@@ -1,8 +1,10 @@
 // Walk pure_live-internal imports from the two site roots; flag Flutter/GetX edges.
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = 'D:/pure_live';
+// Repo root (this file lives in tool/sidecar/); overridable for foreign checkouts.
+const ROOT = process.env.PURE_LIVE_ROOT ?? resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const BAD = /package:(flutter|get\/|easy_localization|hive_ce|hive|window_manager|path_provider|flutter_smart_dialog|permission_handler|share_handler|flv_lzc)/;
 
 const start = [

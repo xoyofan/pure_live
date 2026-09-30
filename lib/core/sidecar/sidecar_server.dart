@@ -7,6 +7,7 @@
 // "error":{"code":"...","message":"..."}}.
 //
 // Methods: health | resolve | qualities | playUrls
+//          | categories | categoryRooms | recommendRooms | searchRooms
 // (contracts stay in contracts/api.md; this process is a Dart-side
 // implementation detail of the streaming server's ResolverBackend).
 import 'dart:async';
@@ -18,7 +19,31 @@ import 'package:pure_live/core/site/bilibili/bilibili_site.dart';
 import 'package:pure_live/core/site/douyin/douyin_site.dart';
 import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/model/live_play_quality.dart';
+import 'package:pure_live/model/live_category.dart';
+import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
+
+/// Page-size ceiling shared by every list method (api.md 4.6).
+const int _maxPageSize = 50;
+
+int _pageOf(Map<String, dynamic> params) {
+  final value = asT<int?>(params['page']) ?? (int.tryParse('${params['page'] ?? ''}') ?? 1);
+  return value < 1 ? 1 : value;
+}
+
+int _pageSizeOf(Map<String, dynamic> params) {
+  final value = asT<int?>(params['pageSize']) ?? (int.tryParse('${params['pageSize'] ?? ''}') ?? 30);
+  if (value < 1) return 30;
+  return value > _maxPageSize ? _maxPageSize : value;
+}
+
+Map<String, dynamic> _roomListResult(List<LiveRoom> rooms, int page, int pageSize) {
+  return {
+    'page': page,
+    'hasMore': rooms.length >= pageSize,
+    'rooms': [for (final room in rooms) _roomToJson(room)],
+  };
+}
 
 final Map<String, LiveSite> _sites = {
   'bilibili': BiliBiliSite(),
@@ -92,6 +117,54 @@ Future<Object?> _dispatch(String method, Map<String, dynamic> params) async {
         'qualityId': '${chosen.selectionId}',
         'urls': urls,
       };
+
+    case 'categories': {
+      final page = _pageOf(params);
+      final pageSize = _pageSizeOf(params);
+      final categories = await site.getCategores(page, pageSize);
+      return {
+        'categories': [
+          for (final category in categories)
+            {
+              'id': category.id,
+              'name': category.name,
+              'children': [for (final area in category.children) area.toJson()],
+            },
+        ],
+      };
+    }
+
+    case 'categoryRooms': {
+      final page = _pageOf(params);
+      final pageSize = _pageSizeOf(params);
+      final areaId = asT<String?>(params['areaId']) ?? '';
+      if (areaId.isEmpty) throw _RpcError('BAD_REQUEST', 'areaId is required');
+      final area = LiveArea(
+        platform: platform,
+        areaType: asT<String?>(params['areaType']),
+        typeName: asT<String?>(params['typeName']),
+        areaId: areaId,
+        areaName: asT<String?>(params['areaName']),
+      );
+      final rooms = await site.getCategoryRooms(area, page: page, pageSize: pageSize);
+      return _roomListResult(rooms, page, pageSize);
+    }
+
+    case 'recommendRooms': {
+      final page = _pageOf(params);
+      final pageSize = _pageSizeOf(params);
+      final rooms = await site.getRecommendRooms(page: page, pageSize: pageSize);
+      return _roomListResult(rooms, page, pageSize);
+    }
+
+    case 'searchRooms': {
+      final page = _pageOf(params);
+      final pageSize = _pageSizeOf(params);
+      final keyword = asT<String?>(params['keyword']) ?? '';
+      if (keyword.trim().isEmpty) throw _RpcError('BAD_REQUEST', 'keyword is required');
+      final rooms = await site.searchRooms(keyword.trim(), page: page, pageSize: pageSize);
+      return _roomListResult(rooms, page, pageSize);
+    }
 
     default:
       throw _RpcError('BAD_REQUEST', 'unknown method "$method"');
