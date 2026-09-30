@@ -130,27 +130,27 @@ dependencies:
 
   # -------------------------- 播放器核心 media_core --------------------------
   media_core:
-    path: C:/Users/XA-158/projects/flutter/media_core/packages/media_core
+    path: D:/media_core/packages/media_core
   media_core_media_kit:
-    path: C:/Users/XA-158/projects/flutter/media_core/packages/media_core_media_kit
+    path: D:/media_core/packages/media_core_media_kit
   media_core_ui:
-    path: C:/Users/XA-158/projects/flutter/media_core/packages/media_core_ui
+    path: D:/media_core/packages/media_core_ui
   media_core_pip:
-    path: C:/Users/XA-158/projects/flutter/media_core/packages/media_core_pip
+    path: D:/media_core/packages/media_core_pip
   media_core_fullscreen:
-    path: C:/Users/XA-158/projects/flutter/media_core/packages/media_core_fullscreen
+    path: D:/media_core/packages/media_core_fullscreen
   media_core_multiview:
-    path: C:/Users/XA-158/projects/flutter/media_core/packages/media_core_multiview
+    path: D:/media_core/packages/media_core_multiview
   media_core_presentation:
-    path: C:/Users/XA-158/projects/flutter/media_core/packages/media_core_presentation
+    path: D:/media_core/packages/media_core_presentation
   media_core_floating:
-    path: C:/Users/XA-158/projects/flutter/media_core/packages/media_core_floating
+    path: D:/media_core/packages/media_core_floating
   media_core_ijk_player:
-    path: C:/Users/XA-158/projects/flutter/media_core/packages/media_core_ijk_player
+    path: D:/media_core/packages/media_core_ijk_player
   media_core_better_player:
-    path: C:/Users/XA-158/projects/flutter/media_core/packages/media_core_better_player
+    path: D:/media_core/packages/media_core_better_player
   media_core_fvp:
-    path: C:/Users/XA-158/projects/flutter/media_core/packages/media_core_fvp
+    path: D:/media_core/packages/media_core_fvp
 
   # -------------------------- 数据存储/数据库 --------------------------
   hive_ce: ^2.20.0 # Hive本地数据库

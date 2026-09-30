@@ -66,3 +66,6 @@ app.*.map.json
 # FVM Version Cache
 .fvm/
 **/.make_config.yaml
+
+# Agent session/tool caches (codegraph data self-ignores via .codegraph/.gitignore)
+.zcode/

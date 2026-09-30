@@ -4,35 +4,18 @@ import RoomPage from './pages/RoomPage';
 
 type Route = { page: 'home' } | { page: 'room'; platform: string; roomId: string };
 
-/** Page kinds that live under a platform prefix (/{platform}/{kind}/...). */
-const PAGE_KINDS = ['room'] as const;
-
 /**
- * Derive the route from the URL. Supported forms (canonical first):
- *   /{platform}/room/{roomId}   e.g. /douyin/room/435911602058
- *   /{platform}/{roomId}        shorthand without the page kind
- *   /?platform=...&roomId=...   legacy query form
+ * Derive the route from the URL. The canonical room form is
+ * /{platform}/room/{roomId} — e.g. /douyin/room/435911602058.
+ * Anything else is the home page.
  */
 function routeFromLocation(): Route {
   const segments = window.location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-  if (segments.length >= 2) {
-    const [platform, kind, ...rest] = segments;
-    if ((PAGE_KINDS as readonly string[]).includes(kind)) {
-      if (kind === 'room' && rest[0]) {
-        return { page: 'room', platform, roomId: rest[0] };
-      }
-      // Known kind with a missing id (e.g. /douyin/room) — home for now.
-      return { page: 'home' };
+  if (segments.length === 3) {
+    const [platform, kind, id] = segments;
+    if (kind === 'room' && platform && id) {
+      return { page: 'room', platform, roomId: id };
     }
-    if (segments.length === 2 && rest.length === 0) {
-      return { page: 'room', platform, roomId: kind };
-    }
-  }
-  const params = new URLSearchParams(window.location.search);
-  const platform = params.get('platform');
-  const roomId = params.get('roomId');
-  if (platform && roomId) {
-    return { page: 'room', platform, roomId };
   }
   return { page: 'home' };
 }
