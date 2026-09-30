@@ -5,6 +5,7 @@ import 'package:pure_live/common/index.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
+import 'package:pure_live/zishu_app/shell/flyouts/zishu_my_category_flyout.dart';
 
 /// 窄屏(<768)底部主导航:移植 zishu_flutter `lib/src/app/shell/bottom_nav.dart`
 /// 的 `_BottomNav`(56px、surfaceSoft 底、顶缘 1px 边框)。
@@ -14,8 +15,9 @@ import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
 /// nav-category/nav-my-category/nav-follow/nav-search/nav-theme)沿用真源,
 /// `nav-settings` 随「我的」项一并省略。标签优先用既有 i18n key
 /// (popular_title=热门 / areas_title=分区 / favorites_title=关注 /
-/// search_live=搜索直播 / theme_mode_light|dark=浅色|深色模式);
-/// 「我的分类」无既有 key,暂用中文字面量。
+/// search_live=搜索直播 / theme_mode_light|dark=浅色|深色模式 /
+/// my_category_title=我的分类)。「我的分类」点击弹 my_category flyout
+/// 同款底部面板(不再跳分区页)。
 class ZishuPhoneBottomNav extends StatelessWidget {
   const ZishuPhoneBottomNav({super.key, required this.index, required this.onSelectMenu});
 
@@ -86,10 +88,12 @@ class ZishuPhoneBottomNav extends StatelessWidget {
           _BottomItem(
             key: const Key('nav-my-category'),
             leading: _bottomIcon(Icons.category_outlined, false, context.tokens),
-            label: '我的分类',
-            // pure_live 无「我的分类」管理页,按任务口径暂跳分区页。
+            label: i18n('my_category_title'),
+            // 弹「我的分类」面板(flyout 同款内容:chips + 管理入口),
+            // 不再跳分区页;图标/标签沿用真源 `_BottomMyCategoryItem`
+            // (标签改用既有 i18n key my_category_title)。
             active: false,
-            onTap: () => onSelectMenu(HomeMenu.areas.index),
+            onTap: () => unawaited(showZishuMyCategorySheet(context)),
           ),
           _BottomItem(
             key: const Key('nav-follow'),

@@ -22,7 +22,7 @@ class ZishuUserArea extends StatelessWidget {
     final tokens = context.tokens;
     return PopupMenuButton<String>(
       key: const Key('zishu-nav-user'),
-      tooltip: '账号',
+      tooltip: i18n('account'),
       offset: const Offset(0, 30),
       color: tokens.surface,
       onSelected: (action) {

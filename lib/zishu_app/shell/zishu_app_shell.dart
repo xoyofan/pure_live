@@ -11,6 +11,7 @@ import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/platform_icon.dart';
 import 'package:pure_live/zishu_app/features/areas/zishu_areas_view.dart';
+import 'package:pure_live/zishu_app/features/record/zishu_recorder_view.dart';
 import 'package:pure_live/zishu_app/features/browse/zishu_browse_view.dart';
 import 'package:pure_live/zishu_app/features/follow/zishu_follow_view.dart';
 import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
@@ -18,6 +19,7 @@ import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_category_flyout.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_follow_flyout.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_hover_overlay.dart';
+import 'package:pure_live/zishu_app/shell/flyouts/zishu_my_category_flyout.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_user_area.dart';
 
 /// zishu 前端移植主外壳(宽屏 >680):44px 顶栏 + 可折叠浏览侧栏。
@@ -322,6 +324,9 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
     }
     if (menuIndex == HomeMenu.areas.index) {
       return const ZishuAreasView();
+    }
+    if (menuIndex == HomeMenu.record.index) {
+      return const ZishuRecorderView();
     }
     return widget.body;
   }
@@ -747,8 +752,8 @@ class _TopNavTool extends StatelessWidget {
 
 /// 可折叠浏览侧栏:展开 220 / 收起 52,右缘外挂突出折叠按钮。
 ///
-/// 展开态 = 平台统一色块(44×44,Wrap 横向换行)+ 热门分类 + 录制;
-/// 收起态 = 平台图标竖排 + 折叠按钮。
+/// 展开态 = 平台统一色块(44×44,Wrap 横向换行)+ 我的分类(内嵌展开)+
+/// 热门分类 + 录制;收起态 = 平台图标竖排 + 折叠按钮。
 class _BrowseSidebar extends StatelessWidget {
   final int index;
   final List<Site> sites;
@@ -837,6 +842,10 @@ class _BrowseSidebar extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.lg),
+        // 「我的分类」入口行 + 内嵌展开区(位于热门分类区上方):点击行
+        // 展开/收起收藏 chips,面板与 my_category flyout 同一份内容。
+        const _SidebarMyCategorySection(),
+        const SizedBox(height: AppSpacing.md),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.xs),
           child: Row(
@@ -919,6 +928,45 @@ class _BrowseSidebar extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// 侧栏「我的分类」入口行 + 内嵌展开区:点击行展开/收起收藏 chips(行
+/// 图标 Remix.star_line,展开态文字/图标转品牌金,对齐 zishu「收藏分类」
+/// 金色语义);展开区复用 [ZishuMyCategoryPanel](与 my_category flyout、
+/// 窄屏底栏弹层同一份面板:管理入口 + chips),chip 点击按名称匹配平台
+/// 目录进分类详情(无宿主可收,close 钩子留空)。
+class _SidebarMyCategorySection extends StatefulWidget {
+  const _SidebarMyCategorySection();
+
+  @override
+  State<_SidebarMyCategorySection> createState() => _SidebarMyCategorySectionState();
+}
+
+class _SidebarMyCategorySectionState extends State<_SidebarMyCategorySection> {
+  /// 展开态:本地 State,不持久化(对齐侧栏折叠态口径)。
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _CategoryRow(
+          name: i18n('my_category_title'),
+          icon: Remix.star_line,
+          selected: _expanded,
+          onTap: () => setState(() => _expanded = !_expanded),
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: AppSpacing.xs),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+            child: ZishuMyCategoryPanel(),
+          ),
+        ],
       ],
     );
   }

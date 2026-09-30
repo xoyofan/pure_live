@@ -263,6 +263,7 @@ class LiveRoom {
   String? avatar = '';
   String? cover = '';
   String? area = '';
+  String? typeName = '';
 
   /// Legacy single audience field kept for backup compatibility.
   String? watching = '';
@@ -330,6 +331,7 @@ class LiveRoom {
     this.avatar = '',
     this.cover = '',
     this.area,
+    this.typeName,
     this.watching = '0',
     this.audienceMetricType,
     this.popularity = '',
@@ -370,6 +372,7 @@ class LiveRoom {
       avatar = json['avatar'] ?? '',
       cover = json['cover'] ?? '',
       area = json['area'] ?? '',
+      typeName = json['typeName'] ?? '',
       watching = json['watching']?.toString() ?? '0',
       audienceMetricType = AudienceMetricType.values.firstWhere(
         (value) => value.name == json['audienceMetricType'],
@@ -421,6 +424,7 @@ class LiveRoom {
     String? avatar,
     String? cover,
     String? area,
+    String? typeName,
     String? watching,
     AudienceMetricType? audienceMetricType,
     String? popularity,
@@ -459,6 +463,7 @@ class LiveRoom {
       avatar: avatar ?? this.avatar,
       cover: cover ?? this.cover,
       area: area ?? this.area,
+      typeName: typeName ?? this.typeName,
       watching: watching ?? this.watching,
       audienceMetricType: audienceMetricType ?? this.audienceMetricType,
       popularity: popularity ?? this.popularity,
@@ -572,6 +577,7 @@ class LiveRoom {
       'avatar': avatar,
       'cover': cover,
       'area': area,
+      'typeName': typeName,
       'watching': watching,
       'audienceMetricType': effectiveAudienceMetricType.name,
       'popularity': popularity,
@@ -830,6 +836,7 @@ extension LiveRoomExtension on LiveRoom {
       avatar: _preferValue(incoming.avatar, avatar),
       cover: _preferValue(incoming.cover, cover),
       area: _preferValue(incoming.area, area),
+      typeName: _preferValue(incoming.typeName, typeName),
 
       watching: _preferValue(incoming.watching, watching),
       audienceMetricType:

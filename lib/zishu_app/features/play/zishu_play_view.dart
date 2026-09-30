@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:pure_live/common/index.dart';
-import 'package:pure_live/plugins/event_bus.dart';
 import 'package:pure_live/modules/areas/areas_list_controller.dart';
 import 'package:pure_live/modules/live_play/controllers/live_play_controller.dart';
 import 'package:pure_live/modules/live_play/states/ui_state.dart';
@@ -16,6 +15,7 @@ import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/widgets/platform_icon.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu/domain/category_display.dart';
+import 'package:pure_live/zishu_app/features/play/my_category_controller.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_play_side_panel.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_player_controls.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_play_immersive_sheet.dart';
@@ -216,8 +216,11 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
 /// (分类色底 92%/平台色回退 + 平台图标 + 跨平台中文分类名 + 收藏星,
 /// 点击进分类)+ 左对齐标题 + 侧栏开合钮。
 ///
-/// 收藏星语义按 pure_live 落地为**收藏当前房间**(zishu 原版是收藏分类,
-/// pure_live 无分类收藏数据层),复用 fav.addRoomDurably/removeRoomDurably。
+/// 收藏星对齐 zishu 原版**收藏分类**语义:点击
+/// [MyCategoryController.toggle](room.platform, room.area),已收藏判定
+/// isFavorited(Obx 订阅 categories,跨平台口径);分类徽标只在有分类
+/// 上下文时渲染,即分类为空时星标随之隐藏(房间收藏走关注 tab,不在此
+/// 重复)。
 class _ZishuRoomHeader extends StatelessWidget {
   const _ZishuRoomHeader({
     required this.room,
@@ -247,18 +250,17 @@ class _ZishuRoomHeader extends StatelessWidget {
     return null;
   }
 
-  Future<void> _toggleFavoriteRoom() async {
-    final favorites = SettingsService.to.fav;
-    try {
-      if (favorites.isFavorite(room)) {
-        final changed = await favorites.removeRoomDurably(room);
-        if (changed) EventBus.instance.emit('changeFavorite', false);
-      } else {
-        final changed = await favorites.addRoomDurably(room);
-        if (changed) EventBus.instance.emit('changeFavorite', true);
-      }
-    } catch (_) {
-      ToastUtil.show(i18n('favorite_changes_save_failed'));
+  /// 收藏/取消收藏当前分类(zishu 口径:跨平台「我的分类」,不区分平台
+  /// 分类号)。已达上限且是新增时 [MyCategoryController.toggle] 返回
+  /// false,这里 toast 提示(既有 key `my_category_limit`,上限 12 与
+  /// [MyCategoryController.maxCount] 一致)。
+  Future<void> _toggleFavoriteCategory() async {
+    final siteId = room.platform?.trim() ?? '';
+    final category = room.area?.trim() ?? '';
+    if (siteId.isEmpty || category.isEmpty) return;
+    final ok = await MyCategoryController.to.toggle(siteId, category);
+    if (!ok) {
+      ToastUtil.show(i18n('my_category_limit'));
     }
   }
 
@@ -288,7 +290,7 @@ class _ZishuRoomHeader extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            tooltip: '返回',
+            tooltip: i18n('back'),
             onPressed: onBack,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -305,7 +307,7 @@ class _ZishuRoomHeader extends StatelessWidget {
                 children: [
                   if (matchedCategory != null)
                     Tooltip(
-                      message: '查看$categoryLabel 分类',
+                      message: i18n('view_category', args: {'category': categoryLabel}),
                       child: InkWell(
                         onTap: () => AppNavigator.toCategoryDetail(site: Sites.of(siteId), category: matchedCategory),
                         borderRadius: AppRadius.allSm,
@@ -315,24 +317,28 @@ class _ZishuRoomHeader extends StatelessWidget {
                   else
                     _BadgeLabel(siteId: siteId, categoryLabel: categoryLabel, color: badgeFg),
                   const SizedBox(width: 4),
-                  // 收藏星:收藏当前房间(13px,与 zishu 星标同规格)。
+                  // 收藏星:收藏当前分类(zishu 口径,13px,与 zishu 星标同
+                  // 规格)。徽标块只在有分类上下文时渲染 ——
+                  // CategoryColors.opaqueFor 对空分类返回 null、平台色回退
+                  // 也要求分类非空 —— 即分类为空时本星不出现。
                   SizedBox(
                     width: 22,
                     height: 22,
-                    child: IconButton(
-                      tooltip: i18n('follow'),
-                      onPressed: _toggleFavoriteRoom,
-                      padding: EdgeInsets.zero,
-                      splashRadius: 12,
-                      icon: Obx(() {
-                        final followed = SettingsService.to.fav.isFavorite(room);
-                        return Icon(
-                          followed ? Icons.star_rounded : Icons.star_outline_rounded,
+                    child: Obx(() {
+                      // isFavorited 内部读 RxList(categories),Obx 据此订阅。
+                      final favorited = MyCategoryController.to.isFavorited(siteId, category);
+                      return IconButton(
+                        tooltip: favorited ? '取消收藏分类' : '收藏分类',
+                        onPressed: _toggleFavoriteCategory,
+                        padding: EdgeInsets.zero,
+                        splashRadius: 12,
+                        icon: Icon(
+                          favorited ? Icons.star_rounded : Icons.star_outline_rounded,
                           size: 13,
-                          color: followed ? tokens.brand : badgeFg,
-                        );
-                      }),
-                    ),
+                          color: favorited ? tokens.brand : badgeFg,
+                        ),
+                      );
+                    }),
                   ),
                 ],
               ),
@@ -348,7 +354,7 @@ class _ZishuRoomHeader extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: sidePanelVisible ? '收起侧栏' : '展开侧栏',
+            tooltip: sidePanelVisible ? i18n('collapse_side_panel') : i18n('expand_side_panel'),
             onPressed: onToggleSidePanel,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),

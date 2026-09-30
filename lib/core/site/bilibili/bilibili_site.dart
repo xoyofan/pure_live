@@ -124,6 +124,7 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
           audienceMetricType: AudienceMetricType.popularity,
           liveStatus: LiveStatus.live,
           area: item["area_name"].toString(),
+          typeName: item['area_v2_parent_name']?.toString() ?? '',
           status: true,
           platform: SiteIds.bilibiliSite,
         );
@@ -373,6 +374,7 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
             title: item['title']?.toString() ?? '',
             cover: cover.isEmpty ? '' : '$cover@400w.jpg',
             area: (item['area_v2_name'] ?? item['area_name'] ?? item['areaName'])?.toString() ?? '',
+            typeName: item['area_v2_parent_name']?.toString() ?? '',
             nick: item['uname']?.toString() ?? '',
             avatar: normalizeNetworkImageUrl(item['face']?.toString()),
             watching: item['online']?.toString() ?? '',
@@ -713,6 +715,7 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
       popularity: roomInfo["room_info"]["online"].toString(),
       audienceMetricType: AudienceMetricType.popularity,
       area: roomInfo['room_info']?['area_name'] ?? '',
+      typeName: roomInfo['room_info']?['parent_area_name'] ?? '',
       status: liveStatusRaw == 1,
       isRecord: liveStatusRaw == 2,
       liveStatus: switch (liveStatusRaw) {
