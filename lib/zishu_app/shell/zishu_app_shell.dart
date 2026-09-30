@@ -5,6 +5,7 @@ import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/platform_icon.dart';
+import 'package:pure_live/zishu_app/features/browse/zishu_browse_view.dart';
 
 /// zishu 前端移植主外壳(宽屏 >680):44px 顶栏 + 可折叠浏览侧栏。
 ///
@@ -112,7 +113,8 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
     return sites[_siteIndex].id;
   }
 
-  /// 平台入口渲染表:`savedPlatformIds` 顺序优先;热门页新增站点追加在尾部。
+  /// 平台入口渲染表:严格按 `savedPlatformIds` 顺序;未保存(隐藏)的站点
+  /// 一律不渲染。新平台在「平台顺序与可见」设置里默认关,勾选后才进外壳。
   List<Site> _visibleSites() {
     final saved = SettingsService.to.app.savedPlatformIds.v;
     final all = _sites;
@@ -124,9 +126,6 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
           break;
         }
       }
-    }
-    for (final site in all) {
-      if (!visible.any((v) => v.id == site.id)) visible.add(site);
     }
     return visible;
   }
@@ -175,7 +174,13 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
                       onSelectMenu: widget.onDestinationSelected,
                     ),
                     const VerticalDivider(width: 1, thickness: 1),
-                    Expanded(child: widget.body),
+                    Expanded(
+                      // 热门页:内容区用 zishu 浏览视图(网格/卡片/分页),
+                      // 其余 tab 仍走旧页面体,后续批逐个迁入 zishu_app。
+                      child: widget.index == HomeMenu.popular.index && _currentSiteId != null
+                          ? ZishuBrowseView(siteId: _currentSiteId!)
+                          : widget.body,
+                    ),
                   ],
                 ),
               ),
