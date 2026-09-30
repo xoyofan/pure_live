@@ -65,12 +65,13 @@ function requestOnce(
   headers: ProxyHeaders,
   onResponse: ResponseHandler,
   onFailure: (err: NodeError) => void,
+  hostOverride?: string,
 ): http.ClientRequest {
   const transport = target.protocol === 'https:' ? https : http;
   const request = transport.get(
     target,
     {
-      headers: { ...headers, host: target.host },
+      headers: { ...headers, host: hostOverride ?? target.host },
       timeout: UPSTREAM_TIMEOUT_MS,
     },
     (upstream) => onResponse(upstream, request),
@@ -119,6 +120,10 @@ export function registerProxyRoute(app: Express): void {
     // The initial host passed the allowlist above, so the redirect chain is
     // trusted to reach IP-literal load balancers.
     let trustedChain = true;
+    // CDNs that redirect to a bare IP still route by the original Host
+    // header; rewriting it to the IP would land on a default throttled lane.
+    let originHost = target.host;
+    let hostOverride: string | undefined;
 
     let settled = false;
     let upstreamRequest: http.ClientRequest | null = null;
@@ -169,7 +174,19 @@ export function registerProxyRoute(app: Express): void {
         }
         target = next;
         trustedChain = true;
-        upstreamRequest = requestOnce(target, headers, (u2, r2) => handleResponse(u2, r2, redirects + 1), failBeforeStream);
+        if (isIpLiteralHost(target.host)) {
+          hostOverride = originHost;
+        } else {
+          originHost = target.host;
+          hostOverride = undefined;
+        }
+        upstreamRequest = requestOnce(
+          target,
+          headers,
+          (u2, r2) => handleResponse(u2, r2, redirects + 1),
+          failBeforeStream,
+          hostOverride,
+        );
         return;
       }
 
