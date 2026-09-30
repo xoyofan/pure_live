@@ -38,6 +38,10 @@ export interface Room {
   avatar: string;
   cover: string;
   watching: string;
+  /** Follower count when the platform supplies one ('' otherwise). */
+  followers?: string;
+  /** Anchor signature / room introduction ('' when absent). */
+  introduction?: string;
   link: string;
   status: boolean;
   liveStatus: LiveStatus;

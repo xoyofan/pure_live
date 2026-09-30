@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getPlayUrls, getQualities, getRecommendRooms, resolveRoom, toPlaybackUrl } from '../api/client';
+import { getPlayUrls, getQualities, getRecommendRooms, protocolOfUrl, resolveRoom, toPlaybackUrl } from '../api/client';
+import { formatWatching } from '../lib/format';
 import { isApiError } from '../api/types';
 import type { PlayUrls, Quality, Room, RoomListItem } from '../api/types';
 import { useDanmaku } from '../hooks/useDanmaku';
@@ -501,7 +502,10 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
                       className={`ctrl-chip${index === line ? ' active' : ''}`}
                       onClick={() => setLine(index)}
                     >
-                      线路{index + 1}
+                      {`线路${index + 1}${(() => {
+                        const proto = protocolOfUrl(play?.urls[index] ?? '');
+                        return proto === 'unknown' ? '' : ` ${proto.toUpperCase()}`;
+                      })()}`}
                     </button>
                   ))}
               </div>
@@ -550,9 +554,15 @@ export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Prop
                   {room.nick || '未知主播'}
                 </p>
                 <p className="watching">
-                  {viewerText ? `${viewerText} 观看` : ''}
+                  {viewerText ? `${formatWatching(viewerText)} 人气` : ''}
+                  {Number(room.followers ?? '') > 0 ? ` · ${formatWatching(room.followers ?? '')} 粉丝` : ''}
                   {liveStatusText(room.liveStatus) ? ' · 未开播' : ''}
                 </p>
+                {room.introduction ? (
+                  <p className="side-intro" title={room.introduction.replace(/<[^>]*>/g, '')}>
+                    {room.introduction.replace(/<[^>]*>/g, '')}
+                  </p>
+                ) : null}
               </div>
               <div className="side-follow-btns">
                 <button

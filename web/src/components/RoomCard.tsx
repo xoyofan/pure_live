@@ -1,5 +1,6 @@
 import type { RoomListItem } from '../api/types';
 import { categoryStyle } from '../lib/categoryColor';
+import { formatWatching } from '../lib/format';
 
 interface Props {
   room: RoomListItem;
@@ -7,18 +8,20 @@ interface Props {
   onOpen: (platform: string, roomId: string) => void;
 }
 
-/**
- * Flat live-room card in the zishu_flutter style: 16:9 cover with corner
- * overlays — top-left category tag (hashed color), top-right viewers,
- * bottom-left platform chip — and title + anchor name below on the card body.
- */
 /** Feed-level tags some platforms stamp on every room — not real categories. */
 const GENERIC_AREAS = new Set(['热门推荐', '推荐', '直播']);
 
+/**
+ * Flat live-room card in the zishu_flutter style. Four corners carry the
+ * data overlays — top-left category tag (hashed color) + 直播 flag,
+ * bottom-left platform chip, bottom-right compact viewers — with title and
+ * anchor name on the body below.
+ */
 export default function RoomCard({ room, platformName, onOpen }: Props) {
   const isLive = room.liveStatus === 'live' || room.status;
   const area = (room.area ?? '').trim();
   const areaStyle = GENERIC_AREAS.has(area) ? null : categoryStyle(area);
+  const viewers = formatWatching(room.watching ?? '');
 
   return (
     <button
@@ -48,7 +51,7 @@ export default function RoomCard({ room, platformName, onOpen }: Props) {
           {isLive && <span className="tag-live">直播</span>}
         </div>
         <span className={`tag-platform platform-${room.platform || ''}`}>{platformName}</span>
-        {room.watching ? <span className="tag-viewers">{room.watching}</span> : null}
+        {viewers ? <span className="tag-viewers">{viewers}</span> : null}
       </div>
       <div className="room-card-body">
         <p className="room-card-title">{room.title || `${platformName} ${room.roomId}`}</p>

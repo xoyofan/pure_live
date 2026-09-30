@@ -76,6 +76,7 @@ M2 逐步扩展:`huya`、`douyu`、`cc`、`soop`、`yy`、`twitch`、`iptv` 等�
     "title": "直播间标题", "nick": "主播名",
     "avatar": "https://...", "cover": "https://...",
     "watching": "1.2万", "link": "https://live.bilibili.com/21452505",
+    "followers": "", "introduction": "主播签名(可缺省)",
     "status": true, "liveStatus": "live"
   }
 }
@@ -120,7 +121,7 @@ M2 逐步扩展:`huya`、`douyu`、`cc`、`soop`、`yy`、`twitch`、`iptv` 等�
 房间列表条目统一为**瘦身 LiveRoom**(与 4.3 同形,字段可缺省):
 
 ```json
-{ "page": 1, "hasMore": true, "rooms": [ { "platform": "...", "roomId": "...", "title": "...", "nick": "...", "avatar": "...", "cover": "...", "watching": "...", "area": "分类名", "link": "...", "status": true, "liveStatus": "live" } ] }
+{ "page": 1, "hasMore": true, "rooms": [ { "platform": "...", "roomId": "...", "title": "...", "nick": "...", "avatar": "...", "cover": "...", "watching": "...", "area": "分类名", "followers": "", "introduction": "", "link": "...", "status": true, "liveStatus": "live" } ] }
 ```
 
 `page` 从 1 起;`hasMore` 以返回条数是否达到 pageSize 估计。`pageSize` 缺省 30,上限 50。

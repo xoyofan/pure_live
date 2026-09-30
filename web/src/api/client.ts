@@ -206,6 +206,15 @@ export function buildProxyUrl(url: string, headers: Record<string, string>): str
   return `${API_BASE}/proxy?${query.toString()}`;
 }
 
+/** Protocol label for a single playback line, derived from its extension. */
+export function protocolOfUrl(url: string): 'flv' | 'hls' | 'mp4' | 'unknown' {
+  const clean = (url.split('?')[0] ?? url).toLowerCase();
+  if (clean.endsWith('.flv')) return 'flv';
+  if (clean.endsWith('.m3u8')) return 'hls';
+  if (clean.endsWith('.mp4')) return 'mp4';
+  return 'unknown';
+}
+
 /**
  * Resolve the URL a media element should load (line `line` of the resolved
  * list, 0-based): through /proxy when the upstream requires browser-restricted

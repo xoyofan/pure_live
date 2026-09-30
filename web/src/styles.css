@@ -497,6 +497,10 @@ select {
   padding: 4px 7px;
   border-radius: var(--radius-sm);
   font-weight: 500;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tag-live {
@@ -1197,6 +1201,16 @@ select {
 .watching {
   color: var(--text-dim);
   font-size: 13px;
+}
+
+.side-intro {
+  margin: 2px 0 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .dot {
