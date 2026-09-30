@@ -22,6 +22,25 @@ function requireRoomId(value: unknown): string {
   return roomId;
 }
 
+/** api.md 4.6: page is 1-based, pageSize defaults to 30 and caps at 50. */
+function listQueryOf(query: Request['query']): { page: number; pageSize: number } {
+  const page = Math.max(1, Number.parseInt(String(query.page ?? ''), 10) || 1);
+  const pageSize = Math.min(50, Math.max(1, Number.parseInt(String(query.pageSize ?? ''), 10) || 30));
+  return { page, pageSize };
+}
+
+/** True when the backend implements the 4.6 directory/search capability. */
+function requireListBackend(platform: string) {
+  const backend = getBackend(platform);
+  if (!backend.getCategories || !backend.getRecommendRooms || !backend.getCategoryRooms || !backend.searchRooms) {
+    throw platformUnsupported(platform);
+  }
+  return backend as Required<Pick<
+    typeof backend,
+    'getCategories' | 'getRecommendRooms' | 'getCategoryRooms' | 'searchRooms'
+  >>;
+}
+
 function getBackend(platform: string) {
   const backend = registry.getBackend(platform);
   if (!backend) throw platformUnsupported(platform);
@@ -80,6 +99,52 @@ export function createRestRouter(): Router {
       registry.notePlayUrlHosts(result.urls);
       if (!withHeaders) result.headers = {};
       res.json(result);
+    }),
+  );
+
+  // 4.6.1 GET /directory/{platform}/categories
+  router.get(
+    '/directory/:platform/categories',
+    handler(async (req, res) => {
+      const backend = requireListBackend(req.params.platform ?? '');
+      const categories = await backend.getCategories(listQueryOf(req.query));
+      res.json({ categories });
+    }),
+  );
+
+  // 4.6.2 GET /directory/{platform}/recommend
+  router.get(
+    '/directory/:platform/recommend',
+    handler(async (req, res) => {
+      const backend = requireListBackend(req.params.platform ?? '');
+      res.json(await backend.getRecommendRooms(listQueryOf(req.query)));
+    }),
+  );
+
+  // 4.6.3 GET /directory/{platform}/categories/{areaId}/rooms
+  router.get(
+    '/directory/:platform/categories/:areaId/rooms',
+    handler(async (req, res) => {
+      const backend = requireListBackend(req.params.platform ?? '');
+      const areaId = String(req.params.areaId ?? '').trim();
+      if (!areaId) throw badRequest('areaId is required');
+      const areaType = typeof req.query.areaType === 'string' && req.query.areaType ? req.query.areaType : undefined;
+      const typeName = typeof req.query.typeName === 'string' && req.query.typeName ? req.query.typeName : undefined;
+      const areaName = typeof req.query.areaName === 'string' && req.query.areaName ? req.query.areaName : undefined;
+      res.json(
+        await backend.getCategoryRooms({ areaId, areaType, typeName, areaName }, listQueryOf(req.query)),
+      );
+    }),
+  );
+
+  // 4.6.4 GET /search/{platform}
+  router.get(
+    '/search/:platform',
+    handler(async (req, res) => {
+      const backend = requireListBackend(req.params.platform ?? '');
+      const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : '';
+      if (!keyword) throw badRequest('keyword is required');
+      res.json(await backend.searchRooms(keyword, listQueryOf(req.query)));
     }),
   );
 

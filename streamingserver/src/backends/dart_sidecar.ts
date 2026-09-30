@@ -9,7 +9,15 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { ApiError, roomClosed, upstreamError } from '../errors.js';
-import type { LiveRoomInfo, PlayUrlsResult, QualityInfo, ResolverBackend } from './types.js';
+import type {
+  CategoryInfo,
+  LiveRoomInfo,
+  ListQuery,
+  PlayUrlsResult,
+  QualityInfo,
+  ResolverBackend,
+  RoomListResult,
+} from './types.js';
 import { bilibiliCdnHostSuffixes, playbackHeaders as bilibiliPlaybackHeaders } from './bilibili.js';
 import { douyinCdnHostSuffixes, getCookie, playbackHeaders as douyinPlaybackHeaders } from './douyin.js';
 
@@ -214,7 +222,13 @@ class DartSidecarPlatformBackend implements ResolverBackend {
     readonly name: string,
     private readonly sidecar: SidecarProcess,
     private readonly headersFor: (roomId: string) => Promise<Record<string, string>>,
-    readonly capabilities: readonly import('./types.js').PlatformCapability[] = ['resolve', 'play-urls', 'qualities'],
+    readonly capabilities: readonly import('./types.js').PlatformCapability[] = [
+      'resolve',
+      'play-urls',
+      'qualities',
+      'search',
+      'directory',
+    ],
   ) {}
 
   async resolveRoom(roomId: string): Promise<LiveRoomInfo> {
@@ -246,6 +260,40 @@ class DartSidecarPlatformBackend implements ResolverBackend {
       expireAt: computeExpireAt(result.urls),
       sourceQueryPolicies: {},
     };
+  }
+
+  async getCategories(query: ListQuery): Promise<CategoryInfo[]> {
+    const result = await this.sidecar.call<{ categories: CategoryInfo[] }>('categories', {
+      platform: this.id,
+      ...query,
+    });
+    return result.categories ?? [];
+  }
+
+  async getRecommendRooms(query: ListQuery): Promise<RoomListResult> {
+    const result = await this.sidecar.call<RoomListResult>('recommendRooms', { platform: this.id, ...query });
+    return { page: result.page, hasMore: result.hasMore, rooms: result.rooms ?? [] };
+  }
+
+  async getCategoryRooms(
+    area: { areaId: string; areaType?: string; typeName?: string; areaName?: string },
+    query: ListQuery,
+  ): Promise<RoomListResult> {
+    const result = await this.sidecar.call<RoomListResult>('categoryRooms', {
+      platform: this.id,
+      ...area,
+      ...query,
+    });
+    return { page: result.page, hasMore: result.hasMore, rooms: result.rooms ?? [] };
+  }
+
+  async searchRooms(keyword: string, query: ListQuery): Promise<RoomListResult> {
+    const result = await this.sidecar.call<RoomListResult>('searchRooms', {
+      platform: this.id,
+      keyword,
+      ...query,
+    });
+    return { page: result.page, hasMore: result.hasMore, rooms: result.rooms ?? [] };
   }
 
   cdnHostSuffixes(): readonly string[] {

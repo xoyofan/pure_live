@@ -44,6 +44,36 @@ export interface PlayUrlsResult {
   sourceQueryPolicies: Record<string, unknown>;
 }
 
+/** Category tree node (api.md 4.6.1), mirroring Flutter LiveArea. */
+export interface AreaInfo {
+  platform: string | null;
+  areaType: string | null;
+  typeName: string | null;
+  areaId: string | null;
+  areaName: string | null;
+  areaPic: string | null;
+  shortName: string | null;
+}
+
+export interface CategoryInfo {
+  id: string;
+  name: string;
+  children: AreaInfo[];
+}
+
+/** Paged room list shared by 4.6.2-4.6.4. */
+export interface RoomListResult {
+  page: number;
+  hasMore: boolean;
+  rooms: LiveRoomInfo[];
+}
+
+/** List query shared by the directory/search endpoints (page is 1-based). */
+export interface ListQuery {
+  page: number;
+  pageSize: number;
+}
+
 export interface ResolverBackend {
   readonly id: string;
   readonly name: string;
@@ -54,6 +84,14 @@ export interface ResolverBackend {
   getPlayUrls(roomId: string, quality?: string): Promise<PlayUrlsResult>;
   /** Static CDN host suffixes accepted by /proxy for this platform. */
   cdnHostSuffixes(): readonly string[];
+  /** Directory/search capabilities (api.md 4.6); absent when unsupported. */
+  getCategories?(query: ListQuery): Promise<CategoryInfo[]>;
+  getRecommendRooms?(query: ListQuery): Promise<RoomListResult>;
+  getCategoryRooms?(
+    area: { areaId: string; areaType?: string; typeName?: string; areaName?: string },
+    query: ListQuery,
+  ): Promise<RoomListResult>;
+  searchRooms?(keyword: string, query: ListQuery): Promise<RoomListResult>;
 }
 
 export interface RegisteredPlatform {
