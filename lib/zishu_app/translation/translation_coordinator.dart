@@ -9,7 +9,7 @@
 /// 懒加载单例);差异仅两处:
 /// - 裁掉 `translateBody`(依赖 live_parser 的 DanmakuSegment,本仓只做标题);
 /// - HTTP fetcher 就近改用 dart:io HttpClient(与 zishu 生产实现同款),
-///   并支持环境变量代理:见 [_resolveTranslationProxy] 与
+///   并支持环境变量代理与 no_proxy 排除:见 [_resolveTranslationProxy] 与
 ///   [_httpClientFetcher] 的文档注释(变量、优先级、值格式、失败降级)。
 ///
 /// ### 环境变量代理(标题翻译专用)
@@ -23,6 +23,12 @@
 ///   同 curl 与 dart:io;scheme 仅用于识别,http/https/无 scheme 一律按
 ///   HTTP CONNECT 代理使用;dart:io 代理不支持 SOCKS,`socks*://` 值忽略)。
 /// - 变量全缺省或值全部无效 → 不设 findProxy,与改动前完全一致(直连)。
+/// - `no_proxy / NO_PROXY`(小写优先,取第一个非空值)→ 排除列表:命中
+///   请求 host 则该次直连(不设 findProxy,与无代理一致)。逗号分隔,条目
+///   三种形态:精确 host(`example.com` 仅匹配自身)、点前缀域
+///   (`.example.com` 匹配自身与任意子域)、单个 `*`(全部直连)。简化
+///   口径:端口不敏感,条目里 `:port` 后缀直接剥掉(三个引擎端点全为
+///   https 域名,按 host 粒度判断足够);IPv6 字面量去方括号后精确匹配。
 /// - 代理连不通 → 走既有失败降级链(连接超时 → 引擎返回 null → 负缓存
 ///   2 分钟内回原文),不抛出、不阻塞启动与 UI。
 ///
@@ -562,22 +568,90 @@ String _tryDecodePercent(String raw) {
   }
 }
 
+/// no_proxy / NO_PROXY → 排除条目列表(条目已归一,语义见文件头注释)。
+///
+/// 同名变量小写优先,取第一个非空值(与代理变量的顺延约定一致);两个
+/// 变量都缺省或为空返回空列表(无排除,不改变既有直连/代理行为)。
+/// [environment] 便于单测注入,缺省读进程环境。
+List<String> _resolveNoProxyEntries({Map<String, String>? environment}) {
+  final env = environment ?? Platform.environment;
+  for (final name in const <String>['no_proxy', 'NO_PROXY']) {
+    final raw = env[name]?.trim();
+    if (raw == null || raw.isEmpty) continue;
+    final entries = <String>[];
+    for (final part in raw.split(',')) {
+      final entry = _normalizeNoProxyEntry(part);
+      if (entry.isNotEmpty) entries.add(entry);
+    }
+    return entries;
+  }
+  return const <String>[];
+}
+
+/// 单个 no_proxy 条目归一:小写、剥 `:port` 后缀、IPv6 去方括号;空串
+/// 表示空条目(调用方丢弃)。
+///
+/// 简化口径(见文件头注释):条目只按 host 匹配,`example.com:8443` 与
+/// `example.com` 等价 —— 三个引擎端点全为 https 域名,端口粒度没有实际
+/// 意义;带端口的 IPv6(`[::1]:8443`)取方括号内字面量。
+String _normalizeNoProxyEntry(String raw) {
+  var entry = raw.trim().toLowerCase();
+  if (entry.isEmpty || entry == '*') return entry;
+  if (entry.startsWith('[')) {
+    // `[::1]` / `[::1]:8443` → `::1`;缺右括号的坏值原样保留,永不匹配。
+    final closeBracket = entry.indexOf(']');
+    if (closeBracket != -1) entry = entry.substring(1, closeBracket);
+  } else {
+    // 裸条目:单个 `:` 视为 host:port 分隔剥掉;多个 `:` 视为未加方括号
+    // 的 IPv6 字面量整体保留(IPv6 至少两个冒号,不会误伤 host:port)。
+    final colon = entry.indexOf(':');
+    if (colon != -1 && colon == entry.lastIndexOf(':')) {
+      entry = entry.substring(0, colon);
+    }
+  }
+  return entry;
+}
+
+/// 请求 host 是否被 no_proxy 排除(命中 → 该次请求直连,不设 findProxy)。
+///
+/// [host] 取自 [Uri.host](IPv6 已去方括号),条目已按
+/// [_normalizeNoProxyEntry] 归一,两边统一小写后比较:`*` 命中一切;
+/// 点前缀域命中自身与任意子域;其余精确相等。
+bool _isNoProxyExcluded(String host, List<String> entries) {
+  if (host.isEmpty || entries.isEmpty) return false;
+  final target = host.toLowerCase();
+  for (final entry in entries) {
+    if (entry == '*') return true;
+    if (entry.startsWith('.')) {
+      if (target == entry.substring(1) || target.endsWith(entry)) return true;
+    } else if (target == entry) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// 进程内解析一次:top-level final 首次被 [_httpClientFetcher] 读取时
 /// 才读环境变量(懒初始化),之后缓存,不再反复查表。
 final _TranslationProxy? _translationProxy = _resolveTranslationProxy();
+
+/// no_proxy 排除条目,与代理配置同步懒解析一次(条目形态见
+/// [_resolveNoProxyEntries]);短路求值下无代理时不会被读取,零额外开销。
+final List<String> _noProxyEntries = _resolveNoProxyEntries();
 
 /// 翻译专用 fetcher:每次请求独立 HttpClient(低频调用,简单可靠)。
 ///
 /// 自 zishu `translation_provider.dart` 的 `_dioFetcher` 就近移植——其实现
 /// 本就是 dart:io HttpClient(注释里的 dio 与实现不符,以实现为准)。
 /// 在此之上支持环境变量代理(变量与优先级见文件头注释):仅当解析出
-/// 代理时才设 [HttpClient.findProxy]/认证回调;代理连不通与直连不通一样,
-/// 走既有失败链(超时 → 引擎 null → 负缓存 2 分钟内回原文),不影响
-/// 启动与 UI。
+/// 代理且请求 host 未被 no_proxy 命中时才设 [HttpClient.findProxy]/认证
+/// 回调;代理连不通与直连不通一样,走既有失败链(超时 → 引擎 null →
+/// 负缓存 2 分钟内回原文),不影响启动与 UI。
 Future<Object?> _httpClientFetcher(Uri uri) async {
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
   final proxy = _translationProxy;
-  if (proxy != null) {
+  // no_proxy 命中:该次请求直连,不设 findProxy,与无代理完全一致。
+  if (proxy != null && !_isNoProxyExcluded(uri.host, _noProxyEntries)) {
     client.findProxy = (_) => proxy.findProxy;
     final user = proxy.user;
     if (user != null) {

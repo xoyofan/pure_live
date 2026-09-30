@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/common/consts/app_consts.dart';
 import 'package:pure_live/common/index.dart';
+import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/shell/phone/zishu_phone_bottom_nav.dart';
 import 'package:pure_live/zishu_app/shell/phone/zishu_phone_category_sheet.dart';
@@ -172,26 +173,30 @@ class _ZishuPhoneShellState extends State<ZishuPhoneShell> {
         ),
       );
     }
-    return Scaffold(
-      backgroundColor: tokens.background,
-      body: SafeArea(
-        // Obx 覆盖平台条:订阅 savedPlatformIds 与热门页站点表。
-        child: Obx(() {
-          final visibleSites = _visibleSites();
-          return Column(
-            children: [
-              ZishuPhonePlatformStrip(
-                sites: visibleSites,
-                currentSiteId: _currentSiteId,
-                onSelectSite: _selectSiteId,
-                onOpenCategories: (siteId) => unawaited(showZishuPhoneCategorySheet(context, siteId)),
-              ),
-              Expanded(child: widget.body),
-            ],
-          );
-        }),
+    return Theme(
+      // 交互态收口:外壳根部统一 focus 色(键盘导航可见),与宽屏外壳同口径。
+      data: Theme.of(context).copyWith(focusColor: AppStateLayer.focusOf(tokens.accent)),
+      child: Scaffold(
+        backgroundColor: tokens.background,
+        body: SafeArea(
+          // Obx 覆盖平台条:订阅 savedPlatformIds 与热门页站点表。
+          child: Obx(() {
+            final visibleSites = _visibleSites();
+            return Column(
+              children: [
+                ZishuPhonePlatformStrip(
+                  sites: visibleSites,
+                  currentSiteId: _currentSiteId,
+                  onSelectSite: _selectSiteId,
+                  onOpenCategories: (siteId) => unawaited(showZishuPhoneCategorySheet(context, siteId)),
+                ),
+                Expanded(child: widget.body),
+              ],
+            );
+          }),
+        ),
+        bottomNavigationBar: ZishuPhoneBottomNav(index: widget.index, onSelectMenu: widget.onDestinationSelected),
       ),
-      bottomNavigationBar: ZishuPhoneBottomNav(index: widget.index, onSelectMenu: widget.onDestinationSelected),
     );
   }
 }

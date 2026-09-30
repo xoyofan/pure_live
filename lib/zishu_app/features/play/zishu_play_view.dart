@@ -334,7 +334,7 @@ class _ZishuRoomHeader extends StatelessWidget {
                       // isFavorited 内部读 RxList(categories),Obx 据此订阅。
                       final favorited = MyCategoryController.to.isFavorited(siteId, category);
                       return IconButton(
-                        tooltip: favorited ? '取消收藏分类' : '收藏分类',
+                        tooltip: favorited ? i18n('unfavorite_category') : i18n('favorite_category'),
                         onPressed: _toggleFavoriteCategory,
                         padding: EdgeInsets.zero,
                         splashRadius: 12,
