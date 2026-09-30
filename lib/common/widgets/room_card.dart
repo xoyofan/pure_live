@@ -10,6 +10,8 @@ import 'package:pure_live/common/utils/share_command_handler.dart';
 import 'package:pure_live/modules/tags/tag_management_controller.dart';
 import 'package:pure_live/plugins/event_bus.dart';
 import 'package:pure_live/common/services/settings/room_card_settings_controller.dart';
+import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
+import 'package:pure_live/zishu/presentation/widgets/cover_badges.dart';
 
 double _roomTagTextScale(BuildContext context) {
   final style = AppTextStyles.t13;
@@ -1070,7 +1072,7 @@ class RoomCard extends StatelessWidget {
             margin: EdgeInsets.zero,
             elevation: 0,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
-            color: isDark ? Colors.grey[900] : Colors.white,
+            color: context.tokens.surface,
             child: InkWell(
               borderRadius: BorderRadius.circular(radius),
               onTap: () => onTap(context),
@@ -1096,31 +1098,32 @@ class RoomCard extends StatelessWidget {
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(radius),
                                 child: ColoredBox(
-                                  color: isDark ? Colors.grey[850]! : Colors.grey.shade100,
+                                  color: context.tokens.surfaceRaised,
                                   child: _buildCover(context, isDark),
                                 ),
+                              ),
+                            ),
+                            if (!statusPending && !room.isLiveNow)
+                              Positioned.fill(
+                                key: const ValueKey('room-card-offline-overlay'),
+                                child: const CoverOfflineOverlay(),
+                              ),
+                            Positioned(
+                              key: const ValueKey('room-card-category-badge'),
+                              left: 0,
+                              top: 0,
+                              child: CoverCategoryBadge(
+                                corner: CoverCorner.topLeft,
+                                category: room.area ?? '',
+                                site: room.platform ?? '',
                               ),
                             ),
                             if (config.showPlatformBadge)
                               Positioned(
                                 key: const ValueKey('room-card-platform-badge'),
-                                left: 8,
-                                top: 8,
-                                child: Container(
-                                  padding: EdgeInsets.symmetric(horizontal: dense ? 6 : 8, vertical: dense ? 3 : 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.58),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    room.platform?.toUpperCase() ?? '',
-                                    style: AppTextStyles.t11.copyWith(
-                                      fontSize: dense ? 10 : null,
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
+                                left: 0,
+                                bottom: 0,
+                                child: CoverPlatformBadge(corner: CoverCorner.bottomLeft, site: room.platform ?? ''),
                               ),
                             if (config.showReplayBadge && room.isRecord == true)
                               Positioned(
@@ -1186,7 +1189,7 @@ class RoomCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: (dense ? AppTextStyles.t13 : AppTextStyles.t15).copyWith(
                               fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white : Colors.black87,
+                              color: context.tokens.textPrimary,
                             ),
                           ),
                           subtitle: config.showAnchorName
@@ -1197,7 +1200,7 @@ class RoomCard extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                   style: (dense ? AppTextStyles.t12 : AppTextStyles.t13).copyWith(
                                     fontWeight: FontWeight.w500,
-                                    color: isDark ? Colors.grey[400] : Colors.grey[700],
+                                    color: context.tokens.textSecondary,
                                   ),
                                 )
                               : null,
