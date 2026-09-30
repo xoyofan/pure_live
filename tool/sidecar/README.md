@@ -51,4 +51,4 @@ printf '{"id":1,"method":"health","params":{}}\n{"id":2,"method":"resolve","para
 
 ## 弹幕
 
-弹幕 WS(B 站)暂由 streamingserver 的 TS 实现(`src/danmaku/bilibili.ts`)承担,依赖 slimmed `backends/bilibili.ts` 的 wbi/buvid 设施。抖音弹幕为 M2。
+弹幕 WS(B 站)暂由 streamingserver 的 TS 实现(`src/danmaku/bilibili.ts`)承担,依赖 slimmed `backends/bilibili.ts` 的 wbi/buvid 设施。抖音弹幕走 sidecar 推帧:`danmakuStart`/`danmakuStop` 方法驱动 `lib/core/danmaku/douyin_danmaku.dart`(与 app 同一份实现),帧以 `{"push":"danmaku","roomId":...,"frame":{...}}` 从 stdout 推出,Node 侧 `src/danmaku/douyin.ts` 按 roomId 扇出并引用计数。

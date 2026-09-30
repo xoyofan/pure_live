@@ -27,12 +27,17 @@ interface SidecarCall {
   timer: NodeJS.Timeout;
 }
 
-class SidecarProcess {
+export class SidecarProcess {
   private proc: ChildProcess | null = null;
   private nextId = 1;
   private readonly pending = new Map<number, SidecarCall>();
   private buffer = '';
   private starting: Promise<void> | null = null;
+
+  /** Receives {"push":"danmaku"} stdout envelopes (see danmaku/douyin.ts). */
+  onDanmakuPush: ((roomId: string, frame: Record<string, unknown>) => void) | null = null;
+  /** Fires when the sidecar process dies (sessions must surface an error). */
+  onExit: (() => void) | null = null;
 
   constructor(private readonly exePath: string) {}
 
@@ -56,6 +61,7 @@ class SidecarProcess {
       proc.on('error', (error) => fail(`sidecar spawn failed: ${error.message}`));
       proc.on('exit', (code) => {
         this.proc = null;
+        this.onExit?.();
         for (const call of this.pending.values()) {
           call.reject(upstreamError(`sidecar exited (code ${code})`));
           clearTimeout(call.timer);
@@ -94,11 +100,24 @@ class SidecarProcess {
   }
 
   private handleLine(line: string): void {
-    let message: { id?: number; ok?: boolean; result?: unknown; error?: { code?: string; message?: string } };
+    let message: {
+      id?: number;
+      ok?: boolean;
+      result?: unknown;
+      error?: { code?: string; message?: string };
+      push?: string;
+      roomId?: string;
+      frame?: Record<string, unknown>;
+    };
     try {
       message = JSON.parse(line);
     } catch {
       return; // Non-JSON stdout noise is ignored.
+    }
+    // Unsolicited push envelope from the sidecar (e.g. danmaku frames).
+    if (message.push === 'danmaku' && typeof message.roomId === 'string') {
+      this.onDanmakuPush?.(message.roomId, message.frame ?? {});
+      return;
     }
     if (typeof message.id !== 'number') return;
     const call = this.pending.get(message.id);

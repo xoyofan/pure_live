@@ -69,3 +69,5 @@ app.*.map.json
 
 # Agent session/tool caches (codegraph data self-ignores via .codegraph/.gitignore)
 .zcode/
+# local verification screenshots
+.shots/

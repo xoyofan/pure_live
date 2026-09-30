@@ -12,6 +12,7 @@ import { registry } from './backends/types.js';
 import { buvidState, exportedWbiSign } from './backends/bilibili.js';
 import { createDartSidecarBackends } from './backends/dart_sidecar.js';
 import { BilibiliDanmakuSource, bindBilibiliHelpers } from './danmaku/bilibili.js';
+import { SidecarDouyinDanmakuSource } from './danmaku/douyin.js';
 import { createRestRouter, errorMiddleware } from './routes/rest.js';
 import { registerProxyRoute } from './routes/proxy.js';
 import { attachDanmakuWs } from './routes/danmaku.js';
@@ -37,6 +38,10 @@ if (sidecarRegistration) {
 
 bindBilibiliHelpers(exportedWbiSign, buvidState);
 registry.registerDanmakuSource('bilibili', new BilibiliDanmakuSource());
+// Douyin danmaku rides the sidecar (same lib/core DouyinDanmaku as the app).
+if (sidecarRegistration) {
+  registry.registerDanmakuSource('douyin', new SidecarDouyinDanmakuSource(sidecarRegistration.process));
+}
 
 /* --------------------------------- express ----------------------------------- */
 
