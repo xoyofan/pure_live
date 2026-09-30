@@ -21,6 +21,7 @@ import 'package:pure_live/zishu_app/features/play/zishu_player_controls.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_play_immersive_sheet.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_sleep_timer_badge.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_play_keyboard_ext.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
 
 /// zishu 播放页布局骨架(对齐 zishu_flutter play_view 的 U5 左右布局):
 /// Scaffold(transparent) → Row[Expanded(左列[房间头, Expanded(舞台帧)]), 侧栏]。
@@ -94,6 +95,9 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
               onToggle: () => setState(() => _immersiveSheetVisible = !_immersiveSheetVisible),
               child: ZishuPlaySidePanel(room: room, isLive: state.room.isLiving),
             ),
+            // 舞台提示浮层:沉浸态下操作反馈同样落在舞台内(Stack 顶层,
+            // IgnorePointer 不吸收命中)。
+            const ZishuStageHintOverlay(),
           ],
         );
       } else {
@@ -139,7 +143,13 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
           // 舞台圆角(web .play-frame 12px,≤640 为 0)。
           final stageRadius = BorderRadius.circular(width < AppBreakpoints.compact ? 0 : AppRadius.lg);
           Widget stageInFrame(Widget child) => ClipRRect(borderRadius: stageRadius, child: child);
-          final sidePanel = ZishuPlaySidePanel(room: room, isLive: controller.state.value.room.isLiving);
+          final sidePanel = ZishuPlaySidePanel(
+            room: room,
+            isLive: controller.state.value.room.isLiving,
+            // 窄屏堆叠:视频正下方紧跟移动信息条(头像 + 昵称 + 统计 +
+            // 关注/超关),替代桌面信息头(对齐 zishu compactHeader: true)。
+            compactHeader: stacked,
+          );
           final title = room.title?.trim() ?? '';
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -197,6 +207,9 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
           LivePlayVideo(controller: controller, expandToParent: true),
           // 睡眠定时舞台徽章(右上 pill,无定时器自空)。
           const ZishuSleepTimerBadge(),
+          // 舞台提示浮层:刷新等操作反馈落在视频区内(替代全局 toast),
+          // 必须为舞台 Stack 直接子级(内部 Positioned);不吸收命中。
+          const ZishuStageHintOverlay(),
           Obx(() {
             // 播放器就位前不挂控制条(VideoController 随播放器状态创建)。
             final videoController = controller.state.value.player.videoController;
@@ -252,15 +265,15 @@ class _ZishuRoomHeader extends StatelessWidget {
 
   /// 收藏/取消收藏当前分类(zishu 口径:跨平台「我的分类」,不区分平台
   /// 分类号)。已达上限且是新增时 [MyCategoryController.toggle] 返回
-  /// false,这里 toast 提示(既有 key `my_category_limit`,上限 12 与
-  /// [MyCategoryController.maxCount] 一致)。
+  /// false,这里经舞台提示浮层反馈(既有 key `my_category_limit`,上限 12
+  /// 与 [MyCategoryController.maxCount] 一致;原全局 ToastUtil 换舞台内浮层)。
   Future<void> _toggleFavoriteCategory() async {
     final siteId = room.platform?.trim() ?? '';
     final category = room.area?.trim() ?? '';
     if (siteId.isEmpty || category.isEmpty) return;
     final ok = await MyCategoryController.to.toggle(siteId, category);
     if (!ok) {
-      ToastUtil.show(i18n('my_category_limit'));
+      ZishuStageHint.show(i18n('my_category_limit'));
     }
   }
 

@@ -25,6 +25,7 @@ import 'package:pure_live/zishu_app/shell/category_warmup.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_follow_flyout.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_hover_overlay.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_my_category_flyout.dart';
+import 'package:pure_live/zishu_app/shell/zishu_app_nav_shortcuts.dart';
 
 /// zishu 前端移植主外壳(宽屏 >680):44px 顶栏 + 可折叠浏览侧栏。
 ///
@@ -84,7 +85,9 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
 
   /// 侧栏宽/把手位动画时长(展开 220 ↔ 收起 52):侧栏本体
   /// AnimatedContainer 与外壳把手的 AnimatedPositioned 同源同曲线。
-  static const Duration _kSidebarWidthAnimDuration = Duration(milliseconds: 200);
+  /// 对齐真源 browse_sidebar 的 AnimatedContainer(AppMotion.normal,
+  /// AppMotion.curve),不走裸数值。
+  static const Duration _kSidebarWidthAnimDuration = AppMotion.normal;
 
   PopularController? _popular;
   VoidCallback? _tabListener;
@@ -275,6 +278,29 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
     unawaited(openZishuSettingsDialog(context));
   }
 
+  /// F5 浏览器式刷新的壳层落地(对齐真源 refreshPlay > refreshHome 的
+  /// 注册分发):按当前主导航页直发对应控制器刷新,菜单未挂控制器时
+  /// 静默(真源「未注册即静默」同口径)。播放页在 kLivePlay 路由持有
+  /// 焦点时本壳收不到按键,无 refreshPlay 注册点(播放页域外,本轨不碰
+  /// zishu_play_view);录制页 RecorderController 无公开刷新口径,同样静默。
+  void _refreshCurrentPage() {
+    final index = widget.index;
+    if (index == HomeMenu.popular.index) {
+      _bindPopular();
+      final popular = _popular;
+      if (popular != null) unawaited(popular.refreshCurrentData());
+    } else if (index == HomeMenu.areas.index) {
+      _bindAreas();
+      final areas = _areas;
+      if (areas != null) unawaited(areas.refreshCurrentData());
+    } else if (index == HomeMenu.favorites.index) {
+      if (Get.isRegistered<FavoriteController>()) {
+        unawaited(Get.find<FavoriteController>().refreshData());
+      }
+    }
+    // 录制页:RecorderController 无公开刷新口径,静默(真源未注册即静默)。
+  }
+
   @override
   void initState() {
     super.initState();
@@ -428,111 +454,121 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
         ),
       );
     }
-    return Stack(
-      children: [
-        // Ctrl+F / Ctrl+K 全局搜索:CallbackShortcuts 在焦点气泡阶段收键;
-        // Focus(autofocus) 让壳层在无其他焦点者时兜底持有焦点。壳层覆盖
-        // 整页内容,页内任何控件持有焦点时按键也会沿祖先链回到这里。
-        CallbackShortcuts(
-          bindings: <ShortcutActivator, VoidCallback>{
-            const SingleActivator(LogicalKeyboardKey.keyF, control: true): _openSearchAction,
-            const SingleActivator(LogicalKeyboardKey.keyK, control: true): _openSearchAction,
-          },
-          child: Focus(
-            focusNode: _shortcutFocusNode,
-            autofocus: true,
-            child: Theme(
-              // 交互态收口:外壳根部统一 focus 色(键盘导航可见)。
-              data: Theme.of(context).copyWith(focusColor: AppStateLayer.focusOf(tokens.accent)),
-              child: Scaffold(
-                backgroundColor: tokens.background,
-                body: SafeArea(
-                  // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表。
-                  child: Obx(() {
-                    final visibleSites = _visibleSites();
-                    return Column(
-                      children: [
-                        _TopBar(
-                          index: widget.index,
-                          sites: visibleSites,
-                          currentSiteId: _currentSiteId,
-                          onSelectMenu: _navigateToMenu,
-                          onSelectSite: _selectSiteId,
-                          onPlatformHoverStart: _schedulePlatformFlyout,
-                          onPlatformHoverEnd: _cancelPlatformFlyoutOpen,
-                          onFollowHoverStart: _openFollowFlyout,
-                          onFollowHoverEnd: _scheduleFlyoutClose,
-                          onOpenSettings: _openSettingsDialog,
-                        ),
-                        const Divider(height: 1, thickness: 1),
-                        Expanded(
-                          // 折叠把手悬浮化:侧栏本体纯宽(220/52),Row 外包
-                          // Stack,把手 Positioned 浮于内容区左缘(z 序高,
-                          // Material+elevation 出投影),不再占布局宽。
-                          child: Stack(
-                            children: [
-                              Row(
-                                children: [
-                                  _BrowseSidebar(
-                                    index: widget.index,
-                                    sites: visibleSites,
-                                    currentSiteId: _currentSiteId,
-                                    collapsed: _collapsed,
-                                    onSelectSite: _selectSiteId,
-                                    onSelectMenu: _navigateToMenu,
-                                    categorySite: _currentSite,
-                                    onOpenCategory: selectAreaCategory,
-                                  ),
-                                  const VerticalDivider(width: 1, thickness: 1),
-                                  Expanded(child: _contentForMenu(widget.index, _currentSiteId)),
-                                ],
-                              ),
-                              // 突出折叠把手:贴侧栏右缘悬浮(top:0/bottom:0 +
-                              // Center = 布局垂直中部);宽度动画期间用
-                              // AnimatedPositioned(与侧栏 AnimatedContainer
-                              // 同时长同曲线)同步贴住侧栏当前宽。
-                              AnimatedPositioned(
-                                duration: _kSidebarWidthAnimDuration,
-                                curve: Curves.easeOutCubic,
-                                left: _collapsed ? AppDirectoryDrawer.railWidth : AppDirectoryDrawer.width,
-                                top: 0,
-                                bottom: 0,
-                                child: Center(
-                                  child: Material(
-                                    color: tokens.surface,
-                                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
-                                    elevation: 1,
-                                    child: InkWell(
-                                      onTap: () => setState(() => _collapsed = !_collapsed),
+    // 全局导航快捷键(Alt+←/→/Home、F5、鼠标侧键 X1/X2,对齐真源
+    // app_nav_shortcuts):包住整棵壳层 —— 内层 CallbackShortcuts 先收
+    // Ctrl+F/K,Alt/F5 沿焦点祖先链冒泡到外层;Listener opaque 让空白区
+    // 也参与命中(侧键是落点无关手势)。挂点先例与 Focus 冒泡语义同
+    // 既有 Ctrl+F/K 挂点。
+    return ZishuAppNavShortcuts(
+      index: widget.index,
+      onNavigateToMenu: _navigateToMenu,
+      onRefreshCurrentPage: _refreshCurrentPage,
+      child: Stack(
+        children: [
+          // Ctrl+F / Ctrl+K 全局搜索:CallbackShortcuts 在焦点气泡阶段收键;
+          // Focus(autofocus) 让壳层在无其他焦点者时兜底持有焦点。壳层覆盖
+          // 整页内容,页内任何控件持有焦点时按键也会沿祖先链回到这里。
+          CallbackShortcuts(
+            bindings: <ShortcutActivator, VoidCallback>{
+              const SingleActivator(LogicalKeyboardKey.keyF, control: true): _openSearchAction,
+              const SingleActivator(LogicalKeyboardKey.keyK, control: true): _openSearchAction,
+            },
+            child: Focus(
+              focusNode: _shortcutFocusNode,
+              autofocus: true,
+              child: Theme(
+                // 交互态收口:外壳根部统一 focus 色(键盘导航可见)。
+                data: Theme.of(context).copyWith(focusColor: AppStateLayer.focusOf(tokens.accent)),
+                child: Scaffold(
+                  backgroundColor: tokens.background,
+                  body: SafeArea(
+                    // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表。
+                    child: Obx(() {
+                      final visibleSites = _visibleSites();
+                      return Column(
+                        children: [
+                          _TopBar(
+                            index: widget.index,
+                            sites: visibleSites,
+                            currentSiteId: _currentSiteId,
+                            onSelectMenu: _navigateToMenu,
+                            onSelectSite: _selectSiteId,
+                            onPlatformHoverStart: _schedulePlatformFlyout,
+                            onPlatformHoverEnd: _cancelPlatformFlyoutOpen,
+                            onFollowHoverStart: _openFollowFlyout,
+                            onFollowHoverEnd: _scheduleFlyoutClose,
+                            onOpenSettings: _openSettingsDialog,
+                          ),
+                          const Divider(height: 1, thickness: 1),
+                          Expanded(
+                            // 折叠把手悬浮化:侧栏本体纯宽(220/52),Row 外包
+                            // Stack,把手 Positioned 浮于内容区左缘(z 序高,
+                            // Material+elevation 出投影),不再占布局宽。
+                            child: Stack(
+                              children: [
+                                Row(
+                                  children: [
+                                    _BrowseSidebar(
+                                      index: widget.index,
+                                      sites: visibleSites,
+                                      currentSiteId: _currentSiteId,
+                                      collapsed: _collapsed,
+                                      onSelectSite: _selectSiteId,
+                                      onSelectMenu: _navigateToMenu,
+                                      categorySite: _currentSite,
+                                      onOpenCategory: selectAreaCategory,
+                                    ),
+                                    const VerticalDivider(width: 1, thickness: 1),
+                                    Expanded(child: _contentForMenu(widget.index, _currentSiteId)),
+                                  ],
+                                ),
+                                // 突出折叠把手:贴侧栏右缘悬浮(top:0/bottom:0 +
+                                // Center = 布局垂直中部);宽度动画期间用
+                                // AnimatedPositioned(与侧栏 AnimatedContainer
+                                // 同时长同曲线)同步贴住侧栏当前宽。
+                                AnimatedPositioned(
+                                  duration: _kSidebarWidthAnimDuration,
+                                  curve: AppMotion.curve,
+                                  left: _collapsed ? AppDirectoryDrawer.railWidth : AppDirectoryDrawer.width,
+                                  top: 0,
+                                  bottom: 0,
+                                  child: Center(
+                                    child: Material(
+                                      color: tokens.surface,
                                       borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
-                                      focusColor: Theme.of(context).focusColor,
-                                      child: SizedBox(
-                                        width: AppDirectoryDrawer.toggleWidth,
-                                        height: AppDirectoryDrawer.toggleHeight,
-                                        child: Icon(
-                                          _collapsed ? Remix.arrow_right_s_line : Remix.arrow_left_s_line,
-                                          size: 16,
-                                          color: tokens.textSecondary,
+                                      elevation: 1,
+                                      child: InkWell(
+                                        onTap: () => setState(() => _collapsed = !_collapsed),
+                                        borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+                                        focusColor: Theme.of(context).focusColor,
+                                        child: SizedBox(
+                                          width: AppDirectoryDrawer.toggleWidth,
+                                          height: AppDirectoryDrawer.toggleHeight,
+                                          child: Icon(
+                                            _collapsed ? Remix.arrow_right_s_line : Remix.arrow_left_s_line,
+                                            size: 16,
+                                            color: tokens.textSecondary,
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    );
-                  }),
+                        ],
+                      );
+                    }),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-        // hover 浮层:Stack 覆盖在外壳最上层(Scaffold 之外)。
-        ..._buildFlyouts(),
-      ],
+          // hover 浮层:Stack 覆盖在外壳最上层(Scaffold 之外)。
+          ..._buildFlyouts(),
+        ],
+      ),
     );
   }
 
@@ -973,7 +1009,7 @@ class _BrowseSidebar extends StatelessWidget {
     final width = collapsed ? AppDirectoryDrawer.railWidth : AppDirectoryDrawer.width;
     return AnimatedContainer(
       duration: _ZishuAppShellState._kSidebarWidthAnimDuration,
-      curve: Curves.easeOutCubic,
+      curve: AppMotion.curve,
       width: width,
       color: tokens.surfaceSoft,
       child: collapsed ? _buildCollapsed(context, tokens) : _buildExpanded(context, tokens),

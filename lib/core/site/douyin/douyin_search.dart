@@ -8,6 +8,7 @@ import 'package:pure_live/core/common/site_ids.dart';
 import 'package:pure_live/core/common/core_log.dart';
 import 'package:pure_live/core/common/http_client.dart';
 import 'package:pure_live/core/site/douyin/douyin_audience.dart';
+import 'package:pure_live/core/utils/douyin/douyin_utils.dart';
 
 class DouyinSearch {
   static const String host = 'https://live.douyin.com';
@@ -100,6 +101,61 @@ class DouyinSearch {
       'Sec-Fetch-Site': 'same-origin',
       if (cookie.isNotEmpty) 'Cookie': cookie,
     };
+  }
+
+  /// Mirrors zishu live_parser `search.dart::_isCaptchaBody`: an HTML shell,
+  /// an empty payload or a captcha notice means the request was rejected by
+  /// risk-control instead of returning the JSON API body.
+  static bool _isCaptchaBody(String text) {
+    final trimmed = text.trim();
+
+    return trimmed.isEmpty ||
+        trimmed.startsWith('<!DOCTYPE') ||
+        trimmed.startsWith('<html') ||
+        trimmed.contains('验证码');
+  }
+
+  /// Requests a signed search endpoint and decodes the body defensively.
+  ///
+  /// Returns the parsed rooms plus a failure tag ('' on success) so [search]
+  /// can report one summary when the whole fallback chain runs dry. The URL is
+  /// signed through [DouyinUtils.buildRequestUrl] (a_bogus + msToken), the same
+  /// way as the category/recommend/enter endpoints.
+  static Future<(List<LiveRoom>, String)> _fetchSignedSearch(
+    String endpoint,
+    Map<String, dynamic> params,
+    Map<String, dynamic> headers,
+  ) async {
+    final targetUrl = DouyinUtils.buildRequestUrl(endpoint, params);
+
+    final body = await HttpClient.instance.getText(targetUrl, header: headers);
+
+    if (_isCaptchaBody(body)) {
+      CoreLog.w('抖音搜索命中验证码/风控响应: $endpoint');
+      return (<LiveRoom>[], 'captcha');
+    }
+
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(body);
+    } on FormatException catch (e) {
+      CoreLog.error(e);
+      return (<LiveRoom>[], 'non-json');
+    }
+
+    final json = _asMap(decoded);
+
+    if (json == null) {
+      return (<LiveRoom>[], 'bad-payload');
+    }
+
+    final statusCode = json['status_code']?.toString() ?? '';
+
+    if (statusCode != '0') {
+      return (<LiveRoom>[], statusCode.isEmpty ? 'status_code_missing' : 'status_code=$statusCode');
+    }
+
+    return (_extractSearchVideos(json['data']), '');
   }
 
   static String _firstNonEmpty(List<dynamic> values) {
@@ -320,7 +376,7 @@ class DouyinSearch {
   @visibleForTesting
   static List<LiveRoom> parseSearchPayloadForTesting(dynamic payload) => _extractSearchVideos(payload);
 
-  static Future<List<LiveRoom>> _searchByLiveApi(String keyword, int page, int pageSize) async {
+  static Future<(List<LiveRoom>, String)> _searchByLiveApi(String keyword, int page, int pageSize) async {
     final count = pageSize.clamp(1, 50).toInt();
     final offset = count * (page - 1);
 
@@ -341,17 +397,12 @@ class DouyinSearch {
       'os_version': '10',
     };
 
-    final result = await HttpClient.instance.getJson(
-      'https://www.douyin.com/aweme/v1/web/live/search/',
-      queryParameters: params,
-      header: headers,
-    );
-
-    if (result['status_code'] != 0) return [];
-    return _extractSearchVideos(result['data']);
+    // buildRequestUrl 会追加 aid/msToken/browser_* 等公共参数并生成 a_bogus 签名，
+    // 因此请求走完整 targetUrl（与 douyin_site.dart 的 enter/分类端点一致）。
+    return _fetchSignedSearch('https://www.douyin.com/aweme/v1/web/live/search/', params, headers);
   }
 
-  static Future<List<LiveRoom>> _searchByGeneralApi(String keyword, int page, int pageSize) async {
+  static Future<(List<LiveRoom>, String)> _searchByGeneralApi(String keyword, int page, int pageSize) async {
     final count = pageSize.clamp(1, 50).toInt();
     final offset = count * (page - 1);
 
@@ -368,17 +419,10 @@ class DouyinSearch {
       'os_version': '10',
     };
 
-    final result = await HttpClient.instance.getJson(
-      'https://www.douyin.com/aweme/v1/web/general/search/stream/',
-      queryParameters: params,
-      header: headers,
-    );
-
-    if (result['status_code'] != 0) return [];
-    return _extractSearchVideos(result['data']);
+    return _fetchSignedSearch('https://www.douyin.com/aweme/v1/web/general/search/stream/', params, headers);
   }
 
-  static Future<List<LiveRoom>> _searchByPartition(String keyword, int page, int pageSize) async {
+  static Future<(List<LiveRoom>, String)> _searchByPartition(String keyword, int page, int pageSize) async {
     final headers = await _getHeaders(keyword);
 
     final result = await HttpClient.instance.getJson(
@@ -392,7 +436,8 @@ class DouyinSearch {
     final partitions = data?['SearchResult'];
 
     if (partitions is! List || partitions.isEmpty) {
-      return [];
+      final status = _mapValue(result, 'status_code')?.toString() ?? '';
+      return (<LiveRoom>[], status.isEmpty ? 'status_code_missing' : 'status_code=$status,partition_list_empty');
     }
 
     final merged = <LiveRoom>[];
@@ -435,7 +480,7 @@ class DouyinSearch {
           }
 
           if (merged.length >= pageSize) {
-            return merged;
+            return (merged, '');
           }
         }
       } catch (e) {
@@ -443,7 +488,7 @@ class DouyinSearch {
       }
     }
 
-    return merged;
+    return (merged, merged.isEmpty ? 'status_code=0,partition_rooms_empty' : '');
   }
 
   static Future<List<LiveRoom>> _getPartitionRooms(
@@ -573,31 +618,53 @@ class DouyinSearch {
       return [];
     }
 
+    final failures = <String>[];
+
+    List<LiveRoom> reportEmpty() {
+      CoreLog.w('抖音搜索三级降级全部为空 keyword="$kw" page=$normalizedPage [${failures.join(' | ')}]');
+      return const [];
+    }
+
     try {
       try {
-        final result = await _searchByLiveApi(kw, normalizedPage, normalizedPageSize);
+        final (rooms, note) = await _searchByLiveApi(kw, normalizedPage, normalizedPageSize);
 
-        if (result.isNotEmpty) {
-          return result;
+        if (rooms.isNotEmpty) {
+          return rooms;
         }
+
+        failures.add('live:$note');
       } catch (e) {
         CoreLog.error(e);
+        failures.add('live:error');
       }
 
       try {
-        final result = await _searchByGeneralApi(kw, normalizedPage, normalizedPageSize);
+        final (rooms, note) = await _searchByGeneralApi(kw, normalizedPage, normalizedPageSize);
 
-        if (result.isNotEmpty) {
-          return result;
+        if (rooms.isNotEmpty) {
+          return rooms;
         }
+
+        failures.add('general:$note');
       } catch (e) {
         CoreLog.error(e);
+        failures.add('general:error');
       }
 
-      return await _searchByPartition(kw, normalizedPage, normalizedPageSize);
+      final (rooms, note) = await _searchByPartition(kw, normalizedPage, normalizedPageSize);
+
+      if (rooms.isNotEmpty) {
+        return rooms;
+      }
+
+      failures.add('partition:$note');
+
+      return reportEmpty();
     } catch (e) {
       CoreLog.error(e);
-      return [];
+      failures.add('partition:error');
+      return reportEmpty();
     }
   }
 }

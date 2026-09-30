@@ -9,6 +9,8 @@ import 'package:pure_live/zishu/presentation/widgets/empty_view.dart' as zishu;
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_chat_tab.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_play_meta_bar.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
 import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 
 /// 会话级侧栏 tab 记忆(zishu `PlaySidePanelPrefs.tabIndex` 的最小等价物):
@@ -27,7 +29,7 @@ int _lastSidePanelTab = 0;
 /// - 推荐 → 热门页 `PopularController` 分类房间流;
 /// - 设置 → 就地渲染弹幕设置(对齐 zishu settings_panel,非跳转列表)。
 class ZishuPlaySidePanel extends StatelessWidget {
-  const ZishuPlaySidePanel({super.key, required this.room, required this.isLive});
+  const ZishuPlaySidePanel({super.key, required this.room, required this.isLive, this.compactHeader = false});
 
   /// 当前房间快照(既有控制器 `controller.state.value.room.detail`,
   /// 缺 detail 时为 `controller.room`):只取展示字段,不做解析。
@@ -35,6 +37,11 @@ class ZishuPlaySidePanel extends StatelessWidget {
 
   /// 直播中(驱动名称强调色)。
   final bool isLive;
+
+  /// 窄屏(移动竖屏堆叠)用移动「直播信息条」[ZishuPlayMetaBar] 代替
+  /// 桌面信息头 `_SideHeader`(对齐 zishu `compactHeader` 口径:两者同源
+  /// 数据与回调,仅排布不同;桌面(>=768)保持 false)。
+  final bool compactHeader;
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +60,9 @@ class ZishuPlaySidePanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SideHeader(room: room, isLive: isLive),
+              // 窄屏堆叠(compactHeader):信息条替代桌面信息头(对齐
+              // zishu play_side_panel.dart:257-264 的挂接方式)。
+              compactHeader ? ZishuPlayMetaBar(room: room, isLive: isLive) : _SideHeader(room: room, isLive: isLive),
               // 高度对齐 web `--el-tabs-header-height: 2rem`(32px)。
               SizedBox(
                 height: 32,
@@ -154,10 +163,11 @@ class _SidePanelTabMemoryState extends State<_SidePanelTabMemory> {
   Widget build(BuildContext context) => widget.child;
 }
 
-/// 切换当前房间收藏:头部关注 chip 与关注 tab 共用同一数据源与语义
-/// (`SettingsService.to.fav` 本机持久化,复用 RoomCard 同款
-/// addRoomDurably/removeRoomDurably)。
-Future<void> _toggleRoomFavorite(LiveRoom room) async {
+/// 切换当前房间收藏:头部关注 chip、关注 tab 与窄屏信息条共用同一数据源
+/// 与语义(`SettingsService.to.fav` 本机持久化,复用 RoomCard 同款
+/// addRoomDurably/removeRoomDurably)。失败反馈走舞台内提示浮层
+/// (对齐真源播放页 SnackBar 通道,替代原全局 ToastUtil)。
+Future<void> toggleRoomFavorite(LiveRoom room) async {
   final favorites = SettingsService.to.fav;
   try {
     if (favorites.isFavorite(room)) {
@@ -168,7 +178,7 @@ Future<void> _toggleRoomFavorite(LiveRoom room) async {
       if (changed) EventBus.instance.emit('changeFavorite', true);
     }
   } catch (_) {
-    ToastUtil.show(i18n('favorite_changes_save_failed'));
+    ZishuStageHint.show(i18n('favorite_changes_save_failed'));
   }
 }
 
@@ -190,7 +200,7 @@ class _FollowTab extends StatelessWidget {
         children: [
           // 当前房间收藏:大操作行(星标 + 文案 + 状态)。
           InkWell(
-            onTap: () => _toggleRoomFavorite(room),
+            onTap: () => toggleRoomFavorite(room),
             borderRadius: AppRadius.allSm,
             hoverColor: tokens.surfaceRaised,
             focusColor: Theme.of(context).focusColor,
@@ -607,7 +617,7 @@ class _SideActionsColumn extends StatelessWidget {
                   foreground: tokens.playFollowText,
                   activeForeground: tokens.playFollowTextActive,
                 ),
-                onPressed: () => _toggleRoomFavorite(room),
+                onPressed: () => toggleRoomFavorite(room),
               );
             }),
           ),
@@ -693,14 +703,20 @@ class _SideActionChip extends StatefulWidget {
 class _SideActionChipState extends State<_SideActionChip> {
   bool _hovered = false;
   bool _pressed = false;
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
     final colors = widget.colors;
     // 已选中与按下共用 active 档:按下即「预告」选中配色,视觉不断层。
     final active = widget.selected || _pressed;
     final background = active ? colors.activeBackground : (_hovered ? colors.hoverBackground : colors.background);
     final foreground = active ? colors.activeForeground : colors.foreground;
+    // 键盘焦点用 AppFocus.ring 外扩(对齐真源 _SideActionButton:
+    // side_panel_header.dart:556-558「键盘焦点仍保留统一 focus ring」),
+    // 只叠阴影不动尺寸位置。
+    final glow = _focused ? AppFocus.ring(tokens.accent) : null;
     return AnimatedContainer(
       duration: AppMotion.fast,
       curve: AppMotion.curve,
@@ -708,6 +724,7 @@ class _SideActionChipState extends State<_SideActionChip> {
         color: background,
         borderRadius: AppRadius.allSm,
         border: Border.all(color: colors.border),
+        boxShadow: glow,
       ),
       child: Material(
         // 透明壳只为 InkWell 提供墨水宿主;底色/描边由 AnimatedContainer 承担。
@@ -717,6 +734,9 @@ class _SideActionChipState extends State<_SideActionChip> {
           onTap: widget.onPressed,
           onHover: (value) {
             if (_hovered != value) setState(() => _hovered = value);
+          },
+          onFocusChange: (value) {
+            if (_focused != value) setState(() => _focused = value);
           },
           onTapDown: (_) {
             if (!_pressed) setState(() => _pressed = true);

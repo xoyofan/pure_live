@@ -147,8 +147,13 @@ class _StripItem extends StatelessWidget {
     );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 1.6),
-      child: DecoratedBox(
-        // 真源:item 有 1px 边框 + 圆角,选中项边框转平台品牌色。
+      // 选中态过渡对齐真源 _PlatformStrip 的
+      // AnimatedContainer(AppMotion.fast, AppMotion.curve) —— 视觉端点
+      // 不变(1px 边框 + 圆角,选中转平台品牌色),只把瞬时切换补成同款
+      // 150ms 缓动(2026-10 shell 动画对齐,原 DecoratedBox)。
+      child: AnimatedContainer(
+        duration: AppMotion.fast,
+        curve: AppMotion.curve,
         decoration: BoxDecoration(
           border: Border.all(color: selected ? brandColor : tokens.border),
           borderRadius: AppRadius.allSm,

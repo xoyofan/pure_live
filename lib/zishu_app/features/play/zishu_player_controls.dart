@@ -27,6 +27,7 @@ import 'package:pure_live/modules/live_play/states/load_type.dart';
 import 'package:pure_live/modules/live_play/widgets/video_player/video_controller.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
 
 /// on-video 控件的 Material 墨色(样式真源 `_onVideoInkTheme`):控制条恒定
 /// 暗底,hover/pressed/focus 覆盖色必须恒定亮色,否则浅色主题下是深色覆盖层,
@@ -160,7 +161,13 @@ class _ZishuPlayerControlsBarState extends State<ZishuPlayerControlsBar> {
           key: const Key('play-refresh-stream'),
           style: _onVideoButtonStyle(),
           tooltip: i18n('refresh'),
-          onPressed: () => unawaited(controller.refresh()),
+          onPressed: () {
+            unawaited(controller.refresh());
+            // 完成反馈对齐真源:「已刷新」SnackBar 2s(player_controls.dart:224-229)
+            // 落进舞台内浮层。key `play_refreshed` 待主会话补入 en/zh 字典
+            // (zh「已刷新」/ en "Refreshed",见本轨 compromises)。
+            ZishuStageHint.show(i18n('play_refreshed'));
+          },
           icon: const Icon(Icons.refresh_rounded, size: 20, color: AppOnVideo.text),
         ),
         if (danmakuEnabled) ...[
@@ -443,7 +450,9 @@ class _PipButton extends StatelessWidget {
                 try {
                   await manager.enablePip();
                 } catch (_) {
-                  ToastUtil.show(i18n('pip_enter_failed'));
+                  // 失败反馈从全局 toast 换成舞台内浮层(对齐真源播放页
+                  // SnackBar 通道),key 复用既有 `pip_enter_failed`。
+                  ZishuStageHint.show(i18n('pip_enter_failed'));
                 }
               },
         icon: const Icon(Icons.picture_in_picture_alt_rounded, size: 20, color: AppOnVideo.text),
