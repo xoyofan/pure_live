@@ -1,4 +1,8 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:pure_live/common/index.dart';
+import 'package:pure_live/plugins/event_bus.dart';
+import 'package:pure_live/modules/live_play/widgets/danmaku/danmaku_tab.dart';
+import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/empty_view.dart' as zishu;
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
@@ -70,13 +74,11 @@ class ZishuPlaySidePanel extends StatelessWidget {
             Expanded(
               child: TabBarView(
                 children: [
-                  // 后续接线:此处换 `DanmakuTabView()`(GetView<LivePlayController>,
-                  // 无参构造,直接可用),其内含 弹幕列表/超级chat/弹幕设置/屏蔽 四子 tab。
-                  _placeholder(context, Icons.forum_outlined, '弹幕聊天待接入'),
-                  // 后续接线:FavoriteController 的关注列表(含关注/超关操作)。
-                  _placeholder(context, Icons.favorite_border_rounded, '关注列表待接入'),
-                  // 后续接线:PopularController 按当前房间分类拉推荐房间,点击进房。
-                  _placeholder(context, Icons.recommend_outlined, '推荐内容待接入'),
+                  // 聊天:既有弹幕页签整体复用(弹幕列表/超级chat/设置/屏蔽),
+                  // GetView<LivePlayController> 与播放路由同实例。
+                  const DanmakuTabView(),
+                  _FollowTab(room: room),
+                  _RecommendTab(platform: room.platform ?? ''),
                   const _SettingsEntries(),
                 ],
               ),
@@ -86,11 +88,209 @@ class ZishuPlaySidePanel extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _placeholder(BuildContext context, IconData icon, String message) {
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: zishu.EmptyView(icon: icon, message: message),
+/// 关注 tab:当前房间收藏操作 + 「关注中(开播)」房间行,点击换房。
+/// 数据源 `SettingsService.to.fav`(本机持久化),复用 RoomCard 同款
+/// addRoomDurably/removeRoomDurably 语义。
+class _FollowTab extends StatelessWidget {
+  const _FollowTab({required this.room});
+
+  final LiveRoom room;
+
+  Future<void> _toggleFavorite() async {
+    final favorites = SettingsService.to.fav;
+    try {
+      if (favorites.isFavorite(room)) {
+        final changed = await favorites.removeRoomDurably(room);
+        if (changed) EventBus.instance.emit('changeFavorite', false);
+      } else {
+        final changed = await favorites.addRoomDurably(room);
+        if (changed) EventBus.instance.emit('changeFavorite', true);
+      }
+    } catch (_) {
+      ToastUtil.show(i18n('favorite_changes_save_failed'));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Obx(() {
+      final isFollowed = SettingsService.to.fav.isFavorite(room);
+      final liveRooms = SettingsService.to.fav.favoriteRooms.v.where((r) => r.isLiveNow).toList(growable: false);
+      return ListView(
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        children: [
+          // 当前房间收藏:大操作行(星标 + 文案 + 状态)。
+          InkWell(
+            onTap: _toggleFavorite,
+            borderRadius: AppRadius.allSm,
+            hoverColor: tokens.surfaceRaised,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.md),
+              decoration: BoxDecoration(
+                color: isFollowed ? tokens.brand.withValues(alpha: 0.12) : tokens.surfaceRaised.withValues(alpha: 0.4),
+                borderRadius: AppRadius.allSm,
+                border: Border.all(color: isFollowed ? tokens.brand : tokens.border),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isFollowed ? Icons.star_rounded : Icons.star_outline_rounded,
+                    size: 20,
+                    color: isFollowed ? tokens.brand : tokens.textSecondary,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      isFollowed ? i18n('followed') : i18n('follow'),
+                      style: context.textBody.copyWith(
+                        fontSize: AppFontSize.subtitle,
+                        fontWeight: FontWeight.w600,
+                        color: isFollowed ? tokens.brand : tokens.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (liveRooms.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.md),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.xs),
+              child: Text('${i18n('online_room_title')} · ${liveRooms.length}', style: context.textSecondary),
+            ),
+            for (final live in liveRooms.take(30)) _RecommendRow(room: live, dense: true),
+          ],
+        ],
+      );
+    });
+  }
+}
+
+/// 推荐 tab:同平台热门流(热门页分页控制器 tag=platform),行项点击换房。
+/// 无该站点控制器(iptv 等)或未注册时给空态。
+class _RecommendTab extends StatefulWidget {
+  const _RecommendTab({required this.platform});
+
+  final String platform;
+
+  @override
+  State<_RecommendTab> createState() => _RecommendTabState();
+}
+
+class _RecommendTabState extends State<_RecommendTab> {
+  bool _kicked = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final platform = widget.platform;
+    if (platform.isEmpty || !Get.isRegistered<BasePageScrollAndStateBone<LiveRoom>>(tag: platform)) {
+      return Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: zishu.EmptyView(icon: Icons.live_tv_rounded, message: i18n('empty_live_title')),
+      );
+    }
+    final controller = Get.find<BasePageScrollAndStateBone<LiveRoom>>(tag: platform);
+    if (!_kicked && controller.list.isEmpty && !controller.loadding.value) {
+      _kicked = true;
+      controller.loadData();
+    }
+    return Obx(() {
+      final list = controller.list;
+      if (list.isEmpty) {
+        return Center(
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2, color: context.tokens.accent),
+          ),
+        );
+      }
+      return ListView.builder(
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        itemCount: list.length,
+        itemBuilder: (context, index) => _RecommendRow(room: list[index]),
+      );
+    });
+  }
+}
+
+/// 推荐行:16:9 小封面 + 标题/主播 + 人气,点击进房。
+class _RecommendRow extends StatelessWidget {
+  const _RecommendRow({required this.room, this.dense = false});
+
+  final LiveRoom room;
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final coverUrl = normalizeNetworkImageUrl(room.cover);
+    return InkWell(
+      onTap: () => AppNavigator.toLiveRoomDetail(liveRoom: room),
+      borderRadius: AppRadius.allSm,
+      hoverColor: tokens.surfaceRaised,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: dense ? 72 : 88,
+              height: dense ? 40.5 : 49.5,
+              child: ClipRRect(
+                borderRadius: AppRadius.allSm,
+                child: coverUrl.isEmpty
+                    ? ColoredBox(color: tokens.surfaceRaised)
+                    : CachedNetworkImage(
+                        imageUrl: coverUrl,
+                        fit: BoxFit.cover,
+                        httpHeaders: networkImageHeaders(coverUrl),
+                        fadeInDuration: Duration.zero,
+                        fadeOutDuration: Duration.zero,
+                        errorWidget: (_, _, _) => ColoredBox(color: tokens.surfaceRaised),
+                      ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    room.title?.trim().isNotEmpty == true ? room.title! : (room.nick ?? ''),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.textBody.copyWith(fontSize: AppFontSize.body, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.visibility_outlined, size: 11, color: tokens.statAudience),
+                      const SizedBox(width: 3),
+                      Flexible(
+                        child: Text(
+                          room.onlineViewers ?? room.popularity ?? '—',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.textCaption.copyWith(
+                            fontSize: AppFontSize.caption,
+                            color: tokens.statAudience,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

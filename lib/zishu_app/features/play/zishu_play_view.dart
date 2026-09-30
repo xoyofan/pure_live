@@ -1,12 +1,19 @@
 import 'package:pure_live/common/index.dart';
+import 'package:pure_live/plugins/event_bus.dart';
+import 'package:pure_live/modules/areas/areas_list_controller.dart';
 import 'package:pure_live/modules/live_play/controllers/live_play_controller.dart';
 import 'package:pure_live/modules/live_play/states/ui_state.dart';
 import 'package:pure_live/modules/live_play/widgets/keyboard/video_keyboard.dart';
 import 'package:pure_live/modules/live_play/widgets/layout/live_play_content.dart';
 import 'package:pure_live/modules/live_play/widgets/layout/live_play_video.dart';
 import 'package:pure_live/modules/live_play/widgets/resolution_selector/resolutions_row.dart';
+import 'package:pure_live/routes/app_navigation.dart';
+import 'package:pure_live/zishu/presentation/category_colors.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
+import 'package:pure_live/zishu/presentation/platform_brands.dart';
+import 'package:pure_live/zishu/presentation/widgets/platform_icon.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
+import 'package:pure_live/zishu/domain/category_display.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_play_side_panel.dart';
 
 /// zishu 播放页布局骨架(对齐 zishu_flutter play_view 的 U5 左右布局):
@@ -85,6 +92,7 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _ZishuRoomHeader(
+                      room: room,
                       title: title.isNotEmpty ? title : '直播',
                       sidePanelVisible: _sidePanelVisible,
                       onBack: () => Get.back(),
@@ -136,26 +144,78 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
   }
 }
 
-/// 房间头:返回按钮(32×32, arrow 18) + 居中标题 + 侧栏开合钮。
-/// 对齐 zishu _RoomHeader 的行构成(分类徽标本轮省略,后续按 siteId 补)。
+/// 房间头:对齐 zishu _RoomHeader —— 返回钮(32×32,arrow 18) + 分类徽标
+/// (分类色底 92%/平台色回退 + 平台图标 + 跨平台中文分类名 + 收藏星,
+/// 点击进分类)+ 左对齐标题 + 侧栏开合钮。
+///
+/// 收藏星语义按 pure_live 落地为**收藏当前房间**(zishu 原版是收藏分类,
+/// pure_live 无分类收藏数据层),复用 fav.addRoomDurably/removeRoomDurably。
 class _ZishuRoomHeader extends StatelessWidget {
   const _ZishuRoomHeader({
+    required this.room,
     required this.title,
     required this.sidePanelVisible,
     required this.onBack,
     required this.onToggleSidePanel,
   });
 
+  final LiveRoom room;
   final String title;
   final bool sidePanelVisible;
   final VoidCallback onBack;
   final VoidCallback onToggleSidePanel;
 
+  /// 房间分类在分区表中的对应项:命中则点击徽标进该分类的房间流。
+  LiveArea? _matchCategory(String siteId) {
+    final areaName = room.area?.trim() ?? '';
+    if (siteId.isEmpty || areaName.isEmpty) return null;
+    if (!Get.isRegistered<AreasListController>(tag: siteId)) return null;
+    final categories = Get.find<AreasListController>(tag: siteId).categories;
+    for (final category in categories) {
+      for (final child in category.children) {
+        if (child.areaName == areaName) return child;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _toggleFavoriteRoom() async {
+    final favorites = SettingsService.to.fav;
+    try {
+      if (favorites.isFavorite(room)) {
+        final changed = await favorites.removeRoomDurably(room);
+        if (changed) EventBus.instance.emit('changeFavorite', false);
+      } else {
+        final changed = await favorites.addRoomDurably(room);
+        if (changed) EventBus.instance.emit('changeFavorite', true);
+      }
+    } catch (_) {
+      ToastUtil.show(i18n('favorite_changes_save_failed'));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final siteId = room.platform ?? '';
+    final category = room.area?.trim() ?? '';
+    final brand = PlatformBrandCatalog.byId(siteId);
+
+    // 徽标配色:分类色板优先,无分类色回退平台品牌色;再无则纯文本。
+    final categoryStyle = CategoryColors.opaqueFor(category: category, site: siteId);
+    final badgeBg = categoryStyle?.background ?? (category.isNotEmpty ? brand?.color : null);
+    final badgeFg =
+        categoryStyle?.foreground ??
+        (badgeBg == null
+            ? tokens.textSecondary
+            : ThemeData.estimateBrightnessForColor(badgeBg) == Brightness.dark
+            ? tokens.textPrimary
+            : tokens.surfaceSoft);
+    // 分类名统一走跨平台中文映射(海外平台原名归一为中文)。
+    final categoryLabel = category.isNotEmpty ? displayCategoryName(siteId, category) : '';
+    final matchedCategory = _matchCategory(siteId);
+
     return Container(
-      // 自适应高度(web padding .28rem .5rem .32rem 的折算),内容撑开。
       padding: const EdgeInsets.fromLTRB(2, 4.5, 4, 5),
       child: Row(
         children: [
@@ -164,17 +224,59 @@ class _ZishuRoomHeader extends StatelessWidget {
             onPressed: onBack,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            focusColor: AppStateLayer.focusOf(tokens.accent),
             icon: const Icon(Icons.arrow_back_rounded, size: 18),
           ),
           const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Center(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.textTitle.copyWith(fontSize: AppFontSize.subtitle),
+          if (badgeBg != null) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(color: badgeBg.withValues(alpha: 0.92), borderRadius: AppRadius.allSm),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (matchedCategory != null)
+                    Tooltip(
+                      message: '查看$categoryLabel 分类',
+                      child: InkWell(
+                        onTap: () => AppNavigator.toCategoryDetail(site: Sites.of(siteId), category: matchedCategory),
+                        borderRadius: AppRadius.allSm,
+                        child: _BadgeLabel(siteId: siteId, categoryLabel: categoryLabel, color: badgeFg),
+                      ),
+                    )
+                  else
+                    _BadgeLabel(siteId: siteId, categoryLabel: categoryLabel, color: badgeFg),
+                  const SizedBox(width: 4),
+                  // 收藏星:收藏当前房间(13px,与 zishu 星标同规格)。
+                  SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: IconButton(
+                      tooltip: i18n('follow'),
+                      onPressed: _toggleFavoriteRoom,
+                      padding: EdgeInsets.zero,
+                      splashRadius: 12,
+                      icon: Obx(() {
+                        final followed = SettingsService.to.fav.isFavorite(room);
+                        return Icon(
+                          followed ? Icons.star_rounded : Icons.star_outline_rounded,
+                          size: 13,
+                          color: followed ? tokens.brand : badgeFg,
+                        );
+                      }),
+                    ),
+                  ),
+                ],
               ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+          ],
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.textTitle.copyWith(fontSize: AppFontSize.subtitle),
             ),
           ),
           IconButton(
@@ -190,6 +292,33 @@ class _ZishuRoomHeader extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 徽标文字行:平台图标 + 中文分类名(颜色随徽标底色)。
+class _BadgeLabel extends StatelessWidget {
+  const _BadgeLabel({required this.siteId, required this.categoryLabel, required this.color});
+
+  final String siteId;
+  final String categoryLabel;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        PlatformIcon(id: siteId, size: 14),
+        const SizedBox(width: 4),
+        Text(
+          categoryLabel,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: color, fontWeight: FontWeight.w600, fontSize: 11),
+        ),
+      ],
     );
   }
 }
