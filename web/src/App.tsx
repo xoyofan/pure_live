@@ -4,15 +4,29 @@ import RoomPage from './pages/RoomPage';
 
 type Route = { page: 'home' } | { page: 'room'; platform: string; roomId: string };
 
+/** Page kinds that live under a platform prefix (/{platform}/{kind}/...). */
+const PAGE_KINDS = ['room'] as const;
+
 /**
- * Derive the route from the URL. Supported deep-link forms:
- *   /{platform}/{roomId}        (path style, canonical)
- *   /?platform=...&roomId=...   (legacy query style, still honored)
+ * Derive the route from the URL. Supported forms (canonical first):
+ *   /{platform}/room/{roomId}   e.g. /douyin/room/435911602058
+ *   /{platform}/{roomId}        shorthand without the page kind
+ *   /?platform=...&roomId=...   legacy query form
  */
 function routeFromLocation(): Route {
-  const segments = window.location.pathname.split('/').filter(Boolean);
-  if (segments.length === 2) {
-    return { page: 'room', platform: decodeURIComponent(segments[0]), roomId: decodeURIComponent(segments[1]) };
+  const segments = window.location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  if (segments.length >= 2) {
+    const [platform, kind, ...rest] = segments;
+    if ((PAGE_KINDS as readonly string[]).includes(kind)) {
+      if (kind === 'room' && rest[0]) {
+        return { page: 'room', platform, roomId: rest[0] };
+      }
+      // Known kind with a missing id (e.g. /douyin/room) — home for now.
+      return { page: 'home' };
+    }
+    if (segments.length === 2 && rest.length === 0) {
+      return { page: 'room', platform, roomId: kind };
+    }
   }
   const params = new URLSearchParams(window.location.search);
   const platform = params.get('platform');
@@ -24,7 +38,10 @@ function routeFromLocation(): Route {
 }
 
 function syncUrl(route: Route) {
-  const nextUrl = route.page === 'room' ? `/${encodeURIComponent(route.platform)}/${encodeURIComponent(route.roomId)}` : '/';
+  const nextUrl =
+    route.page === 'room'
+      ? `/${encodeURIComponent(route.platform)}/room/${encodeURIComponent(route.roomId)}`
+      : '/';
   window.history.pushState(null, '', nextUrl);
 }
 
