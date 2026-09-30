@@ -51,7 +51,7 @@ Color zishuRecordStatusColor(ZishuTokens tokens, RecordStatus status) {
     case RecordStatus.processing:
       return tokens.accent;
     case RecordStatus.waitingLive:
-      return tokens.brand;
+      return tokens.brandBright;
     case RecordStatus.reconnecting:
       return tokens.brandBright;
     case RecordStatus.completed:

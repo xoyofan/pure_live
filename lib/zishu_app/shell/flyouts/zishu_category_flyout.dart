@@ -19,7 +19,7 @@ class ZishuPlatformCategoryFlyout extends StatelessWidget {
     required this.onEnter,
     required this.onExit,
     this.onOpenCategory,
-    this.emptyHint = '暂无分类',
+    this.emptyHint,
   });
 
   // ---- 布局规格(对齐 zishu 真源 app_shell.dart 顶部常量) ----
@@ -70,8 +70,10 @@ class ZishuPlatformCategoryFlyout extends StatelessWidget {
   /// 点分类条目跳分类详情;为 null 时条目只展示不可点(站点对象缺失)。
   final void Function(LiveArea area)? onOpenCategory;
 
-  /// 目录为空时的提示文案(壳层按加载中/失败/无数据传入)。
-  final String emptyHint;
+  /// 目录为空时的提示文案(壳层按加载中/失败/无数据传入);
+  /// 缺省回退既有 key zishu_category_flyout_empty(原构造默认字面量
+  /// 「暂无分类」已迁移,const 默认参数无法调用 i18n,故改为可空 + 回退)。
+  final String? emptyHint;
 
   @override
   Widget build(BuildContext context) {
@@ -79,7 +81,11 @@ class ZishuPlatformCategoryFlyout extends StatelessWidget {
       onEnter: (_) => onEnter(),
       onExit: (_) => onExit(),
       child: ZishuFlyoutPanel(
-        child: _CategoryBoard(groups: groups, onOpenCategory: onOpenCategory, emptyHint: emptyHint),
+        child: _CategoryBoard(
+          groups: groups,
+          onOpenCategory: onOpenCategory,
+          emptyHint: emptyHint ?? i18n('zishu_category_flyout_empty'),
+        ),
       ),
     );
   }

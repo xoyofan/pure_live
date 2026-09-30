@@ -55,8 +55,8 @@ class ZishuTokens extends ThemeExtension<ZishuTokens> {
   final Color brandBright;
 
   /// 通用控件强调色(紫霄品牌紫):slider 填充/滑块、开关、复选、选中态、
-  /// 进度与 CTA 等 Material 控件 accent 统一取此处;经 `app_theme.dart` 接入
-  /// `colorScheme.primary/secondary`。
+  /// 进度与 CTA 等 Material 控件 accent 统一取此处;注:本移植中 colorScheme.primary/secondary 按用户拍板接 brand 金
+  /// (app_theme.dart);自绘控件的选中/强调直接引用本 token。
   ///
   /// 与 [brand](金黄,收藏星/hover 等对齐 SFVideoLive web 的功能性颜色)刻意
   /// 分开:用户口径(2026-09-20)控件强调一律品牌紫,金色不再充当控件色。

@@ -44,11 +44,11 @@ class ZishuPlaySidePanel extends StatelessWidget {
             SizedBox(
               height: 32,
               child: TabBar(
-                tabs: const [
-                  Tab(text: '聊天'),
-                  Tab(text: '关注'),
-                  Tab(text: '推荐'),
-                  Tab(text: '设置'),
+                tabs: [
+                  Tab(text: i18n('danmaku')),
+                  Tab(text: i18n('favorites_title')),
+                  Tab(text: i18n('recommended')),
+                  Tab(text: i18n('settings_title')),
                 ],
                 labelColor: tokens.accent,
                 unselectedLabelColor: tokens.textSecondary,

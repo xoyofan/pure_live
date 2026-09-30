@@ -11,12 +11,15 @@ import 'package:pure_live/zishu_app/features/browse/zishu_room_card.dart';
 /// 视图档位:卡片网格 / 单行列(对齐 zishu FollowDensity,用户口径
 /// 2026-09-20 只保留两档,不提供「紧凑」)。
 enum ZishuFollowDensity {
-  card('卡片'),
-  row('列表');
+  card,
+  row;
 
-  const ZishuFollowDensity(this.label);
-
-  final String label;
+  /// 文案走既有 i18n key(原字面量「卡片/列表」迁移到
+  /// zh.json 的 follow_density_card / follow_density_row)。
+  String get label => switch (this) {
+    ZishuFollowDensity.card => i18n('follow_density_card'),
+    ZishuFollowDensity.row => i18n('follow_density_row'),
+  };
 
   IconData get icon => switch (this) {
     ZishuFollowDensity.card => Icons.grid_view_rounded,

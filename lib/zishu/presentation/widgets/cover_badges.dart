@@ -14,7 +14,7 @@
 /// 首页网格卡与播放页侧栏预览卡共用本套角标,避免两处各写一份导致角位漂移。
 library;
 
-import 'package:flutter/material.dart';
+import 'package:pure_live/common/index.dart';
 
 import '../category_colors.dart';
 import '../design_tokens.dart';
@@ -178,10 +178,10 @@ class CoverPromoBadge extends StatelessWidget {
 /// 遮罩之上)。flutter 侧由调用方用 `Stack.children` 顺序复刻 —— 把本组件
 /// 放在角标**之前**。
 class CoverOfflineOverlay extends StatelessWidget {
-  const CoverOfflineOverlay({super.key, this.text = '未开播', this.fontSize = 13});
+  const CoverOfflineOverlay({super.key, this.text, this.fontSize = 13});
 
-  /// 遮罩上的居中文案。
-  final String text;
+  /// 遮罩上的居中文案;null 时回退 i18n('offline_room_title')。
+  final String? text;
 
   /// 文案字号:网格卡 13(web `.room-card__offline`),侧栏卡 10.5。
   final double fontSize;
@@ -194,7 +194,7 @@ class CoverOfflineOverlay extends StatelessWidget {
       color: tokens.coverScrim,
       child: Center(
         child: Text(
-          text,
+          text ?? i18n('offline_room_title'),
           style: AppTypography.body.copyWith(fontSize: fontSize, color: tokens.coverScrimText),
           textAlign: TextAlign.center,
         ),

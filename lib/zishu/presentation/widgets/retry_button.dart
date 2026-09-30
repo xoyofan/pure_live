@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:pure_live/common/index.dart';
 
 import '../design_tokens.dart';
 import '../zishu_tokens.dart';
@@ -18,13 +18,13 @@ enum RetryButtonVariant { text, outlined }
 /// 显式 token 取值,不再依赖 M3 默认 state layer(见 [_overlay]
 /// ——前者不可控且与显式 `hoverColor` 的其它调用点互相打架)。
 class RetryButton extends StatelessWidget {
-  const RetryButton({super.key, required this.onRetry, this.label = '重试', this.variant = RetryButtonVariant.text});
+  const RetryButton({super.key, required this.onRetry, this.label, this.variant = RetryButtonVariant.text});
 
   /// 点击重试。
   final VoidCallback onRetry;
 
-  /// 按钮文案,默认「重试」。
-  final String label;
+  /// 按钮文案;null 时构建处回退 i18n('retry')(const 默认参数无法调 i18n)。
+  final String? label;
 
   /// 形态,默认文字按钮。
   final RetryButtonVariant variant;
@@ -36,7 +36,7 @@ class RetryButton extends StatelessWidget {
       RetryButtonVariant.text => TextButton.icon(
         onPressed: onRetry,
         icon: const Icon(Icons.refresh_rounded),
-        label: Text(label),
+        label: Text(label ?? i18n('retry')),
         // `styleFrom` 的 `overlayColor` 只收 `Color?`(内部再展开成 state layer),
         // 要逐态取值得用 `copyWith`(收 `WidgetStateProperty`)。
         style: TextButton.styleFrom(foregroundColor: accent).copyWith(overlayColor: _overlay(context)),
@@ -44,7 +44,7 @@ class RetryButton extends StatelessWidget {
       RetryButtonVariant.outlined => OutlinedButton.icon(
         onPressed: onRetry,
         icon: const Icon(Icons.refresh_rounded, size: 16),
-        label: Text(label),
+        label: Text(label ?? i18n('retry')),
         style: OutlinedButton.styleFrom(
           foregroundColor: accent,
           side: BorderSide(color: accent.withValues(alpha: 0.6)),

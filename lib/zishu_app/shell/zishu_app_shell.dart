@@ -446,7 +446,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
             final groups = controller.categories;
             // 空目录区分「加载中 / 失败」:pageError 是 RxBool,失败时本 Obx
             // 也会随之重建(加载中文案见 _openPlatformFlyout 触发的 loadData)。
-            final emptyHint = controller.pageError.value ? '分类加载失败' : '加载分类…';
+            final emptyHint = controller.pageError.value ? '分类加载失败' : i18n('zishu_category_flyout_loading');
             return ZishuHoverOverlay(
               centerX: _platformFlyoutX,
               width: ZishuPlatformCategoryFlyout.widthFor(groups),
@@ -455,7 +455,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
                 onEnter: _cancelFlyoutClose,
                 onExit: _scheduleFlyoutClose,
                 onOpenCategory: site == null ? null : (area) => _openCategoryFromFlyout(site, area),
-                emptyHint: groups.isEmpty ? emptyHint : '暂无分类',
+                emptyHint: groups.isEmpty ? emptyHint : i18n('zishu_category_flyout_empty'),
               ),
             );
           }),
@@ -996,7 +996,7 @@ class _BrowseSidebar extends StatelessWidget {
                     borderRadius: AppRadius.allMd,
                     border: Border.all(
                       color: site.id == currentSiteId && index == HomeMenu.popular.index
-                          ? tokens.brand
+                          ? tokens.accent
                           : Colors.transparent,
                       width: 1,
                     ),
@@ -1019,7 +1019,7 @@ class _BrowseSidebar extends StatelessWidget {
               child: Icon(
                 Remix.download_2_line,
                 size: 20,
-                color: index == HomeMenu.record.index ? tokens.brand : tokens.textSecondary,
+                color: index == HomeMenu.record.index ? tokens.accent : tokens.textSecondary,
               ),
             ),
           ),

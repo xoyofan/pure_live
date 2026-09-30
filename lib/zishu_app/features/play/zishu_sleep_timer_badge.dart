@@ -141,7 +141,10 @@ class _SleepTimerPill extends StatelessWidget {
         children: [
           Icon(Icons.bedtime_rounded, size: 14, color: tokens.accent),
           const SizedBox(width: AppSpacing.xs),
-          Text('定时 $remaining', style: context.textCaption.copyWith(color: tokens.textPrimary)),
+          Text(
+            i18n('play_sleep_timer_remaining', args: {'time': remaining}),
+            style: context.textCaption.copyWith(color: tokens.textPrimary),
+          ),
         ],
       ),
     );
