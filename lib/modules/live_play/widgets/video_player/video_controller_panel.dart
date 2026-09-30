@@ -116,6 +116,12 @@ class VideoControllerPanel extends StatefulWidget {
 
   const VideoControllerPanel({super.key, required this.controller});
 
+  /// 旧顶栏/底栏控制条开关。zishu 播放页(ZishuPlayView)置为 false 后,
+  /// 仅**常规态**(VideoMode.normal 且非 PiP)跳过旧条,由 zishu on-video
+  /// 控制条接管;沉浸态(全屏/网页全屏/竖屏全屏/PiP)本面板仍完整渲染
+  /// 自己的顶栏/底栏(判定在 build 内按当前 screenMode/PiP 状态)。
+  static bool renderLegacyBars = true;
+
   @override
   State<StatefulWidget> createState() => _VideoControllerPanelState();
 }
@@ -146,6 +152,13 @@ class _VideoControllerPanelState extends State<VideoControllerPanel> {
           final int percentage = (currentVolume * 100).round();
           final screenMode = controller.livePlayController.state.value.ui.screenMode;
           final bottomBarHeight = resolveBottomActionBarHeight(screenMode, regularHeight: barHeight);
+          // 只在常规态跳过旧条;沉浸态(全屏/网页全屏/竖屏全屏/PiP)照常渲染。
+          final manager = GlobalPlayerService.instance.player;
+          final legacyBarsAllowed =
+              VideoControllerPanel.renderLegacyBars ||
+              screenMode != VideoMode.normal ||
+              manager.isInPip.value ||
+              manager.isPipPreparing.value;
 
           final IconData iconData = currentVolume <= 0
               ? Icons.volume_mute
@@ -269,12 +282,13 @@ class _VideoControllerPanelState extends State<VideoControllerPanel> {
                 ),
                 LockButton(controller: controller),
                 const PortraitStreamDiagnosticsBadge(),
-                TopActionBar(controller: controller, barHeight: barHeight),
-                BottomActionBar(
-                  controller: controller,
-                  barHeight: bottomBarHeight,
-                  portraitFullscreen: screenMode == VideoMode.portraitFullscreen,
-                ),
+                if (legacyBarsAllowed) TopActionBar(controller: controller, barHeight: barHeight),
+                if (legacyBarsAllowed)
+                  BottomActionBar(
+                    controller: controller,
+                    barHeight: bottomBarHeight,
+                    portraitFullscreen: screenMode == VideoMode.portraitFullscreen,
+                  ),
               ],
             ),
           );

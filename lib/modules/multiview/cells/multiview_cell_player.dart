@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:pure_live/common/index.dart';
@@ -11,9 +12,6 @@ import 'package:pure_live/player/core/playback_proxy_policy.dart';
 import 'package:pure_live/core/common/hls_source_query_policy.dart';
 import 'package:pure_live/player/core/playback_source_transport.dart';
 import 'package:pure_live/modules/multiview/models/multiview_models.dart';
-
-
-
 
 /// multiview 单格播放器契约。
 ///

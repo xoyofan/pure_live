@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/plugins/event_bus.dart';
 import 'package:pure_live/modules/areas/areas_list_controller.dart';
@@ -6,7 +8,7 @@ import 'package:pure_live/modules/live_play/states/ui_state.dart';
 import 'package:pure_live/modules/live_play/widgets/keyboard/video_keyboard.dart';
 import 'package:pure_live/modules/live_play/widgets/layout/live_play_content.dart';
 import 'package:pure_live/modules/live_play/widgets/layout/live_play_video.dart';
-import 'package:pure_live/modules/live_play/widgets/resolution_selector/resolutions_row.dart';
+import 'package:pure_live/modules/live_play/widgets/video_player/video_controller_panel.dart';
 import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/category_colors.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
@@ -15,13 +17,18 @@ import 'package:pure_live/zishu/presentation/widgets/platform_icon.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu/domain/category_display.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_play_side_panel.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_player_controls.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_play_immersive_sheet.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_sleep_timer_badge.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_play_keyboard_ext.dart';
 
 /// zishu 播放页布局骨架(对齐 zishu_flutter play_view 的 U5 左右布局):
 /// Scaffold(transparent) → Row[Expanded(左列[房间头, Expanded(舞台帧)]), 侧栏]。
 /// <768 宽时侧栏堆叠到视频下方(flex 3:2);舞台 ClipRRect 12px(<640 为 0)。
 ///
-/// 控制逻辑不重写:舞台直接嵌入 pure_live 既有播放页部件 ——
-/// [LivePlayVideo](含 VideoControllerPanel 控制条) + [ResolutionsRow](画质/线路);
+/// 控制逻辑不重写:舞台直接嵌入 pure_live 既有播放页部件 [LivePlayVideo],
+/// 并在其上挂 zishu 风格 on-video 控制条 [ZishuPlayerControlsBar]
+/// (播放/音量/画质/线路/弹幕/画中画/宽屏/全屏,替换视频下方旧 ResolutionsRow);
 /// 沉浸态(全屏/网页全屏/竖屏全屏)与画中画整块交给既有 [LivePlayContent],
 /// 键盘快捷键沿用既有 [VideoKeyboardShortcuts] 包裹。
 ///
@@ -42,6 +49,18 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
   /// 侧栏开合:本地 State,不持久化(对齐本轮骨架口径)。
   bool _sidePanelVisible = true;
 
+  /// 沉浸态右缘抽屉开合(3s 自动收起由 sheet 内部管理)。
+  bool _immersiveSheetVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // zishu 播放页用 on-video 控制条接管:常规态关闭 VideoControllerPanel 的
+    // 旧顶栏/底栏(手势层/DanmakuViewer/锁定逻辑保留);沉浸态(全屏/PiP)
+    // 由面板内部按当前 screenMode 自行恢复完整渲染,不受此开关影响。
+    VideoControllerPanel.renderLegacyBars = false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final LivePlayController controller;
@@ -58,12 +77,50 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
       final manager = GlobalPlayerService.instance.player;
       final isInPip = manager.isInPip.value || manager.isPipPreparing.value;
       final mode = state.ui.screenMode;
-      final body = (mode != VideoMode.normal || isInPip)
-          // 沉浸态/画中画:完全复用既有呈现,布局侧不参与。
-          ? LivePlayContent(controller: controller, isInPip: isInPip, mode: mode)
-          : _buildZishuLayout(controller);
-      // 桌面路由快捷键:既有页面在元数据失败态也保持挂载,这里同口径。
-      return VideoKeyboardShortcuts(controller: state.player.videoController, child: body);
+      final immersive = mode != VideoMode.normal && !isInPip;
+      final Widget body;
+      if (isInPip) {
+        // 画中画:完全复用既有呈现,布局侧不参与。
+        body = LivePlayContent(controller: controller, isInPip: true, mode: mode);
+      } else if (immersive) {
+        // 沉浸态(全屏/网页全屏):既有呈现 + zishu 右缘抽屉侧栏
+        // (把手拉出,3s 自动收起;聊天/推荐在沉浸态可达)。
+        final room = state.room.detail ?? controller.room;
+        body = Stack(
+          children: [
+            LivePlayContent(controller: controller, isInPip: false, mode: mode),
+            ZishuPlayImmersiveSheet(
+              visible: _immersiveSheetVisible,
+              onToggle: () => setState(() => _immersiveSheetVisible = !_immersiveSheetVisible),
+              child: ZishuPlaySidePanel(room: room, isLive: state.room.isLiving),
+            ),
+          ],
+        );
+      } else {
+        body = _buildZishuLayout(controller);
+      }
+      // 桌面路由快捷键:既有键位(Space/R/↑↓/Esc)+ zishu 扩展(M 静音/F 全屏/W 宽屏)。
+      return VideoKeyboardShortcuts(
+        controller: state.player.videoController,
+        child: ZishuPlayKeyboardShortcutsExt(
+          readVolume: () async => controller.state.value.player.videoController?.volume(),
+          writeVolume: (volume) async {
+            final videoController = controller.state.value.player.videoController;
+            if (videoController == null) return;
+            await videoController.setVolume(volume);
+            videoController.updateVolumn(volume);
+          },
+          onToggleFullScreen: () {
+            final videoController = controller.state.value.player.videoController;
+            if (videoController != null) unawaited(videoController.toggleFullScreen());
+          },
+          onToggleWindowFullScreen: () {
+            final videoController = controller.state.value.player.videoController;
+            videoController?.toggleWindowFullScreen();
+          },
+          child: body,
+        ),
+      );
     });
   }
 
@@ -127,17 +184,28 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
     );
   }
 
-  /// 舞台 = pure_live 既有视频区(含控制条 overlay) + 画质/线路条。
+  /// 舞台 = pure_live 既有视频区 + zishu on-video 控制条 overlay。
+  /// 旧 ResolutionsRow(视频下方画质/线路行)已移除:画质/线路改在控制条内切换。
   /// 舞台帧由本视图拥有(Expanded 裁切),故视频按帧铺满
   /// ([LivePlayVideo] 文档:显式帧的调用方才允许 expandToParent)。
   Widget _buildStage(LivePlayController controller) {
     return ColoredBox(
       color: AppOnVideo.bar,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          Expanded(child: LivePlayVideo(controller: controller, expandToParent: true)),
-          ResolutionsRow(controller: controller),
+          LivePlayVideo(controller: controller, expandToParent: true),
+          // 睡眠定时舞台徽章(右上 pill,无定时器自空)。
+          const ZishuSleepTimerBadge(),
+          Obx(() {
+            // 播放器就位前不挂控制条(VideoController 随播放器状态创建)。
+            final videoController = controller.state.value.player.videoController;
+            if (videoController == null) return const SizedBox.shrink();
+            return Align(
+              alignment: Alignment.bottomCenter,
+              child: ZishuPlayerControlsBar(controller: videoController),
+            );
+          }),
         ],
       ),
     );

@@ -3,7 +3,6 @@ import 'package:pure_live/common/index.dart';
 import 'package:pure_live/modules/tags/live_tag.dart';
 import 'package:pure_live/modules/favorite/room_grid_view.dart';
 import 'package:pure_live/common/widgets/common_appbar_actions.dart';
-import 'package:pure_live/modules/home/home_drawer_button.dart';
 import 'package:pure_live/modules/tags/tag_management_controller.dart';
 
 class FavoritePage extends GetView<FavoriteController> {
@@ -21,7 +20,6 @@ class FavoritePage extends GetView<FavoriteController> {
           return Scaffold(
             appBar: AppBar(
               centerTitle: true,
-              leading: showAction ? const HomeDrawerButton() : null,
               actions: showAction ? [CommonAppBarActions()] : null,
               title: ScrollableTabBar(
                 key: const ValueKey('favorite-status-tabs'),

@@ -188,10 +188,7 @@ class _AccountCookieEditorPageState extends State<AccountCookieEditorPage> {
                             scrollPadding: const EdgeInsets.only(bottom: 120),
                             decoration: accountCookieFieldDecoration(theme, hintText: widget.hintText),
                           ),
-                          for (final field in widget.extraFields) ...<Widget>[
-                            const SizedBox(height: 12),
-                            field,
-                          ],
+                          for (final field in widget.extraFields) ...<Widget>[const SizedBox(height: 12), field],
                           const SizedBox(height: 16),
                           FilledButton.icon(
                             key: const ValueKey('account-cookie-save'),

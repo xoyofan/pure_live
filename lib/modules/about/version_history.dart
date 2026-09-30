@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/common/index.dart';
@@ -9,7 +10,6 @@ import 'package:markdown_widget/widget/all.dart';
 import 'package:markdown_widget/config/configs.dart';
 import 'package:pure_live/common/models/release_model.dart';
 import 'package:pure_live/modules/about/widgets/release_history_repository.dart';
-
 
 class VersionHistoryPage extends StatefulWidget {
   const VersionHistoryPage({super.key, this.openExternalUrl, this.downloadRelease, this.releaseLoader});

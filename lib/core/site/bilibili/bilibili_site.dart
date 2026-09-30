@@ -701,7 +701,8 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
   }
 
   LiveRoom _buildRoom(Map<String, dynamic> roomInfo, {required String roomId, Object? danmakuData}) {
-    final live = int.tryParse(roomInfo['room_info']?['live_status']?.toString() ?? '') == 1;
+    // B站 live_status: 0=未开播, 1=直播中, 2=轮播(可播的回放流)。
+    final liveStatusRaw = int.tryParse(roomInfo['room_info']?['live_status']?.toString() ?? '') ?? 0;
     return LiveRoom(
       roomId: roomId,
       title: roomInfo["room_info"]["title"].toString(),
@@ -712,8 +713,13 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
       popularity: roomInfo["room_info"]["online"].toString(),
       audienceMetricType: AudienceMetricType.popularity,
       area: roomInfo['room_info']?['area_name'] ?? '',
-      status: live,
-      liveStatus: live ? LiveStatus.live : LiveStatus.offline,
+      status: liveStatusRaw == 1,
+      isRecord: liveStatusRaw == 2,
+      liveStatus: switch (liveStatusRaw) {
+        1 => LiveStatus.live,
+        2 => LiveStatus.replay,
+        _ => LiveStatus.offline,
+      },
       link: "https://live.bilibili.com/$roomId",
       introduction: roomInfo["room_info"]["description"].toString(),
       notice: "",
@@ -747,6 +753,7 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
       var title = item["title"].toString();
       //移除title中的<em></em>标签
       title = title.replaceAll(RegExp(r"<.*?em.*?>"), "");
+      final liveStatusRaw = int.tryParse(item['live_status']?.toString() ?? '') ?? 0;
       var roomItem = LiveRoom(
         roomId: item["roomid"].toString(),
         title: title,
@@ -756,9 +763,14 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
         popularity: item["online"].toString(),
         followers: item["attentions"]?.toString() ?? '',
         audienceMetricType: AudienceMetricType.popularity,
-        liveStatus: int.tryParse(item['live_status']?.toString() ?? '') == 1 ? LiveStatus.live : LiveStatus.offline,
+        liveStatus: switch (liveStatusRaw) {
+          1 => LiveStatus.live,
+          2 => LiveStatus.replay,
+          _ => LiveStatus.offline,
+        },
         area: item["cate_name"].toString(),
-        status: int.tryParse(item['live_status']?.toString() ?? '') == 1,
+        isRecord: liveStatusRaw == 2,
+        status: liveStatusRaw == 1,
         avatar: "https:${item["uface"]}@400w.jpg",
         platform: SiteIds.bilibiliSite,
       );

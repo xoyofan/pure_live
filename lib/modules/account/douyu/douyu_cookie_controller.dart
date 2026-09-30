@@ -52,13 +52,7 @@ class DouyuCookieController extends GetxController {
   /// Whether the pasted cookie looks like the passport request's rather than a
   /// page session: renewal credentials, and nothing that identifies a login.
   static bool _hasCredentialFields(String cookie) {
-    const credentialFields = <String>[
-      'LTP0',
-      'acf_stk',
-      'acf_ccn',
-      'acf_ltkid',
-      'acf_ssid',
-    ];
+    const credentialFields = <String>['LTP0', 'acf_stk', 'acf_ccn', 'acf_ltkid', 'acf_ssid'];
     return credentialFields.any((name) => _fieldOf(cookie, name) != null);
   }
 
@@ -107,8 +101,7 @@ class DouyuCookieController extends GetxController {
     // douyu.com issues `dy_auth` for seven days and the header the viewer pasted
     // does not carry that deadline: recording the moment is the only way to know
     // when to renew it.
-    cookies.douyuCookieSavedAt.v =
-        effective.isEmpty ? 0 : DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    cookies.douyuCookieSavedAt.v = effective.isEmpty ? 0 : DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
     ToastUtil.show(
       (keepsStoredSession && !pastedIsSession) ? i18n('douyu_cookie_credentials_absorbed') : _sessionSummary(effective),
@@ -127,11 +120,7 @@ class DouyuCookieController extends GetxController {
       return;
     }
 
-    final credentials = DouyuUtils.refreshCredentials(
-      cookie,
-      longTerm: ltp0Controller.text,
-      did: didController.text,
-    );
+    final credentials = DouyuUtils.refreshCredentials(cookie, longTerm: ltp0Controller.text, did: didController.text);
     if (credentials.longTerm == null || credentials.did == null) {
       ToastUtil.show(i18n('douyu_cookie_refresh_no_credentials'));
       return;
@@ -184,11 +173,12 @@ class DouyuCookieController extends GetxController {
       DouyuSessionState.guest => i18n('douyu_cookie_guest'),
       // The web cookie's token is opaque: its end comes from the recorded save
       // time and Douyu's seven-day rule, so say that instead of a bare expiry.
-      DouyuSessionState.valid => expiry == null
-          ? i18n('douyu_cookie_valid_no_expiry')
-          : DouyuUtils.canRefreshSession(cookie)
-              ? i18n('douyu_cookie_valid_auto_renew', args: {'time': at})
-              : i18n('douyu_cookie_valid_needs_repaste', args: {'time': at}),
+      DouyuSessionState.valid =>
+        expiry == null
+            ? i18n('douyu_cookie_valid_no_expiry')
+            : DouyuUtils.canRefreshSession(cookie)
+            ? i18n('douyu_cookie_valid_auto_renew', args: {'time': at})
+            : i18n('douyu_cookie_valid_needs_repaste', args: {'time': at}),
       DouyuSessionState.expiredRefreshable => i18n('douyu_cookie_expired_refreshable', args: {'time': at}),
       DouyuSessionState.expired => i18n('douyu_cookie_expired', args: {'time': at}),
     };

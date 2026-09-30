@@ -3,7 +3,6 @@ import 'areas_grid_view.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/widgets/common_appbar_actions.dart';
-import 'package:pure_live/modules/home/home_drawer_button.dart';
 
 class AreasPage extends GetView<AreasController> {
   const AreasPage({super.key});
@@ -21,7 +20,6 @@ class AreasPage extends GetView<AreasController> {
           return Scaffold(
             appBar: AppBar(
               centerTitle: true,
-              leading: showAction ? const HomeDrawerButton() : null,
               actions: showAction ? [CommonAppBarActions()] : null,
               title: ScrollableTabBar(
                 key: const ValueKey('areas-platform-tabs'),

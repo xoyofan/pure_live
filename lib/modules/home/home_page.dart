@@ -8,7 +8,8 @@ import 'package:move_to_desktop/move_to_desktop.dart';
 import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/common/consts/app_consts.dart';
 import 'package:pure_live/modules/areas/areas_page.dart';
-import 'package:pure_live/modules/home/home_drawer_view.dart';
+import 'package:pure_live/zishu/presentation/design_tokens.dart';
+import 'package:pure_live/zishu_app/shell/phone/zishu_phone_shell.dart';
 import 'package:pure_live/zishu_app/shell/zishu_app_shell.dart';
 import 'package:pure_live/common/global/initialized.dart';
 import 'package:pure_live/player/models/player_engine.dart';
@@ -221,7 +222,9 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
       onPopInvokedWithResult: onBackButtonPressed,
       child: LayoutBuilder(
         builder: (context, constraint) {
-          final bool isTablet = constraint.maxWidth > 680;
+          // 断点统一 zishu 口径(<768 窄屏外壳,≥768 宽屏外壳);
+          // popular/areas 页内 Get.width<=680 的口径本轮不动。
+          final bool isTablet = constraint.maxWidth >= AppBreakpoints.phone;
 
           return Obx(() {
             final activeMenuIds = List<String>.from(SettingsService.to.app.savedMenuIds.v);
@@ -245,7 +248,7 @@ class _HomePageState extends State<HomePage> with AutomaticKeepAliveClientMixin,
             }
 
             return !isTablet
-                ? HomeDrawerView(
+                ? ZishuPhoneShell(
                     body: currentWidget,
                     index: adjustedIndex,
                     activeMenuIds: activeMenuIds,

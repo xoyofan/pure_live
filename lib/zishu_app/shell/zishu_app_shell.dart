@@ -1,6 +1,11 @@
+import 'dart:async';
+
+import 'package:flutter/services.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/consts/app_consts.dart';
+import 'package:pure_live/modules/areas/areas_list_controller.dart';
+import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
@@ -10,6 +15,10 @@ import 'package:pure_live/zishu_app/features/browse/zishu_browse_view.dart';
 import 'package:pure_live/zishu_app/features/follow/zishu_follow_view.dart';
 import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
 import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
+import 'package:pure_live/zishu_app/shell/flyouts/zishu_category_flyout.dart';
+import 'package:pure_live/zishu_app/shell/flyouts/zishu_follow_flyout.dart';
+import 'package:pure_live/zishu_app/shell/flyouts/zishu_hover_overlay.dart';
+import 'package:pure_live/zishu_app/shell/flyouts/zishu_user_area.dart';
 
 /// zishu 前端移植主外壳(宽屏 >680):44px 顶栏 + 可折叠浏览侧栏。
 ///
@@ -54,6 +63,13 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
     '二次元',
   ];
 
+  /// hover 浮层关闭延迟:对齐 zishu 真源 `_AppShellState` 的
+  /// `_kHoverCloseDelay`(800)—— 离开触发区后留时间把鼠标移进浮层。
+  static const Duration _kHoverCloseDelay = Duration(milliseconds: 800);
+
+  /// 平台 tab 悬停到浮层弹出的延迟(300ms):扫过顶栏不弹,停留才弹。
+  static const Duration _kPlatformHoverOpenDelay = Duration(milliseconds: 300);
+
   PopularController? _popular;
   VoidCallback? _tabListener;
   bool _bound = false;
@@ -63,6 +79,145 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
   VoidCallback? _areasTabListener;
   bool _areasBound = false;
   int _areasSiteIndex = 0;
+
+  // ---- hover 浮层态机(自持于本 State;Timer 管开/关延迟,浮层互斥) ----
+
+  /// 300ms 悬停开门定时器(平台 tab 用;关注钮即时开)。
+  Timer? _openTimer;
+
+  /// 800ms 延迟关门定时器(离开触发区/浮层后统一走它)。
+  Timer? _closeTimer;
+
+  /// 当前打开分类浮层的站点 id(null = 关闭)。
+  String? _flyoutPlatformId;
+  double _platformFlyoutX = 0;
+
+  /// 关注在播浮层开关与触发点中心 x。
+  bool _followFlyoutOpen = false;
+  double _followFlyoutX = 0;
+
+  /// 搜索防重入:showZishuSearchDialog 本身不防叠,连按两次 Ctrl+F 会开
+  /// 两层(对齐 zishu 真源 `_searchOpening` 同款处理)。
+  bool _searchOpening = false;
+
+  /// Ctrl+F / Ctrl+K 全局搜索快捷键的焦点锚点:CallbackShortcuts 需要
+  /// 一个持有焦点的 Focus 才能在气泡阶段收到按键;本壳层恒在 home 路由
+  /// 顶层且覆盖整页,焦点空闲时由它兜底持有。
+  final FocusNode _shortcutFocusNode = FocusNode(debugLabel: 'zishu-app-shell-shortcuts');
+
+  void _cancelFlyoutClose() => _closeTimer?.cancel();
+
+  /// 离开触发区/浮层:取消未成的开门,再排 800ms 延迟关门。
+  void _scheduleFlyoutClose() {
+    _openTimer?.cancel();
+    _closeTimer?.cancel();
+    _closeTimer = Timer(_kHoverCloseDelay, () {
+      if (!mounted) return;
+      setState(() {
+        _flyoutPlatformId = null;
+        _followFlyoutOpen = false;
+      });
+    });
+  }
+
+  /// 立即收起所有浮层(点分类跳转 / 点小卡进播放页 / 顶栏点击导航前调用)。
+  void _closeAllFlyouts() {
+    _openTimer?.cancel();
+    _closeTimer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _flyoutPlatformId = null;
+      _followFlyoutOpen = false;
+    });
+  }
+
+  /// 平台 tab 悬停:先取消既有的开/关,300ms 后弹该平台分类浮层。
+  void _schedulePlatformFlyout(String siteId, double centerX) {
+    _closeTimer?.cancel();
+    _openTimer?.cancel();
+    _openTimer = Timer(_kPlatformHoverOpenDelay, () => _openPlatformFlyout(siteId, centerX));
+  }
+
+  /// 移出平台 tab:取消未成的开门,交给延迟关门。
+  void _cancelPlatformFlyoutOpen() {
+    _openTimer?.cancel();
+    _scheduleFlyoutClose();
+  }
+
+  void _openPlatformFlyout(String siteId, double centerX) {
+    if (!mounted) return;
+    _closeTimer?.cancel();
+    // 浮层一开就补跑一轮目录加载:用户看到的应是此刻目录,而不是等分区页
+    // 先被打开过。loadData 幂等(进行中复用同一 Future,已有数据不重拉)。
+    if (Get.isRegistered<AreasListController>(tag: siteId)) {
+      final controller = Get.find<AreasListController>(tag: siteId);
+      if (controller.categories.isEmpty) {
+        unawaited(controller.loadData());
+      }
+    }
+    if (_flyoutPlatformId == siteId) {
+      // 同一平台重复触发:浮层已开,不重建(触发点 x 不变,无需 setState)。
+      return;
+    }
+    setState(() {
+      _flyoutPlatformId = siteId;
+      _platformFlyoutX = centerX;
+      _followFlyoutOpen = false;
+    });
+  }
+
+  void _openFollowFlyout(double centerX) {
+    _closeTimer?.cancel();
+    if (_followFlyoutOpen) {
+      _followFlyoutX = centerX;
+      return;
+    }
+    setState(() {
+      _followFlyoutOpen = true;
+      _followFlyoutX = centerX;
+      _flyoutPlatformId = null;
+    });
+  }
+
+  /// 关注浮层点小卡:先收浮层,再进播放页。
+  void _openRoomFromFlyout(LiveRoom room) {
+    _closeAllFlyouts();
+    unawaited(AppNavigator.toLiveRoomDetail(liveRoom: room));
+  }
+
+  /// 浮层点分类:先收浮层,再跳分类详情(需要 Site 对象)。
+  void _openCategoryFromFlyout(Site site, LiveArea area) {
+    _closeAllFlyouts();
+    unawaited(AppNavigator.toCategoryDetail(site: site, category: area));
+  }
+
+  Site? _siteById(String siteId) {
+    for (final site in _sites) {
+      if (site.id == siteId) return site;
+    }
+    return null;
+  }
+
+  Site? get _currentSite {
+    final id = _currentSiteId;
+    return id == null ? null : _siteById(id);
+  }
+
+  void _openSearchAction() {
+    if (_searchOpening || !mounted) return;
+    _searchOpening = true;
+    unawaited(showZishuSearchDialog(context).whenComplete(() => _searchOpening = false));
+  }
+
+  /// zishu 设置页入口(顶栏设置钮与账号菜单共用同一份)。
+  void _openSettingsPage() {
+    Get.to(
+      () => Scaffold(
+        appBar: AppBar(title: Text(i18n('settings_title'))),
+        body: const ZishuSettingsView(embedded: true),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -95,6 +250,9 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
 
   @override
   void dispose() {
+    _openTimer?.cancel();
+    _closeTimer?.cancel();
+    _shortcutFocusNode.dispose();
     if (_popular != null && _tabListener != null) {
       _popular!.tabController.removeListener(_tabListener!);
     }
@@ -200,48 +358,141 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
         ),
       );
     }
-    return Scaffold(
-      backgroundColor: tokens.background,
-      body: SafeArea(
-        // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表。
-        child: Obx(() {
-          final visibleSites = _visibleSites();
-          return Column(
-            children: [
-              _TopBar(
-                index: widget.index,
-                sites: visibleSites,
-                currentSiteId: _currentSiteId,
-                onSelectMenu: widget.onDestinationSelected,
-                onSelectSite: _selectSiteId,
+    return Stack(
+      children: [
+        // Ctrl+F / Ctrl+K 全局搜索:CallbackShortcuts 在焦点气泡阶段收键;
+        // Focus(autofocus) 让壳层在无其他焦点者时兜底持有焦点。壳层覆盖
+        // 整页内容,页内任何控件持有焦点时按键也会沿祖先链回到这里。
+        CallbackShortcuts(
+          bindings: <ShortcutActivator, VoidCallback>{
+            const SingleActivator(LogicalKeyboardKey.keyF, control: true): _openSearchAction,
+            const SingleActivator(LogicalKeyboardKey.keyK, control: true): _openSearchAction,
+          },
+          child: Focus(
+            focusNode: _shortcutFocusNode,
+            autofocus: true,
+            child: Scaffold(
+              backgroundColor: tokens.background,
+              body: SafeArea(
+                // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表。
+                child: Obx(() {
+                  final visibleSites = _visibleSites();
+                  return Column(
+                    children: [
+                      _TopBar(
+                        index: widget.index,
+                        sites: visibleSites,
+                        currentSiteId: _currentSiteId,
+                        onSelectMenu: widget.onDestinationSelected,
+                        onSelectSite: _selectSiteId,
+                        onPlatformHoverStart: _schedulePlatformFlyout,
+                        onPlatformHoverEnd: _cancelPlatformFlyoutOpen,
+                        onFollowHoverStart: _openFollowFlyout,
+                        onFollowHoverEnd: _scheduleFlyoutClose,
+                        onOpenSettings: _openSettingsPage,
+                      ),
+                      const Divider(height: 1, thickness: 1),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            _BrowseSidebar(
+                              index: widget.index,
+                              sites: visibleSites,
+                              currentSiteId: _currentSiteId,
+                              collapsed: _collapsed,
+                              onToggleCollapsed: () => setState(() => _collapsed = !_collapsed),
+                              onSelectSite: _selectSiteId,
+                              onSelectMenu: widget.onDestinationSelected,
+                              categorySite: _currentSite,
+                              onOpenCategory: _openCategoryFromFlyout,
+                            ),
+                            const VerticalDivider(width: 1, thickness: 1),
+                            Expanded(child: _contentForMenu(widget.index, _currentSiteId)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                }),
               ),
-              const Divider(height: 1, thickness: 1),
-              Expanded(
-                child: Row(
-                  children: [
-                    _BrowseSidebar(
-                      index: widget.index,
-                      sites: visibleSites,
-                      currentSiteId: _currentSiteId,
-                      collapsed: _collapsed,
-                      onToggleCollapsed: () => setState(() => _collapsed = !_collapsed),
-                      onSelectSite: _selectSiteId,
-                      onSelectMenu: widget.onDestinationSelected,
-                    ),
-                    const VerticalDivider(width: 1, thickness: 1),
-                    Expanded(child: _contentForMenu(widget.index, _currentSiteId)),
-                  ],
-                ),
+            ),
+          ),
+        ),
+        // hover 浮层:Stack 覆盖在外壳最上层(Scaffold 之外)。
+        ..._buildFlyouts(),
+      ],
+    );
+  }
+
+  /// 当前应展示的浮层(平台分类 / 关注在播)。宽度与内容同源:分类宽度随
+  /// `categories` 分组数收缩(Obx 订阅),关注宽度随在播数收缩。
+  List<Widget> _buildFlyouts() {
+    final flyouts = <Widget>[];
+    final platformId = _flyoutPlatformId;
+    if (platformId != null) {
+      final site = _siteById(platformId);
+      if (Get.isRegistered<AreasListController>(tag: platformId)) {
+        flyouts.add(
+          Obx(() {
+            // 每次 Obx 重建都重新 find:lazyPut(fenix) 的实例可能被 smart
+            // management 换新,闭包不能持有旧引用。
+            final controller = Get.find<AreasListController>(tag: platformId);
+            final groups = controller.categories;
+            // 空目录区分「加载中 / 失败」:pageError 是 RxBool,失败时本 Obx
+            // 也会随之重建(加载中文案见 _openPlatformFlyout 触发的 loadData)。
+            final emptyHint = controller.pageError.value ? '分类加载失败' : '加载分类…';
+            return ZishuHoverOverlay(
+              centerX: _platformFlyoutX,
+              width: ZishuPlatformCategoryFlyout.widthFor(groups),
+              child: ZishuPlatformCategoryFlyout(
+                groups: groups,
+                onEnter: _cancelFlyoutClose,
+                onExit: _scheduleFlyoutClose,
+                onOpenCategory: site == null ? null : (area) => _openCategoryFromFlyout(site, area),
+                emptyHint: groups.isEmpty ? emptyHint : '暂无分类',
               ),
-            ],
+            );
+          }),
+        );
+      } else {
+        // 站点目录控制器未注册(分区页尚未打开过):兜底空面板。
+        flyouts.add(
+          ZishuHoverOverlay(
+            centerX: _platformFlyoutX,
+            width: ZishuPlatformCategoryFlyout.minFlyoutWidth,
+            child: ZishuPlatformCategoryFlyout(
+              groups: const <AppLiveCategory>[],
+              onEnter: _cancelFlyoutClose,
+              onExit: _scheduleFlyoutClose,
+            ),
+          ),
+        );
+      }
+    }
+    if (_followFlyoutOpen) {
+      flyouts.add(
+        Obx(() {
+          final rooms = SettingsService.to.fav.favoriteRooms.v.where((room) => room.isLiveNow).toList();
+          final layout = ZishuFollowFlyout.layoutFor(rooms.length);
+          return ZishuHoverOverlay(
+            centerX: _followFlyoutX,
+            width: layout.width,
+            child: ZishuFollowFlyout(
+              columns: layout.columns,
+              rooms: rooms,
+              onEnter: _cancelFlyoutClose,
+              onExit: _scheduleFlyoutClose,
+              onOpenRoom: _openRoomFromFlyout,
+            ),
           );
         }),
-      ),
-    );
+      );
+    }
+    return flyouts;
   }
 }
 
-/// 44px 顶栏:surface 底,主导航图标组 | 平台 tab 居中 | 工具区(关注/搜索/设置)。
+/// 44px 顶栏:surface 底,主导航图标组 | 平台 tab 居中 | 工具区(关注/搜索/设置/账号)。
 class _TopBar extends StatelessWidget {
   final int index;
   final List<Site> sites;
@@ -249,12 +500,29 @@ class _TopBar extends StatelessWidget {
   final void Function(int) onSelectMenu;
   final void Function(String) onSelectSite;
 
+  /// 「关注」钮 hover → 触发点中心 x(弹在播头像网格);移出交给延迟关门。
+  final void Function(double centerX) onFollowHoverStart;
+  final VoidCallback onFollowHoverEnd;
+
+  /// 平台 tab hover → `(站点 id, 触发点中心 x)`,300ms 后弹分类浮层;
+  /// 移出取消开门并交给延迟关门。
+  final void Function(String siteId, double centerX) onPlatformHoverStart;
+  final VoidCallback onPlatformHoverEnd;
+
+  /// 打开 zishu 设置页(设置钮与账号菜单共用)。
+  final VoidCallback onOpenSettings;
+
   const _TopBar({
     required this.index,
     required this.sites,
     required this.currentSiteId,
     required this.onSelectMenu,
     required this.onSelectSite,
+    required this.onPlatformHoverStart,
+    required this.onPlatformHoverEnd,
+    required this.onFollowHoverStart,
+    required this.onFollowHoverEnd,
+    required this.onOpenSettings,
   });
 
   @override
@@ -273,6 +541,8 @@ class _TopBar extends StatelessWidget {
               site: site,
               selected: site.id == currentSiteId && index == HomeMenu.popular.index,
               onTap: () => onSelectSite(site.id),
+              onHoverStart: onPlatformHoverStart,
+              onHoverEnd: onPlatformHoverEnd,
             ),
           const Spacer(),
           _TopNavTool(
@@ -280,23 +550,17 @@ class _TopBar extends StatelessWidget {
             icon: Remix.heart_3_fill,
             color: index == HomeMenu.favorites.index ? tokens.brand : null,
             onTap: () => onSelectMenu(HomeMenu.favorites.index),
+            onHoverStart: onFollowHoverStart,
+            onHoverEnd: onFollowHoverEnd,
           ),
           _TopNavTool(
-            tooltip: i18n('search_live'),
+            tooltip: '${i18n('search_live')}  Ctrl+F',
             icon: Remix.search_line,
             onTap: () => showZishuSearchDialog(context),
           ),
           const SizedBox(width: AppSpacing.xs),
-          _TopNavTool(
-            tooltip: i18n('settings_title'),
-            icon: Remix.settings_5_line,
-            onTap: () => Get.to(
-              () => Scaffold(
-                appBar: AppBar(title: Text(i18n('settings_title'))),
-                body: const ZishuSettingsView(embedded: true),
-              ),
-            ),
-          ),
+          _TopNavTool(tooltip: i18n('settings_title'), icon: Remix.settings_5_line, onTap: onOpenSettings),
+          ZishuUserArea(onOpenSettings: onOpenSettings),
         ],
       ),
     );
@@ -365,37 +629,67 @@ class _TopNavIcon extends StatelessWidget {
   }
 }
 
-/// 顶栏平台 tab:32×32 悬停 pill 内放平台图标。
+/// 顶栏平台 tab:32×32 悬停 pill 内放平台图标;hover ≥300ms 弹分类浮层
+/// (延迟由壳层态机持有,这里只回传触发点中心 x 与移出事件)。
 class _PlatformTab extends StatelessWidget {
   final Site site;
   final bool selected;
   final VoidCallback onTap;
 
-  const _PlatformTab({required this.site, required this.selected, required this.onTap});
+  /// hover 浮层挂钩:进入回传 `(站点 id, 触发点中心 x)`(全局坐标),
+  /// 移出取消开门并交给壳层延迟关门。
+  final void Function(String siteId, double centerX) onHoverStart;
+  final VoidCallback onHoverEnd;
+
+  const _PlatformTab({
+    required this.site,
+    required this.selected,
+    required this.onTap,
+    required this.onHoverStart,
+    required this.onHoverEnd,
+  });
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: InkResponse(
-        onTap: onTap,
-        radius: 18,
-        hoverColor: tokens.surfaceRaised,
-        child: Tooltip(
-          message: site.name,
-          child: Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: selected ? tokens.surfaceRaised : Colors.transparent,
-              borderRadius: AppRadius.allMd,
-              border: Border.all(color: selected ? tokens.brand : Colors.transparent, width: 1),
+      child: Builder(
+        builder: (hoverContext) {
+          // 触发点中心 x:MouseRegion 与点击区共用同一个 RenderBox 快照
+          // (真源 _NavAction 同款处理)。
+          RenderBox? box;
+          double centerX() {
+            final target = box ??= hoverContext.findRenderObject() as RenderBox?;
+            if (target == null) return 0;
+            final dx = target.localToGlobal(Offset.zero).dx;
+            return dx + target.size.width / 2;
+          }
+
+          return MouseRegion(
+            onEnter: (_) => onHoverStart(site.id, centerX()),
+            onExit: (_) => onHoverEnd(),
+            child: InkResponse(
+              onTap: onTap,
+              radius: 18,
+              hoverColor: tokens.surfaceRaised,
+              child: Tooltip(
+                message: site.name,
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: selected ? tokens.surfaceRaised : Colors.transparent,
+                    borderRadius: AppRadius.allMd,
+                    border: Border.all(color: selected ? tokens.brand : Colors.transparent, width: 1),
+                  ),
+                  padding: const EdgeInsets.all(4),
+                  child: PlatformIcon(id: site.id, size: 22),
+                ),
+              ),
             ),
-            padding: const EdgeInsets.all(4),
-            child: PlatformIcon(id: site.id, size: 22),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -407,17 +701,46 @@ class _TopNavTool extends StatelessWidget {
   final Color? color;
   final VoidCallback onTap;
 
-  const _TopNavTool({required this.tooltip, required this.icon, required this.onTap, this.color});
+  /// hover 浮层挂钩(可空:无挂钩时保持纯 IconButton 行为)。
+  final void Function(double centerX)? onHoverStart;
+  final VoidCallback? onHoverEnd;
+
+  const _TopNavTool({
+    required this.tooltip,
+    required this.icon,
+    required this.onTap,
+    this.color,
+    this.onHoverStart,
+    this.onHoverEnd,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
+    final button = IconButton(
       tooltip: tooltip,
       onPressed: onTap,
       icon: Icon(icon, size: 18, color: color ?? Theme.of(context).extension<ZishuTokens>()!.textSecondary),
       constraints: const BoxConstraints.tightFor(width: 32, height: 32),
       padding: EdgeInsets.zero,
       splashRadius: 18,
+    );
+    if (onHoverStart == null && onHoverEnd == null) return button;
+    return Builder(
+      builder: (hoverContext) {
+        RenderBox? box;
+        double centerX() {
+          final target = box ??= hoverContext.findRenderObject() as RenderBox?;
+          if (target == null) return 0;
+          final dx = target.localToGlobal(Offset.zero).dx;
+          return dx + target.size.width / 2;
+        }
+
+        return MouseRegion(
+          onEnter: (_) => onHoverStart?.call(centerX()),
+          onExit: (_) => onHoverEnd?.call(),
+          child: button,
+        );
+      },
     );
   }
 }
@@ -435,6 +758,12 @@ class _BrowseSidebar extends StatelessWidget {
   final void Function(String) onSelectSite;
   final void Function(int) onSelectMenu;
 
+  /// 当前选中站点的 [Site] 对象(侧栏热门分类点跳分类详情需要)。
+  final Site? categorySite;
+
+  /// 点热门分类跳分类详情(先经壳层,与浮层分类同一入口)。
+  final void Function(Site site, LiveArea area) onOpenCategory;
+
   const _BrowseSidebar({
     required this.index,
     required this.sites,
@@ -443,6 +772,8 @@ class _BrowseSidebar extends StatelessWidget {
     required this.onToggleCollapsed,
     required this.onSelectSite,
     required this.onSelectMenu,
+    required this.categorySite,
+    required this.onOpenCategory,
   });
 
   @override
@@ -520,8 +851,12 @@ class _BrowseSidebar extends StatelessWidget {
             ],
           ),
         ),
-        for (final category in _ZishuAppShellState._hotCategories)
-          _CategoryRow(name: category, onTap: () => onSelectMenu(HomeMenu.areas.index)),
+        _SidebarHotCategories(
+          site: categorySite,
+          fallback: _ZishuAppShellState._hotCategories,
+          onFallbackTap: () => onSelectMenu(HomeMenu.areas.index),
+          onOpenCategory: onOpenCategory,
+        ),
         const Divider(height: AppSpacing.xl),
         _CategoryRow(
           name: i18n('record_center'),
@@ -658,5 +993,99 @@ class _CategoryRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// 侧栏「热门分类」:当前选中站点 `AreasListController.categories` 展开
+/// 子分类取前 15(真实目录);控制器未注册或目录为空时回落硬编码表
+/// (老口径,保证任何时刻侧栏不空)。
+///
+/// 目录懒加载:控制器是 lazyPut(fenix),首次 find 才实例化且分类要
+/// `loadData()` 才有 —— 挂一帧后补跑一次(loadData 幂等,不重拉)。
+class _SidebarHotCategories extends StatefulWidget {
+  const _SidebarHotCategories({
+    required this.site,
+    required this.fallback,
+    required this.onFallbackTap,
+    required this.onOpenCategory,
+  });
+
+  /// 当前选中站点(为空 → 直接硬编码兜底)。
+  final Site? site;
+
+  /// 硬编码兜底分类名表。
+  final List<String> fallback;
+
+  /// 兜底分类点击(老行为:切到分区页)。
+  final VoidCallback onFallbackTap;
+
+  /// 真实分类点击:跳该站分类详情。
+  final void Function(Site site, LiveArea area) onOpenCategory;
+
+  @override
+  State<_SidebarHotCategories> createState() => _SidebarHotCategoriesState();
+}
+
+class _SidebarHotCategoriesState extends State<_SidebarHotCategories> {
+  /// 展示条数上限(交付口径:展开子分类取前 15)。
+  static const int _maxCategories = 15;
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureCatalogLoaded();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SidebarHotCategories oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.site?.id != widget.site?.id) {
+      _ensureCatalogLoaded();
+    }
+  }
+
+  /// 目录为空且控制器已注册 → 一帧后补跑 loadData(不在 build 期间触发
+  /// Rx 通知)。loadData 幂等:进行中复用同一 Future,已有数据不重拉。
+  void _ensureCatalogLoaded() {
+    final site = widget.site;
+    if (site == null || !Get.isRegistered<AreasListController>(tag: site.id)) return;
+    final controller = Get.find<AreasListController>(tag: site.id);
+    if (controller.categories.isNotEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!Get.isRegistered<AreasListController>(tag: site.id)) return;
+      final latest = Get.find<AreasListController>(tag: site.id);
+      if (latest.categories.isEmpty) unawaited(latest.loadData());
+    });
+  }
+
+  Widget _fallbackList() {
+    return Column(
+      children: [for (final category in widget.fallback) _CategoryRow(name: category, onTap: widget.onFallbackTap)],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final site = widget.site;
+    if (site == null || !Get.isRegistered<AreasListController>(tag: site.id)) {
+      return _fallbackList();
+    }
+    final controller = Get.find<AreasListController>(tag: site.id);
+    return Obx(() {
+      // 多分组目录按组序展开子分类,过滤空名后取前 15。
+      final areas = <LiveArea>[
+        for (final group in controller.categories)
+          for (final area in group.children)
+            if ((area.areaName ?? '').trim().isNotEmpty) area,
+      ].take(_maxCategories).toList();
+      if (areas.isEmpty) return _fallbackList();
+      return Column(
+        children: [
+          for (final area in areas)
+            _CategoryRow(name: area.areaName!.trim(), onTap: () => widget.onOpenCategory(site, area)),
+        ],
+      );
+    });
   }
 }

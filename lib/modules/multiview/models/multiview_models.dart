@@ -5,7 +5,6 @@ import 'package:pure_live/player/core/playback_source.dart';
 import 'package:pure_live/player/core/flv_splice_relay.dart';
 import 'package:pure_live/core/common/hls_source_query_policy.dart';
 
-
 /// 多画面布局枚举。
 ///
 /// 每个布局隐含固定的行列划分，用于把屏幕物理像素均分给每个格子，

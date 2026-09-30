@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+
 import 'package:pure_live/common/index.dart';
 import 'package:flame_barrage/flame_barrage.dart';
 import 'package:pure_live/model/live_play_quality.dart';
@@ -331,10 +332,7 @@ class MultiviewController extends GetxController {
     final host = mc.KernelPoolPlayerHost(PlayerKernelService.instance.kernel);
     final controller = wall.MultiviewController(
       players: host,
-      config: wall.MultiviewConfig.defaults.copyWith(
-        layout: _wallLayout(layout.value),
-        maxCells: maxCellCount,
-      ),
+      config: wall.MultiviewConfig.defaults.copyWith(layout: _wallLayout(layout.value), maxCells: maxCellCount),
     );
     _wall = controller;
     _wallSub = controller.onChanged.listen((_) => _syncFromWall());
@@ -437,7 +435,10 @@ class MultiviewController extends GetxController {
       var playing = wallCell.isPlaying;
       switch (status) {
         case MultiviewCellStatus.playing:
-          _updateCell(index, cells[index].copyWith(status: status, clearError: true, videoController: _wallVideo(index)));
+          _updateCell(
+            index,
+            cells[index].copyWith(status: status, clearError: true, videoController: _wallVideo(index)),
+          );
         case MultiviewCellStatus.resolving:
           if (cells[index].status == MultiviewCellStatus.empty) continue;
           _updateCell(index, cells[index].copyWith(status: status));
@@ -541,7 +542,10 @@ class MultiviewController extends GetxController {
     final mapped = _wallLayout(newLayout);
     if (controller.config.layout == mapped) return;
     await controller.updateConfig(
-      controller.config.copyWith(layout: mapped, maxCells: newLayout == MultiviewLayout.focus ? maxCellCount : mapped.capacity),
+      controller.config.copyWith(
+        layout: mapped,
+        maxCells: newLayout == MultiviewLayout.focus ? maxCellCount : mapped.capacity,
+      ),
     );
   }
 

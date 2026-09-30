@@ -12,7 +12,7 @@ import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 /// `features/browse/widgets/room_card.dart`(2026-09 改版裁决):
 /// - 左上:分类实底角标([CoverCategoryBadge]);
 /// - 左下:主播昵称(平台品牌色底 + chipForeground);
-/// - 右下:热度([CoverOnlineBadge],未开播不显示;轮播态同位金色「轮播」);
+/// - 右下:热度([CoverOnlineBadge],未开播或值兜底链为空不显示;轮播态同位金色「轮播」);
 /// - 未开播:整封面遮罩「未开播」;
 /// - 平台名角标不渲染(位置让给昵称,平台信息由页签上下文承载)。
 class ZishuRoomCard extends StatelessWidget {
@@ -91,6 +91,12 @@ class _Cover extends StatelessWidget {
     final live = room.isLiveNow;
     final brand = PlatformBrandCatalog.byId(room.platform ?? '');
     final anchor = (room.nick ?? '').trim();
+    // 热度展示值(onlineViewers → watching → popularity 兜底):统一走模型
+    // audienceValue 兜底链(live_room.dart:677)—effectivePopularity →
+    // effectiveTotalViewers → effectiveOnlineViewers → legacy watching。
+    // preferRealOnline:false 表示不启用「真实在线」平台策略(纯展示,与
+    // 排序口径解耦);该链会把遗留哨兵 '0' 与 'null' 判空,不会误渲染 0。
+    final onlineText = room.audienceValue(preferRealOnline: false, platformEnabled: false);
     final coverUrl = normalizeNetworkImageUrl(room.cover);
     return AspectRatio(
       aspectRatio: 16 / 9,
@@ -136,14 +142,14 @@ class _Cover extends StatelessWidget {
                 child: Text(anchor, maxLines: 1, overflow: TextOverflow.ellipsis),
               ),
             ),
-          if (live)
+          if (live && onlineText.isNotEmpty)
             Positioned(
               right: 0,
               bottom: 0,
               child: CoverOnlineBadge(
                 key: const Key('cover-badge-online'),
                 corner: CoverCorner.bottomRight,
-                online: room.onlineViewers ?? '',
+                online: onlineText,
               ),
             ),
           if (replay)
