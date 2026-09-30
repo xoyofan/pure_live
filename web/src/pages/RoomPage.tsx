@@ -5,10 +5,11 @@ import type { PlayUrls, Quality, Room, RoomListItem } from '../api/types';
 import { useDanmaku } from '../hooks/useDanmaku';
 import DanmakuCanvas from '../components/DanmakuCanvas';
 import Player, { type PlaybackSource } from '../components/Player';
+import * as followStore from '../lib/followStore';
+import type { FollowEntry } from '../lib/followStore';
 
 interface Props {
   platform: string;
-  platformName: string;
   roomId: string;
   onLeave: () => void;
   /** Open another room from the side-panel recommend list. */
@@ -88,7 +89,7 @@ function danmakuStatusText(status: ReturnType<typeof useDanmaku>['status']): str
   }
 }
 
-export default function RoomPage({ platform, platformName, roomId, onLeave, onOpenRoom }: Props) {
+export default function RoomPage({ platform, roomId, onLeave, onOpenRoom }: Props) {
   const [phase, setPhase] = useState<ResolvePhase>({ kind: 'loading' });
   const [qualities, setQualities] = useState<Quality[]>([]);
   const [currentQuality, setCurrentQuality] = useState<string | null>(null);
@@ -253,7 +254,11 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
         })()
       : null;
 
-  const [sideTab, setSideTab] = useState<'chat' | 'recommend' | 'settings'>('chat');
+  const [sideTab, setSideTab] = useState<'chat' | 'follow' | 'recommend' | 'settings'>('chat');
+  const [sideCollapsed, setSideCollapsed] = useState(false);
+  const [follows, setFollows] = useState<FollowEntry[]>(() => followStore.listFollows());
+  const followed = followStore.isFollowed(platform, roomId);
+  const superFollowed = follows.some((e) => e.platform === platform && e.roomId === roomId && e.isSpecial);
   const [recommendRooms, setRecommendRooms] = useState<RoomListItem[]>([]);
   const [recommendLoading, setRecommendLoading] = useState(false);
   const chatListRef = useRef<HTMLDivElement | null>(null);
@@ -294,6 +299,16 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
   }, [sideTab, platform, roomId]);
 
   const reloadStream = () => setNonce((n) => n + 1);
+
+  const toggleFollow = () => {
+    if (followed) setFollows(followStore.removeFollow(platform, roomId));
+    else if (room) setFollows(followStore.addFollow({ ...room, platform, roomId }));
+  };
+
+  const toggleSuperFollow = () => {
+    if (!followed && room) setFollows(followStore.addFollow({ ...room, platform, roomId }));
+    setFollows(followStore.toggleSpecial(platform, roomId));
+  };
 
   const toggleFullscreen = () => {
     const stage = stageRef.current;
@@ -336,8 +351,18 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
         <button type="button" className="btn-ghost" onClick={onLeave}>
           ← 返回
         </button>
-        <span className={`platform-chip platform-${platform}`}>{platformName}</span>
+        {room?.liveStatus === 'live' && <span className="live-flag">直播</span>}
         <span className="play-title">{room?.title || `${platform} ${roomId}`}</span>
+        {phase.kind === 'ok' && (
+          <button
+            type="button"
+            className="btn-ghost side-toggle"
+            title={sideCollapsed ? '展开侧栏' : '收起侧栏'}
+            onClick={() => setSideCollapsed((c) => !c)}
+          >
+            {sideCollapsed ? '«' : '»'}
+          </button>
+        )}
       </div>
 
       {phase.kind === 'loading' && <p className="banner">正在获取房间信息…</p>}
@@ -378,35 +403,7 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
                       弹
                     </button>
                   </div>
-                  {qualities.length > 0 && (
-                    <div className="controls-group qualities">
-                      {qualities.map((q) => (
-                        <button
-                          key={q.selectionId}
-                          type="button"
-                          className={`ctrl-chip${q.selectionId === currentQuality ? ' active' : ''}`}
-                          onClick={() => selectQuality(q.selectionId)}
-                        >
-                          {q.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {(play?.urls.length ?? 0) > 1 && (
-                    <div className="controls-group">
-                      {(play?.urls ?? []).map((_, index) => (
-                        <button
-                          key={index}
-                          type="button"
-                          className={`ctrl-chip${index === line ? ' active' : ''}`}
-                          onClick={() => setLine(index)}
-                          title={`线路${index + 1}`}
-                        >
-                          线路{index + 1}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <div className="controls-group controls-spacer" />
                   <div className="controls-group">
                     <button type="button" className="ctrl-btn" title="画中画" onClick={() => void togglePip()}>
                       画
@@ -418,6 +415,32 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
                 </div>
               )}
             </div>
+
+            {playable && (qualities.length > 0 || (play?.urls.length ?? 0) > 1) && (
+              <div className="play-chips-row">
+                {qualities.map((q) => (
+                  <button
+                    key={q.selectionId}
+                    type="button"
+                    className={`ctrl-chip${q.selectionId === currentQuality ? ' active' : ''}`}
+                    onClick={() => selectQuality(q.selectionId)}
+                  >
+                    {q.label}
+                  </button>
+                ))}
+                {(play?.urls ?? []).length > 1 &&
+                  (play?.urls ?? []).map((_, index) => (
+                    <button
+                      key={`line${index}`}
+                      type="button"
+                      className={`ctrl-chip${index === line ? ' active' : ''}`}
+                      onClick={() => setLine(index)}
+                    >
+                      线路{index + 1}
+                    </button>
+                  ))}
+              </div>
+            )}
 
             {playLoading && <p className="banner">正在获取播放地址…</p>}
             {playError && (
@@ -449,7 +472,7 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
             )}
           </div>
 
-          <aside className="play-side">
+          <aside className="play-side" hidden={sideCollapsed}>
             <div className="side-header">
               {room.avatar ? (
                 <img className="avatar" src={room.avatar} alt="" referrerPolicy="no-referrer" />
@@ -457,13 +480,31 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
                 <div className="avatar placeholder" />
               )}
               <div className="side-header-info">
-                <p className="nick">{room.nick || '未知主播'}</p>
+                <p className="nick">
+                  <span className={`dot dot-${danmaku.status}`} title={danmakuStatusText(danmaku.status) ?? ''} />
+                  {room.nick || '未知主播'}
+                </p>
                 <p className="watching">
                   {viewerText ? `${viewerText} 观看` : ''}
                   {liveStatusText(room.liveStatus) ? ' · 未开播' : ''}
                 </p>
               </div>
-              <span className={`dot dot-${danmaku.status}`} title={danmakuStatusText(danmaku.status) ?? ''} />
+              <div className="side-follow-btns">
+                <button
+                  type="button"
+                  className={`follow-btn${followed ? ' on' : ''}`}
+                  onClick={toggleFollow}
+                >
+                  ♥ {followed ? '已关注' : '关注'}
+                </button>
+                <button
+                  type="button"
+                  className={`follow-btn super${superFollowed ? ' on' : ''}`}
+                  onClick={toggleSuperFollow}
+                >
+                  超关
+                </button>
+              </div>
             </div>
 
             <div className="side-tabs">
@@ -473,6 +514,13 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
                 onClick={() => setSideTab('chat')}
               >
                 聊天
+              </button>
+              <button
+                type="button"
+                className={`side-tab${sideTab === 'follow' ? ' active' : ''}`}
+                onClick={() => setSideTab('follow')}
+              >
+                关注
               </button>
               <button
                 type="button"
@@ -527,6 +575,37 @@ export default function RoomPage({ platform, platformName, roomId, onLeave, onOp
                   ))}
                 </div>
               </>
+            ) : sideTab === 'follow' ? (
+              <div className="recommend-list">
+                {follows.length === 0 && <p className="danmaku-empty">还没有关注的直播间</p>}
+                {follows.map((entry) => (
+                  <button
+                    key={`${entry.platform}:${entry.roomId}`}
+                    type="button"
+                    className="recommend-item"
+                    onClick={() => onOpenRoom(entry.platform, entry.roomId)}
+                  >
+                    {entry.cover ? (
+                      <img
+                        src={entry.cover}
+                        alt=""
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.style.visibility = 'hidden';
+                        }}
+                      />
+                    ) : null}
+                    <span className="recommend-item-info">
+                      <span className="recommend-item-title">
+                        {entry.isSpecial ? '★ ' : ''}
+                        {entry.title || entry.nick}
+                      </span>
+                      <span className="recommend-item-meta">{entry.nick}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
             ) : sideTab === 'recommend' ? (
               <div className="recommend-list">
                 {recommendLoading && <p className="danmaku-empty">正在获取推荐…</p>}

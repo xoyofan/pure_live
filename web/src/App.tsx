@@ -313,7 +313,6 @@ export default function App() {
             <RoomPage
               key={`room:${route.platform}:${route.roomId}`}
               platform={route.platform}
-              platformName={platformName(route.platform)}
               roomId={route.roomId}
               onLeave={() => showDiscover(route.platform, null, null)}
               onOpenRoom={enterRoom}

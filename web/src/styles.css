@@ -684,7 +684,7 @@ select {
   color: var(--text);
 }
 
-/* ---- play page: header ---- */
+/* ---- play page: header (zishu PlayHeader: back + live flag + centered title + toggle) ---- */
 
 .play-header {
   display: flex;
@@ -692,6 +692,67 @@ select {
   gap: 10px;
   margin-bottom: 12px;
   min-width: 0;
+  position: relative;
+}
+
+.live-flag {
+  background: var(--ok);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.play-title {
+  color: var(--text-mid);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+  text-align: center;
+}
+
+.side-toggle {
+  flex-shrink: 0;
+  font-size: 15px;
+}
+
+/* transport-only overlay: content groups split left/right */
+.controls-spacer {
+  flex: 1;
+}
+
+/* quality/line chips row below the player (zishu position) */
+
+.play-chips-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.play-chips-row .ctrl-chip {
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text-mid);
+  padding: 5px 14px;
+  font-size: 13px;
+}
+
+.play-chips-row .ctrl-chip:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.play-chips-row .ctrl-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
 }
 
 .platform-chip {
@@ -903,6 +964,62 @@ select {
   font-weight: 600;
 }
 
+/* follow / super-follow buttons (zishu AppColors playFollow*/playSuper palettes) */
+
+.side-follow-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.follow-btn {
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  color: var(--text-mid);
+  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.follow-btn:hover {
+  color: var(--text);
+}
+
+.follow-btn {
+  background: #582626;
+  border-color: #6e4747;
+  color: #ffb8b8;
+}
+
+.follow-btn:hover {
+  background: #512626;
+  color: #ffe0e0;
+}
+
+.follow-btn.on {
+  background: #4f2c2c;
+  color: #ffe0e0;
+}
+
+.follow-btn.super {
+  background: #442d5b;
+  border-color: #5c4d6c;
+  color: #c9a0f0;
+}
+
+.follow-btn.super:hover {
+  background: #402c54;
+  color: #e9d5ff;
+}
+
+.follow-btn.super.on {
+  background: #413052;
+  color: #e9d5ff;
+}
+
 /* ---- play page: side panel (SFVideoLive PlaySidePanel) ---- */
 
 .play-side {
@@ -952,6 +1069,9 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .watching {
