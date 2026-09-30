@@ -20,6 +20,7 @@ import 'package:pure_live/common/global/platform/mobile_manager.dart';
 import 'package:pure_live/common/global/platform/desktop_manager.dart';
 import 'package:pure_live/recorder/services/recorder_proxy_routing.dart';
 import 'package:pure_live/common/services/settings/backup_controller.dart';
+import 'package:pure_live/common/services/parser_runtime_binding.dart';
 import 'package:pure_live/core/interface/live_room_context.dart';
 import 'package:pure_live/modules/live_play/controllers/player_room_context_bridge.dart';
 import 'package:pure_live/player/media_core/player_kernel_service.dart';
@@ -87,6 +88,9 @@ class AppInitializer {
     // SettingsService was registered, then work on a later launch only because
     // the database/cache files had already been created.
     await InitialServices.init();
+    // The parsing core (lib/core) reads settings only through injected
+    // providers; wire them to the app's GetX-backed implementations.
+    bindParserRuntimeToApp();
     // Parsers fall back to the UI-current room only through this contract;
     // resolution must never import playback controllers directly.
     LiveCurrentRoomContext.register(const PlayerRoomContextBridge());

@@ -14,6 +14,9 @@ analyzer:
     # Opt-in external/native probes run standalone against device fixtures;
     # they are not part of the app quality gate.
     - tool/probes/**
+    # Sidecar exe build shell: sources are analyzed as part of package:pure_live
+    # (lib/core); the shell only carries a hook-free package_config.
+    - tool/sidecar/runner/**
     # Vendored upstream package (Predidit/media-kit@803c4a27); analyzed upstream.
     - third_party/media_kit/**
     - third_party/fvp/**

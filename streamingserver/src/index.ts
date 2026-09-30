@@ -11,6 +11,7 @@ import type { Server } from 'node:http';
 import { registry } from './backends/types.js';
 import { BilibiliBackend, buvidState, exportedWbiSign } from './backends/bilibili.js';
 import { DouyinBackend } from './backends/douyin.js';
+import { createDartSidecarBackends } from './backends/dart_sidecar.js';
 import { BilibiliDanmakuSource, bindBilibiliHelpers } from './danmaku/bilibili.js';
 import { createRestRouter, errorMiddleware } from './routes/rest.js';
 import { registerProxyRoute } from './routes/proxy.js';
@@ -32,6 +33,20 @@ const bilibiliBackend = new BilibiliBackend();
 const douyinBackend = new DouyinBackend();
 registry.registerBackend(bilibiliBackend);
 registry.registerBackend(douyinBackend);
+
+// Dart sidecar backends override their TS twins when the exe exists: the
+// Flutter app and this server then run the SAME lib/core parsing sources.
+// STREAMING_PARSER=ts forces the pure-TS path (comparison / fallback).
+const sidecarRegistration = createDartSidecarBackends(['bilibili', 'douyin']);
+if (sidecarRegistration) {
+  for (const backend of sidecarRegistration.backends) {
+    registry.registerBackend(backend);
+  }
+  console.log(`[streaming-server] dart sidecar active for: ${sidecarRegistration.backends.map((b) => b.id).join(', ')}`);
+  process.on('exit', () => sidecarRegistration.process.dispose());
+} else {
+  console.log('[streaming-server] dart sidecar not found; using TS resolvers (build it via tool/sidecar)');
+}
 
 bindBilibiliHelpers(exportedWbiSign, buvidState);
 registry.registerDanmakuSource(bilibiliBackend.id, new BilibiliDanmakuSource());

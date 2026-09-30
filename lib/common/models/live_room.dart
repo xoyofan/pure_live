@@ -1,5 +1,12 @@
-import 'package:pure_live/player/core/live_room_volume_manager.dart';
 import 'package:pure_live/core/common/http_header_policy.dart';
+
+/// Per-room volume persistence hook. The Flutter app registers an adapter on
+/// top of LiveRoomVolumeManager at startup; without a registration (sidecar)
+/// reads return full volume and saves are dropped.
+abstract final class LiveRoomVolumeStore {
+  static double Function(String platform, String roomId)? reader;
+  static Future<void> Function(String platform, String roomId, double volume)? writer;
+}
 
 enum LiveStatus { live, offline, replay, unknown, banned }
 
@@ -549,11 +556,11 @@ class LiveRoom {
   }
 
   double getSavedVolume() {
-    return LiveRoomVolumeManager.getRoomVolume(platform ?? 'UNKNOWN', roomId ?? '');
+    return LiveRoomVolumeStore.reader?.call(platform ?? 'UNKNOWN', roomId ?? '') ?? 1.0;
   }
 
   Future<void> saveCurrentVolume(double volume) async {
-    await LiveRoomVolumeManager.saveRoomVolume(platform ?? 'UNKNOWN', roomId ?? '', volume);
+    await LiveRoomVolumeStore.writer?.call(platform ?? 'UNKNOWN', roomId ?? '', volume);
   }
 
   Map<String, dynamic> toJson() {

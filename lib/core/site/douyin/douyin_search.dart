@@ -1,6 +1,10 @@
 import 'dart:convert';
 
-import 'package:pure_live/common/index.dart';
+import 'package:meta/meta.dart';
+
+import 'package:pure_live/common/models/live_room.dart';
+import 'package:pure_live/core/common/parser_config.dart';
+import 'package:pure_live/core/common/site_ids.dart';
 import 'package:pure_live/core/common/core_log.dart';
 import 'package:pure_live/core/common/http_client.dart';
 import 'package:pure_live/core/site/douyin/douyin_audience.dart';
@@ -26,7 +30,7 @@ class DouyinSearch {
       return _cookie;
     }
 
-    final configuredCookie = SettingsService.to.cookieManager.douyinCookie.v.trim();
+    final configuredCookie = (ParserConfig.instance?.cookieFor(SiteIds.douyinSite) ?? '').trim();
 
     if (configuredCookie.isNotEmpty) {
       _configuredCookieSnapshot = configuredCookie;
@@ -264,7 +268,7 @@ class DouyinSearch {
       cover: pic,
       nick: nickname.isNotEmpty ? nickname : '抖音直播',
       avatar: avatar,
-      platform: Sites.douyinSite,
+      platform: SiteIds.douyinSite,
       area: tagText,
       status: status,
       liveStatus: status ? LiveStatus.live : LiveStatus.offline,
@@ -536,7 +540,7 @@ class DouyinSearch {
               cover: coverUrl,
               nick: owner['nickname']?.toString() ?? '',
               avatar: avatarUrl,
-              platform: Sites.douyinSite,
+              platform: SiteIds.douyinSite,
               area: itemMap['tag_name']?.toString() ?? '',
               status: true,
               liveStatus: LiveStatus.live,

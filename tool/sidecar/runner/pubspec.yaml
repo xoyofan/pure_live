@@ -1,0 +1,7 @@
+name: pure_live_sidecar_runner
+description: Standalone build shell for the parsing sidecar exe. Sources live
+  in the host repo (package:pure_live); this directory only provides a
+  hook-free package_config so `dart compile exe` accepts the build.
+publish_to: none
+environment:
+  sdk: ^3.0.0

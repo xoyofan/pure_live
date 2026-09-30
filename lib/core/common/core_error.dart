@@ -1,6 +1,10 @@
-import 'package:pure_live/plugins/locale_helper.dart';
-
+/// HTTP error carried out of the parsing core. Localization of the status
+/// text is a UI concern: hosts register [statusCodeFormatter] (the Flutter app
+/// wires it to its i18n); without one the error renders the raw status.
 class HttpError extends Error {
+  /// Optional i18n hook, e.g. "HTTP 404" -> localized sentence.
+  static String Function(int statusCode)? statusCodeFormatter;
+
   final int statusCode;
   final String message;
 
@@ -25,23 +29,8 @@ class HttpError extends Error {
   }
 
   String statusCodeToString(int statusCode) {
-    switch (statusCode) {
-      case 400:
-        return i18n("http_error_400");
-      case 401:
-        return i18n("http_error_401");
-      case 403:
-        return i18n("http_error_403");
-      case 404:
-        return i18n("http_error_404");
-      case 500:
-        return i18n("http_error_500");
-      case 502:
-        return i18n("http_error_502");
-      case 503:
-        return i18n("http_error_503");
-      default:
-        return i18n("http_error_default", args: {"statusCode": statusCode.toString()});
-    }
+    final formatter = statusCodeFormatter;
+    if (formatter != null) return formatter(statusCode);
+    return message.isNotEmpty ? 'HTTP $statusCode: $message' : 'HTTP $statusCode';
   }
 }

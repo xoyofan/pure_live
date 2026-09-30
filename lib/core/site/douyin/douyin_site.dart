@@ -1,11 +1,17 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:pure_live/common/index.dart';
+import 'package:meta/meta.dart';
+
+import 'package:pure_live/common/models/live_area.dart';
+import 'package:pure_live/common/models/live_message.dart';
+import 'package:pure_live/common/models/live_room.dart';
 import 'package:pure_live/model/live_category.dart';
 import 'package:pure_live/core/common/core_log.dart';
 import 'package:pure_live/model/live_anchor_item.dart';
 import 'package:pure_live/core/common/http_client.dart';
+import 'package:pure_live/core/common/parser_config.dart';
+import 'package:pure_live/core/common/site_ids.dart';
 import 'package:pure_live/model/live_play_quality.dart';
 import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/core/common/convert_helper.dart';
@@ -19,7 +25,7 @@ import 'package:pure_live/core/utils/live_quality_label.dart';
 
 class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
   @override
-  String id = Sites.douyinSite;
+  String id = SiteIds.douyinSite;
 
   @override
   String name = "抖音直播";
@@ -46,8 +52,10 @@ class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
     try {
       if (cookie.isNotEmpty) {
         return {...headers, "cookie": cookie};
-      } else if (SettingsService.to.cookieManager.douyinCookie.v.isNotEmpty) {
-        cookie = SettingsService.to.cookieManager.douyinCookie.v;
+      }
+      final storedCookie = ParserConfig.instance?.persistentCookieFor(SiteIds.douyinSite) ?? '';
+      if (storedCookie.isNotEmpty) {
+        cookie = storedCookie;
         return {...headers, "cookie": cookie};
       }
 
@@ -151,7 +159,7 @@ class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
           areaType: id,
           areaName: subItem["partition"]["title"] ?? '',
           areaPic: "",
-          platform: Sites.douyinSite,
+          platform: SiteIds.douyinSite,
         );
         subs.add(subCategory);
       }
@@ -165,7 +173,7 @@ class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
           areaType: category.id,
           areaPic: "",
           areaName: category.name,
-          platform: Sites.douyinSite,
+          platform: SiteIds.douyinSite,
         ),
       );
       categories.add(category);
@@ -217,7 +225,7 @@ class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
         liveStatus: LiveStatus.live,
         avatar: room["owner"]["avatar_thumb"]["url_list"][0].toString(),
         status: true,
-        platform: Sites.douyinSite,
+        platform: SiteIds.douyinSite,
         area: item['tag_name'].toString(),
         watching: nativeAudience,
         totalViewers: totalViewers,
@@ -307,7 +315,7 @@ class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
           title: title,
           cover: cover,
           nick: nick,
-          platform: Sites.douyinSite,
+          platform: SiteIds.douyinSite,
           area: _douyinFeedArea(envelope, room),
           avatar: avatar,
           watching: nativeAudience,
@@ -441,7 +449,7 @@ class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
       audienceMetricType: totalViewers.isNotEmpty ? AudienceMetricType.totalViewers : AudienceMetricType.onlineViewers,
       status: roomStatus,
       link: "https://live.douyin.com/$webRid",
-      platform: Sites.douyinSite,
+      platform: SiteIds.douyinSite,
       area: '',
       liveStatus: roomStatus ? LiveStatus.live : LiveStatus.offline,
       introduction: owner["signature"].toString(),
@@ -506,7 +514,7 @@ class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
       status: roomStatus,
       liveStatus: roomStatus ? LiveStatus.live : LiveStatus.offline,
       link: "https://live.douyin.com/$webRid",
-      platform: Sites.douyinSite,
+      platform: SiteIds.douyinSite,
       area: '',
       introduction: owner?["signature"]?.toString() ?? "",
       notice: "",
@@ -557,7 +565,7 @@ class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
       link: "https://live.douyin.com/$webRid",
       area: '',
       status: roomStatus,
-      platform: Sites.douyinSite,
+      platform: SiteIds.douyinSite,
       introduction: roomInfo["title"].toString(),
       notice: "",
       danmakuData: DouyinDanmakuArgs(
@@ -757,7 +765,7 @@ class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
       qualities.add(
         LivePlayQuality(
           quality: LiveQualityLabel.normalize(
-            platform: Sites.douyinSite,
+            platform: SiteIds.douyinSite,
             rawLabel: configuredName.isNotEmpty
                 ? configuredName
                 : resolutionName.isNotEmpty

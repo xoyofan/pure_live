@@ -2,9 +2,16 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:pure_live/common/index.dart';
+import 'package:meta/meta.dart';
+import 'package:pure_live/common/models/live_area.dart';
+import 'package:pure_live/common/models/live_message.dart';
+import 'package:pure_live/common/models/live_room.dart';
+import 'package:pure_live/common/utils/network_image_url.dart';
+import 'package:pure_live/core/common/parser_config.dart';
+import 'package:pure_live/core/common/site_ids.dart';
 import 'package:pure_live/model/live_category.dart';
 import 'package:pure_live/model/live_anchor_item.dart';
+import 'package:pure_live/core/common/core_log.dart';
 import 'package:pure_live/core/common/http_client.dart';
 import 'package:pure_live/model/live_play_quality.dart';
 import 'package:pure_live/core/interface/live_site.dart';
@@ -16,12 +23,12 @@ import 'package:pure_live/core/interface/live_room_context.dart';
 
 class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResolver, LivePlayUrlResolver {
   @override
-  String id = Sites.bilibiliSite;
+  String id = SiteIds.bilibiliSite;
 
   @override
   String name = "哔哩哔哩直播";
-  String get cookie => SettingsService.to.cookieManager.bilibiliCookie.v;
-  int get userId => SettingsService.to.cookieManager.bilibiliUid.v;
+  String get cookie => ParserConfig.instance?.persistentCookieFor(SiteIds.bilibiliSite) ?? '';
+  int get userId => (ParserConfig.instance?.auxiliaryFor(SiteIds.bilibiliSite, 'bilibiliUid') as int?) ?? 0;
   @override
   LiveDanmaku getDanmaku() => BiliBiliDanmaku();
 
@@ -79,7 +86,7 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
             areaType: asT<String?>(subItem["parent_id"]) ?? "",
             typeName: asT<String?>(subItem["parent_name"]) ?? "",
             areaPic: "${asT<String?>(subItem["pic"]) ?? ""}@100w.png",
-            platform: Sites.bilibiliSite,
+            platform: SiteIds.bilibiliSite,
           );
           subs.add(subCategory);
         }
@@ -118,7 +125,7 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
           liveStatus: LiveStatus.live,
           area: item["area_name"].toString(),
           status: true,
-          platform: Sites.bilibiliSite,
+          platform: SiteIds.bilibiliSite,
         );
         items.add(roomItem);
       }
@@ -198,7 +205,7 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
     return ordered
         .map(
           (qn) => LivePlayQuality(
-            quality: LiveQualityLabel.normalize(platform: Sites.bilibiliSite, rawLabel: descriptions[qn] ?? '', id: qn),
+            quality: LiveQualityLabel.normalize(platform: SiteIds.bilibiliSite, rawLabel: descriptions[qn] ?? '', id: qn),
             id: qn,
             data: qn,
             sort: qn,
@@ -373,7 +380,7 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
             audienceMetricType: AudienceMetricType.popularity,
             liveStatus: LiveStatus.live,
             status: true,
-            platform: Sites.bilibiliSite,
+            platform: SiteIds.bilibiliSite,
           );
         })
         .where((room) => room.roomId?.isNotEmpty == true)
@@ -640,7 +647,7 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
         // then refreshes credentials with the full retry policy when needed.
         danmakuArgs = await _discoverDanmaku(int.tryParse(realRoomId) ?? 0, maxAttempts: 1);
       } catch (error) {
-        debugPrint('Bilibili danmaku discovery failed: $error');
+        CoreLog.w('Bilibili danmaku discovery failed: $error');
         final headers = await getHeader();
         danmakuArgs = BiliBiliDanmakuArgs(
           roomId: int.tryParse(realRoomId) ?? 0,
@@ -710,7 +717,7 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
       link: "https://live.bilibili.com/$roomId",
       introduction: roomInfo["room_info"]["description"].toString(),
       notice: "",
-      platform: Sites.bilibiliSite,
+      platform: SiteIds.bilibiliSite,
       danmakuData: danmakuData,
     );
   }
@@ -753,7 +760,7 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
         area: item["cate_name"].toString(),
         status: int.tryParse(item['live_status']?.toString() ?? '') == 1,
         avatar: "https:${item["uface"]}@400w.jpg",
-        platform: Sites.bilibiliSite,
+        platform: SiteIds.bilibiliSite,
       );
       items.add(roomItem);
     }

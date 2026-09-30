@@ -1,8 +1,8 @@
 import 'package:dio/dio.dart';
-import 'package:pure_live/core/common/log.dart';
+import 'package:pure_live/core/common/core_log.dart';
 
 class CustomLogInterceptor extends Interceptor {
-  CustomLogInterceptor({void Function(String, StackTrace)? errorLogger}) : _errorLogger = errorLogger ?? Log.e;
+  CustomLogInterceptor({void Function(String, StackTrace)? errorLogger}) : _errorLogger = errorLogger ?? CoreLog.e;
 
   final void Function(String, StackTrace) _errorLogger;
   static const String _keyTimestamp = "ts";

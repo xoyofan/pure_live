@@ -44,7 +44,7 @@ async function fetchAnonymousCookie(): Promise<string> {
   return pairs.join('; ');
 }
 
-async function getCookie(): Promise<string> {
+export async function getCookie(): Promise<string> {
   if (anonymousCookie && Date.now() - anonymousCookieAt < ANONYMOUS_COOKIE_TTL_MS) return anonymousCookie;
   if (!anonymousCookieRequest) {
     anonymousCookieRequest = fetchAnonymousCookie()
@@ -73,7 +73,7 @@ export async function apiHeaders(): Promise<Record<string, string>> {
 }
 
 /** Playback headers (mirrors PlaybackHeaderResolver.resolve for douyin). */
-function playbackHeaders(roomId: string, cookie: string): Record<string, string> {
+export function playbackHeaders(roomId: string, cookie: string): Record<string, string> {
   return {
     'user-agent': DOUYIN_PLAY_USER_AGENT,
     origin: 'https://live.douyin.com',

@@ -1,4 +1,5 @@
 import 'site/yy/yy_site.dart';
+import 'common/site_ids.dart';
 import 'common/playback_header_resolver.dart';
 import 'site/bigo/bigo_site.dart';
 import 'site/inke/inke_site.dart';
@@ -42,78 +43,43 @@ import 'package:pure_live/core/site/kuaishou/kuaishou_site.dart';
 import 'package:pure_live/core/site/bilibili/bilibili_site.dart';
 
 class Sites {
-  static const String weiboSite = 'weibo';
-  static const String niconicoSite = 'niconico';
-  static const String allSite = "all";
-  static const String bilibiliSite = "bilibili";
-  static const String douyuSite = "douyu";
-  static const String huyaSite = "huya";
-  static const String douyinSite = "douyin";
-  static const String kuaishouSite = "kuaishou";
-  static const String ccSite = "cc";
-  static const String iptvSite = "iptv";
-  static const String twitchSite = "twitch";
-  static const String soopSite = 'soop';
-  static const String yySite = 'yy';
-  static const String acfunSite = 'acfun';
-  static const String picartoSite = 'picarto';
-  static const String twitcastingSite = 'twitcasting';
-  static const String missevanSite = 'missevan';
-  static const String inkeSite = 'inke';
-  static const String kilakilaSite = 'kilakila';
-  static const String xiaohongshuSite = 'xiaohongshu';
-  static const String showroomSite = 'showroom';
-  static const String chzzkSite = 'chzzk';
-  static const String liveMeSite = 'liveme';
-  static const String tiktokSite = 'tiktok';
-  static const String youtubeSite = 'youtube';
-  static const String bigoSite = 'bigo';
-  static const String pandaLiveSite = 'pandalive';
-  static const String fc2LiveSite = 'fc2live';
-  static const String steamBroadcastSite = 'steambroadcast';
-  static const String jdLiveSite = 'jdlive';
-  static const String kugouLiveSite = 'kugoulive';
-  static const String baiduLiveSite = 'baidulive';
-  static const String sixRoomSite = 'sixroom';
-  static const String lookLiveSite = 'looklive';
-  static const String seventeenLiveSite = '17live';
+  static const String weiboSite = SiteIds.weiboSite;
+  static const String niconicoSite = SiteIds.niconicoSite;
+  static const String allSite = SiteIds.allSite;
+  static const String bilibiliSite = SiteIds.bilibiliSite;
+  static const String douyuSite = SiteIds.douyuSite;
+  static const String huyaSite = SiteIds.huyaSite;
+  static const String douyinSite = SiteIds.douyinSite;
+  static const String kuaishouSite = SiteIds.kuaishouSite;
+  static const String ccSite = SiteIds.ccSite;
+  static const String iptvSite = SiteIds.iptvSite;
+  static const String twitchSite = SiteIds.twitchSite;
+  static const String soopSite = SiteIds.soopSite;
+  static const String yySite = SiteIds.yySite;
+  static const String acfunSite = SiteIds.acfunSite;
+  static const String picartoSite = SiteIds.picartoSite;
+  static const String twitcastingSite = SiteIds.twitcastingSite;
+  static const String missevanSite = SiteIds.missevanSite;
+  static const String inkeSite = SiteIds.inkeSite;
+  static const String kilakilaSite = SiteIds.kilakilaSite;
+  static const String xiaohongshuSite = SiteIds.xiaohongshuSite;
+  static const String showroomSite = SiteIds.showroomSite;
+  static const String chzzkSite = SiteIds.chzzkSite;
+  static const String liveMeSite = SiteIds.liveMeSite;
+  static const String tiktokSite = SiteIds.tiktokSite;
+  static const String youtubeSite = SiteIds.youtubeSite;
+  static const String bigoSite = SiteIds.bigoSite;
+  static const String pandaLiveSite = SiteIds.pandaLiveSite;
+  static const String fc2LiveSite = SiteIds.fc2LiveSite;
+  static const String steamBroadcastSite = SiteIds.steamBroadcastSite;
+  static const String jdLiveSite = SiteIds.jdLiveSite;
+  static const String kugouLiveSite = SiteIds.kugouLiveSite;
+  static const String baiduLiveSite = SiteIds.baiduLiveSite;
+  static const String sixRoomSite = SiteIds.sixRoomSite;
+  static const String lookLiveSite = SiteIds.lookLiveSite;
+  static const String seventeenLiveSite = SiteIds.seventeenLiveSite;
 
-  static const Set<String> supportedSiteIds = {
-    weiboSite,
-    niconicoSite,
-    bilibiliSite,
-    douyuSite,
-    huyaSite,
-    douyinSite,
-    kuaishouSite,
-    ccSite,
-    twitchSite,
-    soopSite,
-    yySite,
-    acfunSite,
-    picartoSite,
-    twitcastingSite,
-    missevanSite,
-    inkeSite,
-    kilakilaSite,
-    xiaohongshuSite,
-    showroomSite,
-    chzzkSite,
-    liveMeSite,
-    tiktokSite,
-    youtubeSite,
-    bigoSite,
-    pandaLiveSite,
-    fc2LiveSite,
-    steamBroadcastSite,
-    jdLiveSite,
-    kugouLiveSite,
-    baiduLiveSite,
-    sixRoomSite,
-    lookLiveSite,
-    seventeenLiveSite,
-    iptvSite,
-  };
+  static const Set<String> supportedSiteIds = SiteIds.supportedSiteIds;
 
   /// Root directory for all platform artwork.
   static const String _assetRoot = 'assets/images';

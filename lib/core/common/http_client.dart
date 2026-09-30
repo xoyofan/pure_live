@@ -4,10 +4,13 @@ import 'package:dio/io.dart';
 import 'package:dio/dio.dart';
 import 'package:pure_live/core/common/core_error.dart';
 import 'package:pure_live/core/common/custom_interceptor.dart';
-import 'package:pure_live/core/common/proxy_routing.dart';
-import 'package:pure_live/common/services/settings_service.dart';
 
 class HttpClient {
+  /// Proxy directive provider injected by the host. The Flutter app registers
+  /// one reading SettingsService; the sidecar leaves it null (direct
+  /// connections, or its own env-based provider).
+  static String? Function()? proxyDirectiveProvider;
+
   static const Duration _connectTimeout = Duration(seconds: 20);
   static const Duration _receiveTimeout = Duration(seconds: 20);
   static const Duration _sendTimeout = Duration(seconds: 20);
@@ -33,12 +36,9 @@ class HttpClient {
           final client = io.HttpClient();
           client.idleTimeout = const Duration(seconds: 30);
           client.findProxy = (uri) {
-            final proxyCtrl = SettingsService.to.proxy;
-            return buildProxyDirective(
-              enabled: proxyCtrl.enableAppProxy.value,
-              host: proxyCtrl.appProxyHost.value,
-              port: proxyCtrl.appProxyPort.value,
-            );
+            final directive = proxyDirectiveProvider?.call();
+            if (directive != null && directive.isNotEmpty) return directive;
+            return io.HttpClient.findProxyFromEnvironment(uri);
           };
           return client;
         },
