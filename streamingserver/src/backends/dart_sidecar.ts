@@ -35,7 +35,7 @@ export class SidecarProcess {
   private starting: Promise<void> | null = null;
 
   /** Receives {"push":"danmaku"} stdout envelopes (see danmaku/douyin.ts). */
-  onDanmakuPush: ((roomId: string, frame: Record<string, unknown>) => void) | null = null;
+  onDanmakuPush: ((platform: string, roomId: string, frame: Record<string, unknown>) => void) | null = null;
   /** Fires when the sidecar process dies (sessions must surface an error). */
   onExit: (() => void) | null = null;
 
@@ -106,6 +106,7 @@ export class SidecarProcess {
       result?: unknown;
       error?: { code?: string; message?: string };
       push?: string;
+      platform?: string;
       roomId?: string;
       frame?: Record<string, unknown>;
     };
@@ -116,7 +117,11 @@ export class SidecarProcess {
     }
     // Unsolicited push envelope from the sidecar (e.g. danmaku frames).
     if (message.push === 'danmaku' && typeof message.roomId === 'string') {
-      this.onDanmakuPush?.(message.roomId, message.frame ?? {});
+      this.onDanmakuPush?.(
+        typeof message.platform === 'string' ? message.platform : '',
+        message.roomId,
+        message.frame ?? {},
+      );
       return;
     }
     if (typeof message.id !== 'number') return;

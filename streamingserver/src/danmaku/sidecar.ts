@@ -1,7 +1,7 @@
 /**
- * Douyin danmaku served by the Dart sidecar: the SAME lib/core DouyinDanmaku
- * implementation the Flutter app uses (WSS handshake, XBogus signature and
- * protobuf decoding stay single-source). The sidecar pushes
+ * Danmaku served by the Dart sidecar (douyin/huya/douyu): the SAME lib/core
+ * implementations the Flutter app uses (handshakes, signatures and protobuf
+ * decoding stay single-source). The sidecar pushes
  * {"push":"danmaku","roomId","frame"} envelopes on stdout; this source fans
  * them out to every WS client attached to that room and refcounts sessions.
  */
@@ -38,35 +38,39 @@ type SidecarFrame = SidecarChatFrame | SidecarOnlineFrame | SidecarStatusFrame |
 
 const STATUSES = new Set(['connecting', 'connected', 'reconnecting', 'closed', 'error']);
 
-export class SidecarDouyinDanmakuSource implements DanmakuSource {
+export class SidecarPushDanmakuSource implements DanmakuSource {
   private readonly listeners = new Map<string, Set<DanmakuConnectOptions['onFrame']>>();
 
-  constructor(private readonly sidecar: SidecarProcess) {
-    sidecar.onDanmakuPush = (roomId, frame) => this.dispatch(roomId, frame);
+  constructor(
+    private readonly sidecar: SidecarProcess,
+    private readonly platforms: readonly string[],
+  ) {
+    sidecar.onDanmakuPush = (platform, roomId, frame) => this.dispatch(platform, roomId, frame);
     sidecar.onExit = () => {
-      for (const [roomId, frames] of this.listeners) {
+      for (const [key, frames] of this.listeners) {
         for (const onFrame of frames) {
           onFrame({ type: 'status', state: 'error', message: 'sidecar process exited' });
         }
-        this.listeners.delete(roomId);
+        this.listeners.delete(key);
       }
     };
   }
 
   connect(options: DanmakuConnectOptions): DanmakuSession {
-    const roomId = options.roomId;
-    let listeners = this.listeners.get(roomId);
+    const platform = options.platform ?? this.platforms[0];
+    const key = `${platform}:${options.roomId}`;
+    let listeners = this.listeners.get(key);
     const first = listeners === undefined || listeners.size === 0;
     listeners ??= new Set();
     listeners.add(options.onFrame);
-    this.listeners.set(roomId, listeners);
+    this.listeners.set(key, listeners);
 
     if (first) {
       this.sidecar
-        .call('danmakuStart', { platform: 'douyin', roomId })
+        .call('danmakuStart', { platform, roomId: options.roomId })
         .catch((error: unknown) => {
           // Only report when nobody re-attached in the meantime.
-          if (this.listeners.get(roomId)?.has(options.onFrame)) {
+          if (this.listeners.get(key)?.has(options.onFrame)) {
             options.onFrame({
               type: 'status',
               state: 'error',
@@ -81,21 +85,21 @@ export class SidecarDouyinDanmakuSource implements DanmakuSource {
 
     return {
       close: () => {
-        const set = this.listeners.get(roomId);
+        const set = this.listeners.get(key);
         if (!set) return;
         set.delete(options.onFrame);
         if (set.size === 0) {
-          this.listeners.delete(roomId);
+          this.listeners.delete(key);
           void this.sidecar
-            .call('danmakuStop', { platform: 'douyin', roomId })
+            .call('danmakuStop', { platform, roomId: options.roomId })
             .catch(() => {});
         }
       },
     };
   }
 
-  private dispatch(roomId: string, raw: SidecarFrame): void {
-    const set = this.listeners.get(roomId);
+  private dispatch(platform: string, roomId: string, raw: SidecarFrame): void {
+    const set = this.listeners.get(`${platform}:${roomId}`);
     if (!set || set.size === 0) return;
     const frame = this.normalize(raw);
     if (frame === null) return;

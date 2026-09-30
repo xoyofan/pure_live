@@ -46,6 +46,8 @@ export type DanmakuStatusState = Extract<DanmakuFrame, { type: 'status' }>['stat
 
 export interface DanmakuConnectOptions {
   roomId: string;
+  /** Platform id; sources serving several platforms route on it. */
+  platform?: string;
   onFrame(frame: DanmakuFrame): void;
 }
 

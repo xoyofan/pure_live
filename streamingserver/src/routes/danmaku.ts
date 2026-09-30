@@ -77,6 +77,7 @@ export function attachDanmakuWs(server: HttpServer, token: string): void {
 
       send({ type: 'status', state: 'connecting' });
       const session = source.connect({
+        platform,
         roomId,
         onFrame: (frame) => send(frame),
       });
