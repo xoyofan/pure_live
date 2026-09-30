@@ -95,102 +95,149 @@ select {
   letter-spacing: 0.5px;
 }
 
-.side-nav {
+.side-nav-row {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
-.side-link {
+.side-nav-item {
+  flex: 1;
   border: none;
   background: none;
-  color: var(--text-mid);
-  text-align: left;
-  padding: 7px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 14px;
+  color: var(--text-dim);
+  border-radius: var(--radius);
+  padding: 7px 0 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
 }
 
-.side-link:hover {
+.side-nav-item:hover {
   color: var(--text);
   background: var(--bg-hover);
 }
 
-.side-link.active {
+.side-nav-item.active {
   color: var(--accent);
   background: var(--bg-hover);
 }
 
-.side-link.small {
-  font-size: 13px;
-  padding: 5px 10px;
-  color: var(--text-dim);
+.side-nav-icon {
+  font-size: 17px;
+  line-height: 1.1;
+}
+
+.side-nav-label {
+  font-size: 11px;
 }
 
 .side-section-label {
   color: var(--text-dim);
   font-size: 12px;
   padding: 6px 8px 0;
+  margin: 0;
+  text-align: left;
+  border: none;
+  background: none;
+}
+
+.side-collapse {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.side-collapse:hover {
+  color: var(--text);
+}
+
+.hot-dot {
+  color: var(--platform-bilibili);
+  font-size: 9px;
+}
+
+.collapse-arrow {
+  margin-left: auto;
+  color: var(--text-dim);
 }
 
 .side-platforms {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  padding: 0 2px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
 }
 
 .side-platform {
-  border: 1px solid var(--border);
-  background: var(--bg-raised);
+  aspect-ratio: 1 / 1;
+  border: 2px solid transparent;
   border-radius: var(--radius);
-  padding: 9px 0;
-  text-align: center;
   font-size: 13px;
-  color: var(--text-mid);
+  font-weight: 600;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.side-platform:hover {
-  border-color: var(--text-dim);
+.side-platform[data-platform='bilibili'] {
+  background: var(--platform-bilibili);
+}
+
+.side-platform[data-platform='douyin'] {
+  background: var(--platform-douyin);
+}
+
+.side-platform[data-platform='huya'] {
+  background: var(--platform-huya);
+  color: #1a1400;
+}
+
+.side-platform[data-platform='douyu'] {
+  background: var(--platform-douyu);
+}
+
+.side-platform:not([data-platform]) {
+  background: var(--bg-hover);
 }
 
 .side-platform.active {
   border-color: var(--accent);
-  color: var(--accent);
-  background: rgba(243, 208, 78, 0.08);
-}
-
-.side-platform[data-platform='douyin'].active {
-  border-color: var(--platform-douyin);
-  color: var(--platform-douyin);
-  background: rgba(254, 44, 85, 0.08);
-}
-
-.side-platform[data-platform='bilibili'].active {
-  border-color: var(--platform-bilibili);
-  color: var(--platform-bilibili);
-  background: rgba(0, 161, 214, 0.08);
-}
-
-.side-platform[data-platform='huya'].active {
-  border-color: var(--platform-huya);
-  color: var(--platform-huya);
-  background: rgba(255, 184, 0, 0.08);
-}
-
-.side-platform[data-platform='douyu'].active {
-  border-color: var(--platform-douyu);
-  color: var(--platform-douyu);
-  background: rgba(255, 107, 0, 0.08);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .side-hot {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
-.app-body {
+.side-hot-item {
+  border: none;
+  background: none;
+  color: var(--text-mid);
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.side-hot-item:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.side-hot-item.active {
+  color: var(--accent);
+}
+
+.side-hot-more {
+  color: var(--text-dim);
+}
+
+.app-body {.app-body {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -309,39 +356,6 @@ select {
   margin-bottom: 6px;
 }
 
-.category-chips {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  flex: 1;
-  /* Cap at ~2 rows so a huge directory (bilibili) can't push the room grid
-     below the fold; the rest scrolls inside the box. */
-  max-height: 76px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.chip {
-  border: 1px solid var(--border);
-  background: var(--bg-raised);
-  color: var(--text-dim);
-  border-radius: 999px;
-  padding: 5px 14px;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.chip:hover {
-  color: var(--text);
-  border-color: var(--text-dim);
-}
-
-.chip.active {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: rgba(243, 208, 78, 0.08);
-}
-
 .discover-heading {
   color: var(--text-dim);
   font-size: 13px;
@@ -349,6 +363,58 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+/* category index tiles (zishu CategoryGrid) */
+
+.category-index-title {
+  font-size: 17px;
+  margin: 4px 0 14px;
+}
+
+.category-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.category-tile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-raised);
+  padding: 0;
+  transition: border-color 0.12s ease;
+}
+
+.category-tile:hover {
+  border-color: var(--accent);
+}
+
+.category-tile img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.category-tile-name {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  max-width: calc(100% - 12px);
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---- discover card grid (zishu_flutter flat card) ---- */

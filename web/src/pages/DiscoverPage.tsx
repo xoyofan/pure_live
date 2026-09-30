@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getCategories, getCategoryRooms, getRecommendRooms, searchRooms } from '../api/client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { getCategoryRooms, getRecommendRooms, searchRooms } from '../api/client';
 import { isApiError } from '../api/types';
-import type { AreaItem, Category, RoomListItem } from '../api/types';
+import type { RoomListItem } from '../api/types';
 import RoomCard from '../components/RoomCard';
 
 export interface CategorySelection {
@@ -18,7 +18,6 @@ interface Props {
   keyword: string | null;
   area: CategorySelection | null;
   onEnterRoom: (platform: string, roomId: string) => void;
-  onSelectCategory: (platform: string, area: CategorySelection | null) => void;
   onSearch: (platform: string, keyword: string) => void;
 }
 
@@ -69,32 +68,14 @@ export default function DiscoverPage({
   keyword,
   area,
   onEnterRoom,
-  onSelectCategory,
   onSearch,
 }: Props) {
   const [feed, setFeed] = useState<Feed>({ kind: 'loading' });
-  const [categories, setCategories] = useState<Category[]>([]);
   const loadSeqRef = useRef(0);
   const loadingRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const mode: 'search' | 'category' | 'recommend' = keyword !== null ? 'search' : area !== null ? 'category' : 'recommend';
-
-  // Categories power the chip row (category mode + discovery entry points).
-  useEffect(() => {
-    let disposed = false;
-    setCategories([]);
-    getCategories(platform)
-      .then((res) => {
-        if (!disposed) setCategories(res.categories ?? []);
-      })
-      .catch(() => {
-        // Chip row is optional decoration; category mode still works via URL.
-      });
-    return () => {
-      disposed = true;
-    };
-  }, [platform]);
 
   // Reset the feed whenever the (platform, mode, key) triple changes.
   useEffect(() => {
@@ -171,50 +152,8 @@ export default function DiscoverPage({
     return () => observer.disconnect();
   }, [feed, loadMore]);
 
-  // Flatten the category tree into selectable chips (children preferred).
-  const chips = useMemo(() => {
-    const out: AreaItem[] = [];
-    for (const category of categories) {
-      for (const child of category.children) {
-        if (child.areaId) out.push(child);
-      }
-    }
-    return out;
-  }, [categories]);
-
-  const selectedAreaId = area?.areaId ?? null;
-
   return (
     <div className="discover">
-      <div className="discover-toolbar">
-        <div className="category-chips">
-          <button
-            type="button"
-            className={`chip${mode === 'recommend' ? ' active' : ''}`}
-            onClick={() => onSelectCategory(platform, null)}
-          >
-            推荐
-          </button>
-          {chips.map((chip) => (
-            <button
-              key={chip.areaId}
-              type="button"
-              className={`chip${selectedAreaId === chip.areaId ? ' active' : ''}`}
-              onClick={() =>
-                onSelectCategory(platform, {
-                  areaId: chip.areaId ?? '',
-                  areaType: chip.areaType ?? undefined,
-                  typeName: chip.typeName ?? undefined,
-                  areaName: chip.areaName ?? undefined,
-                })
-              }
-            >
-              {chip.areaName || chip.typeName || chip.areaId}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {mode === 'search' && keyword !== null && (
         <p className="discover-heading">
           “{keyword}” 的搜索结果

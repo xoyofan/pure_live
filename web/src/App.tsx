@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import DiscoverPage, { type CategorySelection } from './pages/DiscoverPage';
+import CategoryIndexPage from './pages/CategoryIndexPage';
 import RoomPage from './pages/RoomPage';
 import { getCategories, getPlatforms } from './api/client';
 import type { AreaItem, Platform } from './api/types';
 
 type Route =
   | { page: 'discover'; platform: string; keyword: string | null; area: CategorySelection | null }
+  | { page: 'categoryIndex'; platform: string }
   | { page: 'room'; platform: string; roomId: string };
 
 /** Fallback platform names when /platforms has not loaded yet. */
 const FALLBACK_NAMES: Record<string, string> = { bilibili: 'BiliBili', douyin: 'Douyin' };
+
+/** Short tile marks (zishu shows colorful app icons; we use brand-color text marks). */
+const TILE_MARKS: Record<string, string> = { bilibili: 'B站', douyin: '抖音', huya: '虎牙', douyu: '斗鱼' };
 
 interface QueryArea {
   areaType?: string;
@@ -30,13 +35,15 @@ function queryAreaOf(search: string): QueryArea {
  * URL is the source of truth:
  *   /{platform}                          -> platform discover home (recommend)
  *   /{platform}?keyword=x                -> search results
+ *   /{platform}/category                 -> category index tiles
  *   /{platform}/category/{areaId}?...    -> category rooms
  *   /{platform}/room/{roomId}            -> playback room
  * The bare "/" shows the douyin home (the M1 discovery platform).
  *
- * Shell layout follows zishu_flutter: a left rail (brand / nav / platform
+ * Shell layout follows zishu_flutter: a left rail (brand / nav row / platform
  * tiles / hot categories) around the browse pages; the play page goes
- * full-bleed without the rail.
+ * full-bleed without the rail. The home grid has no chips row — categories
+ * live in the rail and the index page, like zishu.
  */
 function routeFromLocation(): Route {
   const segments = window.location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
@@ -46,14 +53,17 @@ function routeFromLocation(): Route {
   if (segments.length === 3 && segments[1] === 'room' && segments[2]) {
     return { page: 'room', platform: segments[0], roomId: segments[2] };
   }
-  if (segments.length === 3 && segments[1] === 'category' && segments[2]) {
-    const { areaType, typeName, areaName } = queryAreaOf(window.location.search);
-    return {
-      page: 'discover',
-      platform: segments[0] || 'douyin',
-      keyword: null,
-      area: { areaId: segments[2], areaType, typeName, areaName },
-    };
+  if (segments.length >= 2 && segments[1] === 'category') {
+    if (segments[2]) {
+      const { areaType, typeName, areaName } = queryAreaOf(window.location.search);
+      return {
+        page: 'discover',
+        platform: segments[0] || 'douyin',
+        keyword: null,
+        area: { areaId: segments[2], areaType, typeName, areaName },
+      };
+    }
+    return { page: 'categoryIndex', platform: segments[0] || 'douyin' };
   }
   return {
     page: 'discover',
@@ -81,6 +91,7 @@ export default function App() {
   const [route, setRoute] = useState<Route>(routeFromLocation);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [hotAreas, setHotAreas] = useState<AreaItem[]>([]);
+  const [hotCollapsed, setHotCollapsed] = useState(false);
 
   // Canonical home URL for the bare "/" root.
   useEffect(() => {
@@ -109,9 +120,9 @@ export default function App() {
     };
   }, []);
 
-  // Sidebar hot-category list: leaves of the platform directory (top 12).
+  // Rail hot-category list: leaves of the platform directory (top 12).
   useEffect(() => {
-    if (route.page !== 'discover') return;
+    if (route.page === 'room') return;
     let disposed = false;
     setHotAreas([]);
     getCategories(route.platform)
@@ -126,7 +137,7 @@ export default function App() {
         setHotAreas(leaves.slice(0, 12));
       })
       .catch(() => {
-        // Sidebar list is decoration; category chips still work.
+        // Rail list is decoration; the index page still works.
       });
     return () => {
       disposed = true;
@@ -143,7 +154,9 @@ export default function App() {
     const url =
       next.page === 'room'
         ? `/${encodeURIComponent(next.platform)}/room/${encodeURIComponent(next.roomId)}`
-        : discoverUrl(next.platform, next.keyword, next.area);
+        : next.page === 'categoryIndex'
+          ? `/${encodeURIComponent(next.platform)}/category`
+          : discoverUrl(next.platform, next.keyword, next.area);
     window.history.pushState(null, '', url);
   }, []);
 
@@ -167,16 +180,25 @@ export default function App() {
     else showDiscover(route.platform, value, null);
   };
 
-  const sidebar = route.page === 'discover' && (
+  const sidebar = route.page !== 'room' && (
     <aside className="sidebar">
       <div className="side-brand">Pure Live</div>
-      <nav className="side-nav">
+      <nav className="side-nav-row">
         <button
           type="button"
-          className={`side-link${route.page === 'discover' && route.area === null && route.keyword === null ? ' active' : ''}`}
+          className={`side-nav-item${route.page === 'discover' && route.area === null && route.keyword === null ? ' active' : ''}`}
           onClick={() => showDiscover(route.platform, null, null)}
         >
-          首页
+          <span className="side-nav-icon">⌂</span>
+          <span className="side-nav-label">首页</span>
+        </button>
+        <button
+          type="button"
+          className={`side-nav-item${route.page === 'categoryIndex' ? ' active' : ''}`}
+          onClick={() => navigate({ page: 'categoryIndex', platform: route.platform })}
+        >
+          <span className="side-nav-icon">▦</span>
+          <span className="side-nav-label">分类</span>
         </button>
       </nav>
       <div className="side-section-label">平台</div>
@@ -189,32 +211,51 @@ export default function App() {
             className={`side-platform${route.platform === p.id ? ' active' : ''}`}
             onClick={() => showDiscover(p.id, null, null)}
           >
-            {p.name ?? p.id}
+            {TILE_MARKS[p.id] ?? (p.name ?? p.id).slice(0, 2)}
           </button>
         ))}
       </div>
       {hotAreas.length > 0 && (
         <>
-          <div className="side-section-label">热门分类</div>
-          <div className="side-hot">
-            {hotAreas.map((area) => (
+          <button
+            type="button"
+            className="side-section-label side-collapse"
+            onClick={() => setHotCollapsed((c) => !c)}
+          >
+            <span className="hot-dot">●</span> 热门分类
+            <span className="collapse-arrow">{hotCollapsed ? '›' : '‹'}</span>
+          </button>
+          {!hotCollapsed && (
+            <div className="side-hot">
+              {hotAreas.map((area) => {
+                const active = route.page === 'discover' && route.area?.areaId === area.areaId;
+                return (
+                  <button
+                    key={area.areaId}
+                    type="button"
+                    className={`side-hot-item${active ? ' active' : ''}`}
+                    onClick={() =>
+                      showDiscover(route.platform, null, {
+                        areaId: area.areaId ?? '',
+                        areaType: area.areaType ?? undefined,
+                        typeName: area.typeName ?? undefined,
+                        areaName: area.areaName ?? undefined,
+                      })
+                    }
+                  >
+                    {area.areaName || area.typeName || area.areaId}
+                  </button>
+                );
+              })}
               <button
-                key={area.areaId}
                 type="button"
-                className={`side-link small${route.area?.areaId === area.areaId ? ' active' : ''}`}
-                onClick={() =>
-                  showDiscover(route.platform, null, {
-                    areaId: area.areaId ?? '',
-                    areaType: area.areaType ?? undefined,
-                    typeName: area.typeName ?? undefined,
-                    areaName: area.areaName ?? undefined,
-                  })
-                }
+                className="side-hot-item side-hot-more"
+                onClick={() => navigate({ page: 'categoryIndex', platform: route.platform })}
               >
-                {area.areaName || area.typeName || area.areaId}
+                全部分类
               </button>
-            ))}
-          </div>
+            </div>
+          )}
         </>
       )}
     </aside>
@@ -260,8 +301,13 @@ export default function App() {
               keyword={route.keyword}
               area={route.area}
               onEnterRoom={enterRoom}
-              onSelectCategory={(platform, area) => showDiscover(platform, null, area)}
               onSearch={(platform, keyword) => showDiscover(platform, keyword.trim() === '' ? null : keyword, null)}
+            />
+          ) : route.page === 'categoryIndex' ? (
+            <CategoryIndexPage
+              key={`categoryIndex:${route.platform}`}
+              platform={route.platform}
+              onOpenCategory={(platform, area) => showDiscover(platform, null, area)}
             />
           ) : (
             <RoomPage
