@@ -7,7 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/user/application/platform_credentials_provider.dart';
 import 'browse_source.dart';
 import 'fixture_sources.dart';
+import 'package:live_parser/live_parser.dart' show buildSiteRegistry;
 import 'parser_sources.dart';
+import 'purelive_backend.dart';
+import 'package:live_parser/live_parser.dart' show SiteRegistry;
 
 /// 通过 `--dart-define=ZISHU_REAL_PARSER=true` 启用真实 live_parser。
 /// 默认 fixture，避免 widget 测试和离线开发依赖公网。
@@ -15,6 +18,33 @@ const bool useRealParser = bool.fromEnvironment(
   'ZISHU_REAL_PARSER',
   defaultValue: false,
 );
+
+/// 用 pure_live 解析(lib/core LiveSite)覆盖 live_parser 自带的四家
+/// (bilibili/douyin/huya/douyu)。注册项按 id 覆盖,UI 契约不变。
+const bool usePureLiveBackend = bool.fromEnvironment(
+  'PURE_LIVE_PARSER',
+  defaultValue: false,
+);
+
+/// 带覆盖的 registry 构建:PURE_LIVE_PARSER 时在标准 registry 上重注册
+/// purelive 后端的四家。
+SiteRegistry buildRegistryWithPureLive({
+  String douyinCookie = '',
+  String xhsCookie = '',
+  String bilibiliCookie = '',
+}) {
+  final registry = buildSiteRegistry(
+    douyinCookie: douyinCookie,
+    xhsCookie: xhsCookie,
+    bilibiliCookie: bilibiliCookie,
+  );
+  if (usePureLiveBackend) {
+    for (final site in const ['bilibili', 'douyin', 'huya', 'douyu']) {
+      registry.register(buildPureLiveRegistration(site));
+    }
+  }
+  return registry;
+}
 
 /// 栏目浏览数据源(首页/分类/搜索底卡)。
 final browseSourceProvider = Provider<BrowseSource>((ref) {
@@ -38,6 +68,11 @@ final browseSourceProvider = Provider<BrowseSource>((ref) {
     douyinCookie: douyinCookie,
     xhsCookie: xhsCookie,
     bilibiliCookie: bilibiliCookie,
+    registry: buildRegistryWithPureLive(
+      douyinCookie: douyinCookie,
+      xhsCookie: xhsCookie,
+      bilibiliCookie: bilibiliCookie,
+    ),
   );
 });
 
@@ -66,6 +101,11 @@ final roomSourceProvider = Provider<RoomSource>((ref) {
     douyinCookie: douyinCookie,
     xhsCookie: xhsCookie,
     bilibiliCookie: bilibiliCookie,
+    registry: buildRegistryWithPureLive(
+      douyinCookie: douyinCookie,
+      xhsCookie: xhsCookie,
+      bilibiliCookie: bilibiliCookie,
+    ),
   );
 });
 
