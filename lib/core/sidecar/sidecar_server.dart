@@ -17,6 +17,7 @@ import 'dart:io';
 
 import 'package:pure_live/core/common/convert_helper.dart';
 import 'package:pure_live/core/common/parser_config.dart';
+import 'package:pure_live/core/common/site_ids.dart';
 import 'package:pure_live/core/site/bilibili/bilibili_site.dart';
 import 'package:pure_live/core/site/douyin/douyin_site.dart';
 import 'package:pure_live/core/site/huya/huya_site.dart';
@@ -168,10 +169,10 @@ Map<String, dynamic> _roomListResult(List<LiveRoom> rooms, int page, int pageSiz
 }
 
 final Map<String, LiveSite> _sites = {
-  'bilibili': BiliBiliSite(),
-  'douyin': DouyinSite(),
-  'huya': HuyaSite(),
-  'douyu': DouyuSite(),
+  SiteIds.bilibiliSite: BiliBiliSite(),
+  SiteIds.douyinSite: DouyinSite(),
+  SiteIds.huyaSite: HuyaSite(),
+  SiteIds.douyuSite: DouyuSite(),
 };
 
 Map<String, dynamic> _roomToJson(LiveRoom room) {

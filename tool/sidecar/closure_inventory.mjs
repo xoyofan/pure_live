@@ -8,6 +8,7 @@ const ROOT = process.env.PURE_LIVE_ROOT ?? resolve(dirname(fileURLToPath(import.
 const BAD = /package:(flutter|get\/|easy_localization|hive_ce|hive|window_manager|path_provider|flutter_smart_dialog|permission_handler|share_handler|flv_lzc)/;
 
 const start = [
+  'lib/core/sidecar/sidecar_server.dart',
   'lib/core/site/bilibili/bilibili_site.dart',
   'lib/core/site/douyin/douyin_site.dart',
   'lib/core/site/huya/huya_site.dart',
