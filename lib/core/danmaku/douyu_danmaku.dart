@@ -123,7 +123,10 @@ class DouyuDanmaku implements LiveDanmaku {
       if (type == "chatmsg" && fans == '1') {
         var col = int.tryParse(jsonData["col"].toString()) ?? 0;
         // 粉丝牌:bnn/bn=牌名,bl(兜底 bnnl/fl)=等级,bc=packed RGB 底色
-        // (协议单色,start/end/border 同值);用户等级 level/lv。
+        // (协议单色,start/end/border 同值);用户等级 level/lv。资源侧:
+        // brid=牌所属房间号(房间自定义前缀图匹配键),dfgm=钻粉成长月数
+        // (>0 = 钻粉),diafid=钻粉 suffix 装扮 id(对齐真源 douyu/danmaku.dart
+        // 资源字段口径,缺字段一律 0)。
         final badgeName = '${jsonData['bnn'] ?? jsonData['bn'] ?? ''}'.trim();
         final badgeLevel = _douyuBadgeLevel(jsonData['bl'] ?? jsonData['bnnl']) ?? _douyuBadgeLevel(jsonData['fl']);
         final badgeColor = _douyuBadgeHexColor(jsonData['bc']);
@@ -137,6 +140,9 @@ class DouyuDanmaku implements LiveDanmaku {
           badgeColorStart: badgeColor,
           badgeColorEnd: badgeColor,
           badgeColorBorder: badgeColor,
+          badgeBrid: _douyuSttInt(jsonData['brid']),
+          badgeMonths: _douyuSttInt(jsonData['dfgm']),
+          badgeDiafid: _douyuSttInt(jsonData['diafid']),
           userLevel: _douyuBadgeLevel(jsonData['level'] ?? jsonData['lv']) ?? '',
         );
       } else if (type == "comm_chatmsg") {

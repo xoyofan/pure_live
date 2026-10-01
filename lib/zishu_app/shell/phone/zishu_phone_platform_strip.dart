@@ -213,7 +213,11 @@ class _StripItem extends StatelessWidget {
                 child: SizedBox(
                   width: arrowWidth,
                   height: iconSize + 12,
-                  child: Icon(Icons.keyboard_arrow_down_rounded, size: landscape ? 17 : 20, color: tokens.textSecondary),
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: landscape ? 17 : 20,
+                    color: tokens.textSecondary,
+                  ),
                 ),
               ),
             ),

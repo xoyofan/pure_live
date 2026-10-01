@@ -314,12 +314,16 @@ flutter:
     - assets/animations/empty.json
     - assets/animations/error.json
     - assets/fonts/fonts-manifest.json
+    - assets/badges/
     - assets/certificates/
   # 字体配置
   fonts:
     - family: CustomIcons
       fonts:
         - asset: assets/icons/CustomIcons.ttf
+    - family: FontAwesome
+      fonts:
+        - asset: assets/fonts/fa-solid-900.ttf
 
 # FFmpeg配置
 ffmpeg_kit_extended_config:

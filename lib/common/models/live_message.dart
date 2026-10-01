@@ -116,6 +116,19 @@ class LiveMessage {
   final String? badgeColorEnd;
   final String? badgeColorBorder;
 
+  /// 粉丝牌官方图 URL(协议下发;null/空 = 无,渲染侧走兜底)。
+  /// douyin = BadgeImageList 的 fansclub 官方图;huya = 房间级粉丝牌底图。
+  final String? badgeUrl;
+
+  /// 斗鱼粉丝牌所属房间号(chatmsg brid;房间自定义前缀图匹配键)。
+  final int badgeBrid;
+
+  /// 斗鱼钻粉成长月数(chatmsg dfgm;>0 = 是钻粉)。
+  final int badgeMonths;
+
+  /// 斗鱼钻粉 suffix 装扮 id(chatmsg diafid)。
+  final int badgeDiafid;
+
   LiveMessage({
     required this.type,
     required this.userName,
@@ -135,6 +148,10 @@ class LiveMessage {
     this.badgeColorStart,
     this.badgeColorEnd,
     this.badgeColorBorder,
+    this.badgeUrl,
+    this.badgeBrid = 0,
+    this.badgeMonths = 0,
+    this.badgeDiafid = 0,
   });
 }
 

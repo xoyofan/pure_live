@@ -5,6 +5,8 @@ import 'package:pure_live/plugins/event_bus.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/compact_switch.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
+import 'package:pure_live/zishu_app/features/play/room_reminder_store.dart';
+import 'package:pure_live/zishu_app/features/play/room_stats_provider.dart';
 import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_chat_tab.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_play_follow_panel.dart';
@@ -12,6 +14,7 @@ import 'package:pure_live/zishu_app/features/play/zishu_play_meta_bar.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_play_recommend_panel.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
 import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// 会话级侧栏 tab 记忆(zishu `PlaySidePanelPrefs.tabIndex` 的最小等价物):
 /// 文件级可变 int 记录上次停留 tab,切房重建侧栏时作为 initialIndex 恢复,
@@ -69,6 +72,11 @@ class ZishuPlaySidePanel extends StatelessWidget {
               SizedBox(
                 height: 32,
                 child: TabBar(
+                  // tabAlignment: fill —— 仓库全局 tabBarTheme
+                  // (lib/common/style/theme.dart)设了 TabAlignment.center,
+                  // 渗入本 TabBar 后四 tab 不等分、挤在左侧;真源 app 无全局
+                  // tabBarTheme 走默认 fill,这里显式声回。
+                  tabAlignment: TabAlignment.fill,
                   tabs: [
                     // 首 tab 文案「聊天」对齐 zishu play_side_panel.dart:290
                     // (Tab(text:'聊天'),四 tab 序 0=聊天 1=关注 2=推荐 3=设置)。
@@ -209,19 +217,75 @@ Future<void> toggleRoomFavorite(LiveRoom room) async {
 /// 侧栏信息头(对齐 zishu side_panel_header `_SideHeader` 三行结构):
 /// Row[贴边出血头像(64 宽 × 头高,仅右下小圆角) | Expanded 三行 Column
 /// ①主播名(w600,开播走 liveBadge 强调)+「关注 N」普通次级文字
-/// ②分类文字行(room.area,空则整行省;zishu 的提醒/网页按钮无对应能力,不渲染)
-/// ③统计行 FittedBox(人气 + 关注数两列;VIP/SVIP pure_live 无数据源)]
+/// ②分类文字 + 提醒 pill + 网页 pill(_SideTextAction,描边胶囊对齐真源
+///   side_panel_header.dart:334-408)
+/// ③统计行 FittedBox(观众/VIP/SVIP 三列,FA 字形 + 平台列名;VIP/SVIP 走
+///   room_stats_provider 契约,超时/缺数据「—」)]
 /// | 右侧纵向关注/超关双 chip(对齐 zishu `_SideActions` 头内排布)。
-class _SideHeader extends StatelessWidget {
+class _SideHeader extends StatefulWidget {
   const _SideHeader({required this.room, required this.isLive});
 
   final LiveRoom room;
   final bool isLive;
 
+  @override
+  State<_SideHeader> createState() => _SideHeaderState();
+}
+
+/// 统计行的 Font Awesome 字形(对齐真源 AppIcons.eye/crown/gem:eye=0xf06e、
+/// crown=0xf521、gem=0xf3a5;Material Icons 无 crown/gem 对应字形)。字体
+/// assets/fonts/fa-solid-900.ttf 已在 pubspec 注册 family FontAwesome。
+const IconData _statIconEye = IconData(0xf06e, fontFamily: 'FontAwesome');
+const IconData _statIconCrown = IconData(0xf521, fontFamily: 'FontAwesome');
+const IconData _statIconGem = IconData(0xf3a5, fontFamily: 'FontAwesome');
+
+class _SideHeaderState extends State<_SideHeader> {
+  /// VIP/SVIP 统计(契约 fetchRoomVipStats;10s 超时/失败给空值 → 「—」)。
+  RoomVipStats _vipStats = const RoomVipStats();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVipStats();
+  }
+
+  @override
+  void didUpdateWidget(_SideHeader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 换房(platform+roomId 变)才重拉:旧房统计先清空,不闪现错房数值。
+    if (oldWidget.room.identityKey != widget.room.identityKey) {
+      _vipStats = const RoomVipStats();
+      _loadVipStats();
+    }
+  }
+
+  /// 拉取 VIP/SVIP 统计:10s 内未返回按「—」处理(.timeout 的 onTimeout 给
+  /// 空 RoomVipStats);回写前查 mounted,超时后/已卸载不再 setState。
+  Future<void> _loadVipStats() async {
+    final site = widget.room.platform?.trim() ?? '';
+    final roomId = widget.room.normalizedRoomId;
+    if (site.isEmpty || roomId.isEmpty) return;
+    try {
+      final stats = await fetchRoomVipStats(
+        site: site,
+        roomId: roomId,
+      ).timeout(const Duration(seconds: 10), onTimeout: () => const RoomVipStats());
+      if (!mounted) return;
+      setState(() => _vipStats = stats);
+    } catch (_) {
+      // 拉取失败等同未取到:保持「—」,不伪造数据。
+    }
+  }
+
   /// 人气取值:各平台字段不齐,按 人气/观看/在线/累计 择先非空,缺省「—」;
   /// 展示统一万进制:过 readableCount(空/非数字原样返回,「—」不变)。
   String get _popularityLabel {
-    for (final value in [room.popularity, room.watching, room.onlineViewers, room.totalViewers]) {
+    for (final value in [
+      widget.room.popularity,
+      widget.room.watching,
+      widget.room.onlineViewers,
+      widget.room.totalViewers,
+    ]) {
       final v = value?.trim() ?? '';
       if (v.isNotEmpty) return readableCount(v);
     }
@@ -230,14 +294,91 @@ class _SideHeader extends StatelessWidget {
 
   /// 关注数:`room.followers` 非空才渲染该列(null/空白 = 无数据,不伪造)。
   String? get _followersText {
-    final v = room.followers?.trim() ?? '';
+    final v = widget.room.followers?.trim() ?? '';
     if (v.isEmpty) return null;
     return readableCount(v);
+  }
+
+  /// 统计行第二/三列列名按平台(对齐真源 live_parser site_display.dart 的
+  /// SiteDisplaySpec.roomStats:douyu=贵宾/钻粉、huya=贵宾/超粉、
+  /// bilibili=粉丝勋章/大航海、douyin=粉丝团/会员);null = 该平台无 VIP 档
+  /// 列,只渲染观众列。列名无既有 i18n key,中文常量(见轨道报告)。
+  ({String vip, String svip})? get _vipColumnLabels => switch (widget.room.normalizedPlatformId) {
+    'douyu' => (vip: '贵宾', svip: '钻粉'),
+    'huya' => (vip: '贵宾', svip: '超粉'),
+    'bilibili' => (vip: '粉丝勋章', svip: '大航海'),
+    'douyin' => (vip: '粉丝团', svip: '会员'),
+    _ => null,
+  };
+
+  /// 当前房间 web 页地址(对齐真源 roomExternalUrl,play_side_panel.dart:372-384
+  /// 的 pure_live 适配):room.link 非空且 http 开头优先(解析侧实际进入的
+  /// 页面);否则按平台拼官方 web 房间页;拼不出 = null(按钮禁用)。
+  String? get _externalUrl {
+    final link = widget.room.link?.trim() ?? '';
+    if (link.isNotEmpty && link.startsWith('http')) return link;
+    final id = widget.room.normalizedRoomId;
+    if (id.isEmpty) return null;
+    return switch (widget.room.normalizedPlatformId) {
+      'douyu' => 'https://www.douyu.com/$id',
+      'huya' => 'https://www.huya.com/$id',
+      'bilibili' => 'https://live.bilibili.com/$id',
+      _ => null,
+    };
+  }
+
+  /// 系统默认浏览器打开 web 房间页(external 模式)。失败静默:打开属低频
+  /// 外围动作,不打断播放(真源力度同为「失败仅提示」;本仓库提示通道是
+  /// 舞台内浮层,此处不再叠层)。
+  Future<void> _openExternal(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // 无浏览器/平台不支持时吞掉,不打断播放。
+    }
+  }
+
+  /// 统计值未取到(null/空白)显示「—」,不伪造数据。
+  String _orDash(String? raw) {
+    final v = raw?.trim() ?? '';
+    return v.isEmpty ? '—' : v;
+  }
+
+  /// 统计行 VIP/SVIP 两列(列名随平台,值取契约统计,未取到「—」);
+  /// 无 VIP 档列的平台返回空,只留观众列。
+  List<Widget> get _vipStatColumns {
+    final labels = _vipColumnLabels;
+    if (labels == null) return const [];
+    final tokens = context.tokens;
+    final vip = _orDash(_vipStats.vip);
+    final svip = _orDash(_vipStats.svip);
+    return [
+      const SizedBox(width: AppSpacing.xs),
+      _SideStatValue(
+        key: const Key('play-side-stat-vip'),
+        icon: _statIconCrown,
+        value: vip,
+        color: tokens.statVip,
+        tooltip: '${labels.vip} $vip',
+      ),
+      const SizedBox(width: AppSpacing.xs),
+      _SideStatValue(
+        key: const Key('play-side-stat-svip'),
+        icon: _statIconGem,
+        value: svip,
+        color: tokens.statSvip,
+        tooltip: '${labels.svip} $svip',
+      ),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final room = widget.room;
+    final isLive = widget.isLive;
     final nick = room.nick?.trim() ?? '';
     final avatar = room.avatar?.trim() ?? '';
     final category = room.area?.trim() ?? '';
@@ -331,19 +472,54 @@ class _SideHeader extends StatelessWidget {
                       ],
                     ],
                   ),
-                  // 第二行:分类文字(pure_live 取 room.area;空则省行)。
-                  if (category.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      category,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.textSecondary.copyWith(fontSize: AppFontSize.bodySecondary, height: 1.2),
-                    ),
-                  ],
+                  // 第二行:分类文字 + 提醒/网页 pill(对齐真源
+                  // side_panel_header.dart:138-184:分类 Flexible 挤压,pill
+                  // 恒常驻;pill 间隔 4/3 为真源字面值)。
                   const SizedBox(height: 4),
-                  // 第三行:统计行 FittedBox(scaleDown) 兜底窄栏/大字号溢出
-                  // (对齐 zishu 统计区的等比缩放策略)。
+                  Row(
+                    children: [
+                      if (category.isNotEmpty)
+                        Flexible(
+                          child: Text(
+                            category,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.textSecondary.copyWith(fontSize: AppFontSize.bodySecondary, height: 1.2),
+                          ),
+                        ),
+                      if (category.isNotEmpty) const SizedBox(width: 4),
+                      // 提醒 pill:未关注禁用(对齐真源 side_panel_header.dart:167-170
+                      // 的禁用口径),点击切本地提醒标记(RoomReminderStore,Hive
+                      // 持久化);Obx 同时跟踪收藏态与提醒集合的即时值。
+                      Obx(() {
+                        final followed = SettingsService.to.fav.isFavorite(room);
+                        final remindOn = RoomReminderStore.to.isRemind(room);
+                        return _SideTextAction(
+                          key: const Key('play-side-notify'),
+                          icon: remindOn ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+                          label: remindOn ? '提醒中' : '提醒',
+                          // tooltip 照抄真源 side_panel_header.dart:167-169。
+                          tooltip: followed ? (remindOn ? '已开启开播/下播提醒，点击关闭' : '开启开播/下播提醒') : '关注后可开启开播提醒',
+                          onPressed: followed ? () => RoomReminderStore.to.toggle(room) : null,
+                          active: remindOn,
+                        );
+                      }),
+                      const SizedBox(width: 3),
+                      _SideTextAction(
+                        key: const Key('play-side-external'),
+                        icon: Icons.open_in_browser_rounded,
+                        label: '网页',
+                        tooltip: '打开直播间页面',
+                        onPressed: _externalUrl == null ? null : () => unawaited(_openExternal(_externalUrl!)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // 第三行:统计 = 观众 + VIP/SVIP(列名按平台,对齐真源
+                  // live_parser site_display.dart;其余平台只渲染观众列;
+                  // 「关注 N」列已删 —— 与行1重复,真源无此列)。
+                  // FittedBox(scaleDown) 兜底窄栏/大字号溢出(对齐真源统计区
+                  // 的等比缩放策略)。
                   Flexible(
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
@@ -352,20 +528,13 @@ class _SideHeader extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           _SideStatValue(
-                            icon: Icons.visibility_outlined,
+                            key: const Key('play-side-stat-audience'),
+                            icon: _statIconEye,
                             value: _popularityLabel,
                             color: tokens.statAudience,
-                            tooltip: i18n('audience_popularity'),
+                            tooltip: '观众 $_popularityLabel',
                           ),
-                          if (followersText != null) ...[
-                            const SizedBox(width: AppSpacing.xs),
-                            _SideStatValue(
-                              icon: Icons.favorite_rounded,
-                              value: followersText,
-                              color: tokens.textSecondary,
-                              tooltip: i18n('audience_followers'),
-                            ),
-                          ],
+                          ..._vipStatColumns,
                         ],
                       ),
                     ),
@@ -387,7 +556,7 @@ class _SideHeader extends StatelessWidget {
 
 /// 统计列:图标 + 数值(对齐 zishu _StatValue 的紧凑排版)。
 class _SideStatValue extends StatelessWidget {
-  const _SideStatValue({required this.icon, required this.value, required this.color, this.tooltip});
+  const _SideStatValue({super.key, required this.icon, required this.value, required this.color, this.tooltip});
 
   final IconData icon;
   final String value;
@@ -423,9 +592,80 @@ class _SideStatValue extends StatelessWidget {
   }
 }
 
+/// 侧栏头第二排的小文字按钮:提醒/网页显示为图标 + 文字。StadiumBorder
+/// 描边胶囊;[active] 时走 accent 强调(几何/交互态逐项对齐真源
+/// _SideTextAction,side_panel_header.dart:334-408)。
+///
+/// 交互态:hover 常态抬 surfaceRaised、激活态 accent 24%;splash/highlight/
+/// focus 走 AppStateLayer 低 alpha 档 —— 均只改颜色,不动尺寸;禁用态由
+/// InkWell 自行忽略交互,连底色都不给(不加灰罩)。
+class _SideTextAction extends StatelessWidget {
+  const _SideTextAction({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.tooltip,
+    required this.onPressed,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String tooltip;
+
+  /// null = 禁用(未关注无可提醒目标 / 无稳定 web url)。
+  final VoidCallback? onPressed;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final enabled = onPressed != null;
+    // 开启态 = 有 accent 底色/描边;禁用态连底色都不给。
+    final on = active && enabled;
+    final fg = !enabled
+        ? tokens.textSecondary.withValues(alpha: 0.55)
+        : active
+        ? tokens.accent
+        : tokens.textSecondary;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: on ? tokens.accent.withValues(alpha: 0.14) : Colors.transparent,
+        shape: StadiumBorder(side: BorderSide(color: on ? tokens.accent.withValues(alpha: 0.55) : tokens.border)),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onPressed,
+          // hover:激活态在 accent 底色上再深一档;常态透明底抬 surfaceRaised。
+          hoverColor: on ? tokens.accent.withValues(alpha: 0.24) : tokens.surfaceRaised,
+          // splash/highlight/focus:accent 低 alpha 档(禁用态由 InkWell 忽略)。
+          splashColor: AppStateLayer.splashOf(tokens.accent),
+          highlightColor: AppStateLayer.pressedOf(tokens.accent),
+          focusColor: AppStateLayer.focusOf(tokens.accent),
+          child: Padding(
+            // 几何对齐真源:水平 5 / 垂直 1.5,图标 12,图字间距 2。
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 12, color: fg),
+                const SizedBox(width: 2),
+                Text(
+                  label,
+                  style: TextStyle(fontSize: AppFontSize.label, height: 1.2, fontWeight: FontWeight.w600, color: fg),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 头部右侧纵向双 chip(对齐 zishu `_SideActions`:59 宽、上下 Expanded
 /// 充满头高、间隔 2):关注(红系,接既有房间收藏)+ 超级关注(紫系,本地
-/// 标记)。zishu 的提醒/网页按钮 pure_live 无对应能力,不渲染。
+/// 标记)。提醒/网页入口已上移到第二行 pill(_SideTextAction),不在此列。
 class _SideActionsColumn extends StatelessWidget {
   const _SideActionsColumn({required this.room});
 

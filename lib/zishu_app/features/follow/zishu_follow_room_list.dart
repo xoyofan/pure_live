@@ -4,9 +4,11 @@ import 'package:pure_live/common/index.dart';
 import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/category_colors.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
-import 'package:pure_live/zishu/presentation/widgets/state_dot.dart';
+import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/browse/zishu_room_card.dart';
+import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
+import 'package:pure_live/zishu_app/translation/translated_text.dart';
 
 /// 视图档位:卡片网格 / 单行列(对齐 zishu FollowDensity,用户口径
 /// 2026-09-20 只保留两档,不提供「紧凑」)。
@@ -161,27 +163,40 @@ class ZishuFollowRoomList extends StatelessWidget {
   }
 }
 
-/// 列表档单行(移植 zishu FollowEntryRow 的四列表格):
-/// 分类 / 主播名 / 标题 / 状态(在播 = 呼吸圆点 + 观众数、
-/// 录播 = 金色「录播」、未开播 = 次级「未开播」)。
+/// 列表档单行(对齐真源 zishu `FollowEntryRow` 四列表格,「我的关注」页与
+/// 播放页侧栏共用同一行组件 —— 真源口径:两处只有一套行视图):
+/// 分类 / 主播名 / 标题 / 状态(在播 = 人形图标 + 人数、轮播 = 金色描边
+/// 「轮播」小标签、未开播 = 次级文案)。
 class ZishuFollowRowItem extends StatelessWidget {
   const ZishuFollowRowItem({super.key, required this.room});
 
   final LiveRoom room;
 
-  /// 状态列宽(圆点 + 最多 5 字人数/状态文案)。
+  /// 状态列宽(人形图标 + 最多 5 字人数/状态文案)。
   static const double _statusColumnWidth = 72;
   static const double _categoryColumnWidth = 54;
-  static const double _anchorColumnWidth = 72;
+
+  /// 主播名列宽(真源 FollowEntryRow 固定 84)。
+  static const double _anchorColumnWidth = 84;
+
+  /// 离线置灰滤镜(真源 follow_common.dart `kGrayscaleFilter` 原矩阵)。
+  static final ColorFilter _grayscaleFilter = ColorFilter.matrix(<double>[
+    0.2126, 0.7152, 0.0722, 0, 0, //
+    0.2126, 0.7152, 0.0722, 0, 0, //
+    0.2126, 0.7152, 0.0722, 0, 0, //
+    0, 0, 0, 1, 0,
+  ]);
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return Material(
+    final live = room.isLiveNow && room.isRecord != true;
+    final row = Material(
       key: Key('follow-row-${room.platform}-${room.roomId}'),
       color: tokens.surface,
       child: InkWell(
         onTap: () => AppNavigator.toLiveRoomDetail(liveRoom: room),
+        // 状态反馈(真源 FollowEntryRow 同款):hover 抬亮;焦点/按压 accent 低 alpha。
         hoverColor: tokens.surfaceRaised,
         splashColor: AppStateLayer.splashOf(tokens.accent),
         highlightColor: AppStateLayer.pressedOf(tokens.accent),
@@ -195,17 +210,29 @@ class ZishuFollowRowItem extends StatelessWidget {
           child: Row(
             children: [
               _categoryCell(context),
+              const SizedBox(width: 4),
               _anchorCell(context),
+              const SizedBox(width: 4),
               Expanded(child: _titleCell(context)),
+              const SizedBox(width: 4),
               _statusCell(context),
             ],
           ),
         ),
       ),
     );
+    // 离线/轮播行整行降权:55% 透明 + 置灰(真源 FollowEntryRow 同款;
+    // 侧栏只显在播,该分支只在「我的关注」页生效)。
+    if (!live) {
+      return Opacity(
+        opacity: 0.55,
+        child: ColorFiltered(colorFilter: _grayscaleFilter, child: row),
+      );
+    }
+    return row;
   }
 
-  /// 分类列:分类色淡底 + 中性前景;无分类时留空。
+  /// 分类列:分类色淡底 + 中性前景(对齐真源行首分类列;文字色次级)。
   Widget _categoryCell(BuildContext context) {
     final tokens = context.tokens;
     final category = (room.area ?? '').trim();
@@ -221,75 +248,111 @@ class ZishuFollowRowItem extends StatelessWidget {
           category,
           maxLines: 1,
           overflow: TextOverflow.clip,
-          style: context.textCaption.copyWith(
-            fontSize: AppFontSize.label,
-            // 调色板基色(主题无关):foreground 档在浅色 18% 淡底上对比不足。
-            color: style?.background ?? tokens.textSecondary,
-          ),
+          style: context.textCaption.copyWith(fontSize: AppFontSize.label, color: tokens.textSecondary),
         ),
       ),
     );
   }
 
+  /// 主播名列:固定列宽,平台品牌色(在播)/同色 60%(离线),超关 ★ 前缀
+  /// (真源 FollowEntryRow + FollowAnchorName 口径;本仓「特别关注」语义
+  /// 由本地超关标记承载)。中文名走翻译挂接(译文到达原位替换)。
   Widget _anchorCell(BuildContext context) {
     final tokens = context.tokens;
+    final brand = PlatformBrandCatalog.byId(room.normalizedPlatformId);
+    final live = room.isLiveNow && room.isRecord != true;
+    final color = brand != null
+        ? (live ? brand.color : brand.color.withValues(alpha: 0.6))
+        : (live ? tokens.textPrimary : tokens.textSecondary);
+    final isSuper = SuperFollowController.to.isSuper(room);
     return SizedBox(
       width: _anchorColumnWidth,
-      child: Text(
-        (room.nick ?? '').trim(),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: context.textCaption.copyWith(color: tokens.textPrimary),
+      child: Row(
+        children: [
+          if (isSuper) ...[Icon(Icons.star_rounded, size: 11, color: tokens.brand), const SizedBox(width: 2)],
+          Expanded(
+            child: TranslatedText(
+              text: (room.nick ?? '').trim(),
+              maxLines: 1,
+              style: context.textBody.copyWith(
+                fontSize: AppFontSize.caption,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _titleCell(BuildContext context) {
-    final tokens = context.tokens;
-    return Text(
-      (room.title ?? '').trim(),
+    return TranslatedText(
+      text: (room.title ?? '').trim(),
       maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: context.textCaption.copyWith(color: tokens.textSecondary),
+      style: context.textCaption.copyWith(color: context.tokens.textSecondary),
     );
   }
 
+  /// 状态列:在播 = 人形图标 + 人数(数字等宽、次级色,真源不把人数染成
+  /// 强调色);轮播 = 金黄描边「轮播」小标签;未开播 = 次级文案。
   Widget _statusCell(BuildContext context) {
     final tokens = context.tokens;
     final live = room.isLiveNow && room.isRecord != true;
     final replay = room.effectiveLiveStatus == LiveStatus.replay;
-    final String label;
-    final Color color;
     if (live) {
       final online = (room.onlineViewers ?? '').trim();
       final watching = (room.watching ?? '').trim();
-      // 人数统一万进制:取值先过 readableCount(空串兜底顺序与 i18n 兜底不变)。
-      label = online.isNotEmpty
+      final label = online.isNotEmpty
           ? readableCount(online)
           : (watching.isNotEmpty ? readableCount(watching) : i18n('online_room_title'));
-      color = tokens.liveBadge;
-    } else if (replay) {
-      label = i18n('replay');
-      color = tokens.brandBright;
-    } else {
-      label = i18n('offline_room_title');
-      color = tokens.textSecondary;
+      return SizedBox(
+        width: _statusColumnWidth,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.people_alt_rounded, size: 11, color: tokens.liveBadge),
+            const SizedBox(width: 2),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.textCaption.copyWith(
+                  fontSize: AppFontSize.label,
+                  color: tokens.textSecondary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (replay) {
+      // 真源 FollowReplayBadge:亮金 16% 底 + 55% 描边胶囊(web
+      // `--follow-state-replay-accent`)。
+      final accent = tokens.brandBright;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: 0.16),
+          borderRadius: AppRadius.allSm,
+          border: Border.all(color: accent.withValues(alpha: 0.55)),
+        ),
+        child: Text(
+          i18n('replay'),
+          style: context.textCaption.copyWith(fontSize: 10, height: 1, color: accent, fontWeight: FontWeight.w600),
+        ),
+      );
     }
     return SizedBox(
       width: _statusColumnWidth,
-      child: Row(
-        children: [
-          StateDot(live: live),
-          const SizedBox(width: AppSpacing.xs),
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.textCaption.copyWith(color: color),
-            ),
-          ),
-        ],
+      child: Text(
+        i18n('offline_room_title'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: context.textCaption.copyWith(fontSize: AppFontSize.label, color: tokens.textSecondary),
       ),
     );
   }

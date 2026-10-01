@@ -22,18 +22,14 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:cached_network_image/cached_network_image.dart';
-
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/core/site/douyin/douyin_follow_import.dart';
 import 'package:pure_live/core/site/douyin/douyin_site.dart';
-import 'package:pure_live/plugins/cache_manager.dart';
-import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
-import 'package:pure_live/zishu/presentation/widgets/state_dot.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/browse/zishu_room_card.dart';
 import 'package:pure_live/zishu_app/features/follow/zishu_follow_filters.dart';
+import 'package:pure_live/zishu_app/features/follow/zishu_follow_room_list.dart';
 import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
 
@@ -75,15 +71,34 @@ class _ZishuPlayFollowPanelState extends State<ZishuPlayFollowPanel> {
   }
 
   /// 侧栏可见条目:只显在播(真源 playSidebarFollowEntries 口径),平台
-  /// 筛选后超关在播排前、普通在播殿后(同档内保持收藏原序)。
+  /// 筛选后按真源 follow_sort 档位排:超关在播 → 普通在播,档内**观看数
+  /// 倒序**(缺失/不可解析沉底、合法 0 是有效值),平局保持收藏原序
+  /// (本仓收藏条目无关注时间戳,真源的 followedAt 平局回退以此等效)。
   List<LiveRoom> _visibleRooms(List<LiveRoom> favorites) {
     final siteId = _siteId;
-    final visible = favorites
-        .where((room) => room.isLiveNow)
-        .where((room) => siteId == Sites.allSite || room.normalizedPlatformId == siteId)
-        .toList(growable: false);
+    final visible = <(LiveRoom, int)>[
+      for (var i = 0; i < favorites.length; i++)
+        if (favorites[i].isLiveNow)
+          if (siteId == Sites.allSite || favorites[i].normalizedPlatformId == siteId) (favorites[i], i),
+    ];
     final superFollow = SuperFollowController.to;
-    return [...visible.where(superFollow.isSuper), ...visible.where((room) => !superFollow.isSuper(room))];
+    int? onlineOf(LiveRoom room) =>
+        LiveRoom.parseAudienceNumber(room.audienceValue(preferRealOnline: false, platformEnabled: false));
+    int rank(LiveRoom room) => superFollow.isSuper(room) ? 0 : 1;
+    visible.sort((a, b) {
+      final byRank = rank(a.$1).compareTo(rank(b.$1));
+      if (byRank != 0) return byRank;
+      final onlineA = onlineOf(a.$1);
+      final onlineB = onlineOf(b.$1);
+      // 缺失(不可解析)沉底;合法 0 参与数值序。
+      if (onlineA == null || onlineB == null) {
+        if (onlineA == null && onlineB == null) return a.$2.compareTo(b.$2);
+        return onlineA == null ? 1 : -1;
+      }
+      if (onlineA != onlineB) return onlineB.compareTo(onlineA);
+      return a.$2.compareTo(b.$2);
+    });
+    return [for (final entry in visible) entry.$1];
   }
 
   /// 抖音关注导入能力位(站点注册表探测;未实现时按钮不出现)。
@@ -243,11 +258,14 @@ class _ZishuPlayFollowPanelState extends State<ZishuPlayFollowPanel> {
   }
 
   /// 紧凑列表(默认):单列行铺开,横向再收一档 padding(真源侧栏口径)。
+  /// 行组件与「我的关注」页**共用** [ZishuFollowRowItem](真源口径:侧栏
+  /// 与页面只有一套行视图 —— 分类/主播名/标题/人数四列,hover/按压态
+  /// 同源,不再各写一套)。
   Widget _buildCompactList(List<LiveRoom> rooms) {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(AppSpacing.xs, 0, AppSpacing.xs, AppSpacing.sm),
       itemCount: rooms.length,
-      itemBuilder: (context, index) => _FollowLiveRow(room: rooms[index]),
+      itemBuilder: (context, index) => ZishuFollowRowItem(room: rooms[index]),
     );
   }
 
@@ -273,135 +291,6 @@ class _ZishuPlayFollowPanelState extends State<ZishuPlayFollowPanel> {
           itemBuilder: (context, index) => ZishuRoomCard(room: rooms[index]),
         );
       },
-    );
-  }
-}
-
-/// 紧凑列表行:圆头像 + 主播名 + 在播态圆点 + 人数统计列。
-///
-/// 行高/描边/hover 态对齐「我的关注」页行(ZishuFollowRowItem 的 26 行高 +
-/// 半透明底描边),行首分类列换成头像(真源侧栏列表与页面同表,本仓库按
-/// 任务口径行首放头像);侧栏只显在播,状态圆点恒 live。
-class _FollowLiveRow extends StatelessWidget {
-  const _FollowLiveRow({required this.room});
-
-  final LiveRoom room;
-
-  /// 行高(「我的关注」页列表档同款节奏,ZishuFollowRoomList.rowHeight)。
-  static const double _rowHeight = 26;
-
-  /// 头像边长(26 行高内留 4px 上下呼吸)。
-  static const double _avatarSize = 18;
-
-  /// 人数统计列宽(最多 5 字人数,过 readableCount 万进制)。
-  static const double _audienceWidth = 52;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    return Material(
-      key: Key('play-side-follow-row-${room.normalizedPlatformId}-${room.normalizedRoomId}'),
-      color: tokens.surface,
-      child: InkWell(
-        onTap: () => AppNavigator.toLiveRoomDetail(liveRoom: room),
-        hoverColor: tokens.surfaceRaised,
-        splashColor: AppStateLayer.splashOf(tokens.accent),
-        highlightColor: AppStateLayer.pressedOf(tokens.accent),
-        focusColor: AppStateLayer.focusOf(tokens.accent),
-        child: Container(
-          height: _rowHeight,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: tokens.border.withValues(alpha: 0.5))),
-          ),
-          child: Row(
-            children: [
-              _FollowAvatar(room: room, size: _avatarSize),
-              const SizedBox(width: AppSpacing.xs),
-              Expanded(
-                child: Text(
-                  (room.nick ?? '').trim(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.textCaption.copyWith(color: tokens.textPrimary),
-                ),
-              ),
-              const StateDot(live: true),
-              const SizedBox(width: AppSpacing.xs),
-              SizedBox(
-                width: _audienceWidth,
-                child: Text(
-                  readableCount(room.audienceValue(preferRealOnline: false, platformEnabled: false)),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: context.textCaption.copyWith(color: tokens.liveBadge),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 行首圆头像:avatar 优先、封面兜底,斗鱼过期截图 CDN 排除 —— 取图口径
-/// 与顶栏关注浮层小卡(zishu_follow_flyout.dart `_followCardImageSrc`)和
-/// 真源 `_followAvatarSrc` 同源;取不到图落「主播名首字」占位。
-class _FollowAvatar extends StatelessWidget {
-  const _FollowAvatar({required this.room, required this.size});
-
-  final LiveRoom room;
-  final double size;
-
-  /// 斗鱼过期截图 CDN(照抄真源 `_followAvatarSrc` 正则):截图会过期,
-  /// 不作头像长期展示。
-  static final RegExp _expiringDouyuCdn = RegExp(r'(?:^|\.)rpic\.douyucdn\.cn/(?:asrpic|a\d+/)', caseSensitive: false);
-
-  String get _src {
-    final isDouyu = room.normalizedPlatformId == 'douyu';
-    final avatar = (room.avatar ?? '').trim();
-    if (avatar.isNotEmpty) {
-      if (isDouyu && _expiringDouyuCdn.hasMatch(avatar)) return '';
-      return normalizeNetworkImageUrl(avatar);
-    }
-    final cover = (room.cover ?? '').trim();
-    if (cover.isEmpty) return '';
-    if (isDouyu && _expiringDouyuCdn.hasMatch(cover)) return '';
-    return normalizeNetworkImageUrl(cover);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    final anchor = (room.nick ?? '').trim();
-    final src = _src;
-    final fallback = Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: tokens.surfaceRaised, shape: BoxShape.circle),
-      child: Text(
-        anchor.isEmpty ? '?' : anchor.substring(0, 1),
-        style: TextStyle(fontSize: size * 0.5, color: tokens.textSecondary),
-      ),
-    );
-    if (src.isEmpty) return fallback;
-    return ClipOval(
-      child: CachedNetworkImage(
-        imageUrl: src,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        httpHeaders: networkImageHeaders(src),
-        cacheManager: CustomImageCacheManager.instance,
-        fadeInDuration: Duration.zero,
-        fadeOutDuration: Duration.zero,
-        useOldImageOnUrlChange: true,
-        placeholder: (_, _) => ColoredBox(color: tokens.surfaceRaised),
-        errorWidget: (_, _, _) => fallback,
-      ),
     );
   }
 }

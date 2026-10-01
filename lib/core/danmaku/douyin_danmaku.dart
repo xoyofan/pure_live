@@ -240,9 +240,10 @@ class DouyinDanmaku implements LiveDanmaku {
     // Image.content(#8){#3=等级,#4=名称}(裁剪 proto 对应 ImageContent.level /
     // .alternativeText,同 tag 同型),等级缺失回落 URL 正则 badge_(\d+)。真源
     // #61 项与 User.payGrade(消费等级)不在本 proto → userLevel 恒空;徽章仅
-    // 官方图片无色值 → 渐变色不填。
+    // 官方图片无色值 → 渐变色不填。命中时官方图 URL 随徽章下发(badgeUrl)。
     String? badgeName;
     String? badgeLevel;
+    String? badgeUrl;
     if (chatMessage.hasUser()) {
       for (final image in chatMessage.user.badgeImageList) {
         final url = image.urlListList.firstWhere((u) => u.toLowerCase().contains('fansclub'), orElse: () => '');
@@ -255,6 +256,7 @@ class DouyinDanmaku implements LiveDanmaku {
         if (level.isEmpty && name.isEmpty) continue;
         badgeName = name.isEmpty ? null : name;
         badgeLevel = level.isEmpty ? null : level;
+        badgeUrl = url;
         break;
       }
     }
@@ -273,6 +275,7 @@ class DouyinDanmaku implements LiveDanmaku {
         sentAt: sentAt,
         badgeName: badgeName,
         badgeLevel: badgeLevel,
+        badgeUrl: badgeUrl,
       ),
     );
   }

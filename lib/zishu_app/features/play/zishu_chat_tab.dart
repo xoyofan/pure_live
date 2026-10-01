@@ -10,8 +10,9 @@
 // - 行 = 单个 Text.rich 内联流(对齐真源 chat_row):等级牌 → 粉丝牌 →
 //   用户名(协议色非白时用之,w600)→「：」→ 正文,行高 1.48;徽章复用
 //   chat_badges.dart 的 zishuInlineBadge/ZishuChatUserLevelBadge/
-//   ZishuChatFanBadge,按 room.platform 分站取真源同名分支的文字态规格
-//   (斗鱼/虎牙/抖音/其余),粉丝牌显隐走 zishuFanBadgeVisible 闸门;
+//   ZishuChatFanBadge,按 room.platform 分站取真源同名分支规格 —— 粉丝牌
+//   已接官方图片管线(badgeUrl→官方图优先,既有文字态兜底),粉丝牌显隐走
+//   zishuFanBadgeVisible 闸门;
 // - 顶部状态条:连接态圆点/文案 + 「刷新」重连钮(真源还带播放状态指示,
 //   pure_live 无对应数据源,省);
 // - 无输入框(对齐真源)。
@@ -371,17 +372,28 @@ class _ZishuChatRow extends StatelessWidget {
           // 是字符串非空白,引擎侧只在 >0 时填,语义一致)。
           if (message.userLevel.trim().isNotEmpty)
             zishuInlineBadge(ZishuChatUserLevelBadge(site: site, level: message.userLevel)),
-          // 粉丝牌缺字段不渲染(现口径;zishuFanBadgeVisible 另对抖音要求
-          // 等级非空 —— 圆盘只承载数字,空等级会画出空心红圆)。
-          if (zishuFanBadgeVisible(site: site, name: message.badgeName, level: message.badgeLevel))
+          // 粉丝牌缺字段不渲染(zishuFanBadgeVisible:douyu/通用仍要求团名,
+          // douyin/huya 有协议图 url 或等级即可 —— 官方图/圆盘可脱离团名
+          // 渲染,与真源 visibleFor 只卡 douyu 的口径一致)。name 用 ?? ''
+          // 传:douyin/huya 允许无名(官方图分支 tooltip 不带名)。
+          if (zishuFanBadgeVisible(
+            site: site,
+            name: message.badgeName,
+            level: message.badgeLevel,
+            url: message.badgeUrl,
+          ))
             zishuInlineBadge(
               ZishuChatFanBadge(
                 site: site,
-                name: message.badgeName!,
+                name: message.badgeName ?? '',
                 level: message.badgeLevel,
                 colorStart: message.badgeColorStart,
                 colorEnd: message.badgeColorEnd,
                 colorBorder: message.badgeColorBorder,
+                url: message.badgeUrl,
+                brid: message.badgeBrid,
+                months: message.badgeMonths,
+                diafid: message.badgeDiafid,
               ),
             ),
           TextSpan(
