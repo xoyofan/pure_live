@@ -9,6 +9,8 @@ import 'package:pure_live/common/utils/windows_multi_instance_launcher.dart';
 import 'package:pure_live/core/site/cc/cc_catalog.dart';
 import 'package:pure_live/modules/areas/areas_list_controller.dart';
 import 'package:pure_live/routes/app_navigation.dart';
+import 'package:pure_live/zishu/domain/category_display.dart';
+import 'package:pure_live/zishu/domain/category_sections.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
@@ -591,8 +593,11 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
             final emptyHint = controller.pageError.value ? '分类加载失败' : i18n('zishu_category_flyout_loading');
             return ZishuHoverOverlay(
               centerX: _platformFlyoutX,
-              width: ZishuPlatformCategoryFlyout.widthFor(groups),
+              // siteId 与浮层同传:hover 平台 tab 的站点 id,浮层/宽度都按
+              // 它做分区归一(与侧栏同源,见 category_sections.dart)。
+              width: ZishuPlatformCategoryFlyout.widthFor(groups, siteId: platformId),
               child: ZishuPlatformCategoryFlyout(
+                siteId: platformId,
                 groups: groups,
                 onEnter: _cancelFlyoutClose,
                 onExit: _scheduleFlyoutClose,
@@ -609,6 +614,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
             centerX: _platformFlyoutX,
             width: ZishuPlatformCategoryFlyout.minFlyoutWidth,
             child: ZishuPlatformCategoryFlyout(
+              siteId: platformId,
               groups: const <AppLiveCategory>[],
               onEnter: _cancelFlyoutClose,
               onExit: _scheduleFlyoutClose,
@@ -1247,9 +1253,12 @@ class _CategoryRow extends StatelessWidget {
   }
 }
 
-/// 侧栏「热门分类」:当前选中站点 `AreasListController.categories` 展开
-/// 子分类取前 15(真实目录);控制器未注册或目录为空时回落硬编码表
-/// (老口径,保证任何时刻侧栏不空)。
+/// 侧栏「热门分类」:当前选中站点 `AreasListController.categories` 经
+/// [buildCategorySections] 构建分组树(与顶栏 hover 浮层**共用**同一套
+/// 一级分区构建,见 `lib/zishu/domain/category_sections.dart`)—— 多组
+/// 逐组「组标题行 + 该组全部子分类行」纵向排列(整列由侧栏外层
+/// ListView 滚动),单组平铺无组标题;**不设条数上限**。控制器未注册
+/// 或目录为空时回落硬编码表(老口径,保证任何时刻侧栏不空)。
 ///
 /// 目录懒加载:控制器是 lazyPut(fenix),首次 find 才实例化且分类要
 /// `loadData()` 才有 —— 挂一帧后补跑一次(loadData 幂等,不重拉)。
@@ -1278,9 +1287,6 @@ class _SidebarHotCategories extends StatefulWidget {
 }
 
 class _SidebarHotCategoriesState extends State<_SidebarHotCategories> {
-  /// 展示条数上限(交付口径:展开子分类取前 15)。
-  static const int _maxCategories = 15;
-
   @override
   void initState() {
     super.initState();
@@ -1316,6 +1322,25 @@ class _SidebarHotCategoriesState extends State<_SidebarHotCategories> {
     );
   }
 
+  /// 空名条目不展示(老口径的空名过滤保留,目录脏数据防御)。
+  bool _visibleArea(LiveArea area) => (area.areaName ?? '').trim().isNotEmpty;
+
+  /// 组标题行:样式对齐浮层列标题(bodySecondary + w700 + textSecondary),
+  /// 行高略小于 [_CategoryRow](上下 3 vs 5),贴侧栏既有留白节奏。
+  Widget _groupTitle(BuildContext context, String siteId, String name) {
+    final tokens = context.tokens;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: 3),
+      child: Text(
+        // 分组名统一走跨平台中文映射(douyin/douyu/huya/bilibili 原名直返)。
+        displayCategoryGroupName(siteId, name),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: AppFontSize.bodySecondary, fontWeight: FontWeight.w700, color: tokens.textSecondary),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final site = widget.site;
@@ -1324,17 +1349,38 @@ class _SidebarHotCategoriesState extends State<_SidebarHotCategories> {
     }
     final controller = Get.find<AreasListController>(tag: site.id);
     return Obx(() {
-      // 多分组目录按组序展开子分类,过滤空名后取前 15。
-      final areas = <LiveArea>[
-        for (final group in controller.categories)
-          for (final area in group.children)
-            if ((area.areaName ?? '').trim().isNotEmpty) area,
-      ].take(_maxCategories).toList();
-      if (areas.isEmpty) return _fallbackList();
+      // 与顶栏 hover 浮层同一套一级分区构建(过滤排序 + 空组滤除):
+      // douyin 复合 id 排序、douyu/huya 滤非游戏组后按平台序,条目全量
+      // 展示,不再取前 15;行名与浮层 chip 同走 displayCategoryName。
+      final sections = buildCategorySections(site.id, controller.categories);
+      if (sections.isEmpty) return _fallbackList();
+      if (sections.length == 1) {
+        // 单大组平台(twitch/soop/快手等):平铺无组标题。
+        return Column(
+          children: [
+            for (final area in sections.first.items)
+              if (_visibleArea(area))
+                _CategoryRow(
+                  name: displayCategoryName(site.id, area.areaName, area.areaId),
+                  onTap: () => widget.onOpenCategory(site, area),
+                ),
+          ],
+        );
+      }
+      // 多组:组标题行 + 该组全部子分类行,逐组纵向排列(外层侧栏
+      // ListView 统一滚动,不自建滚动容器)。
       return Column(
         children: [
-          for (final area in areas)
-            _CategoryRow(name: area.areaName!.trim(), onTap: () => widget.onOpenCategory(site, area)),
+          for (var i = 0; i < sections.length; i++) ...[
+            if (i > 0) const SizedBox(height: AppSpacing.sm),
+            _groupTitle(context, site.id, sections[i].name),
+            for (final area in sections[i].items)
+              if (_visibleArea(area))
+                _CategoryRow(
+                  name: displayCategoryName(site.id, area.areaName, area.areaId),
+                  onTap: () => widget.onOpenCategory(site, area),
+                ),
+          ],
         ],
       );
     });
