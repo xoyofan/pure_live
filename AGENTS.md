@@ -8,6 +8,14 @@
 - Use Chinese for progress/results. Report findings, changes, verification and remaining work concisely; distinguish code, tests, builds, published assets and device acceptance.
 - Write commit messages in Chinese (user requirement, 2026-09-30): keep the conventional `type(scope):` prefix English, write the subject and body in Chinese. Follow this for future commits without being asked again.
 
+## Architecture: zishu UI + pure_live 解析/播放 (2026-10-01, 用户口径)
+
+- Windows 桌面端严格分层:**UI 一律用 zishu**(`lib/src/`,riverpod+go_router+live_parser 契约),**解析与播放内核一律用 pure_live**(`lib/core` LiveSite + `lib/modules/live_play` PlayerManager 链)。
+- 入口 `lib/main.dart` 已是 zishu Windows UI;pure_live 旧 UI(GetX:`lib/common`/`lib/modules` 非 live_play 部分)保留为编译单元但运行时绕过,不做功能演进。
+- 四家(B站/抖音/虎牙/斗鱼)浏览/解析数据经 `PURE_LIVE_PARSER=true`(默认开)走 `lib/src/shared/application/purelive_backend.dart` 的注册覆盖;新增解析能力(分类/搜索/弹幕/线路)在 purelive_backend 补齐,不改 UI 侧契约。
+- 播放页 = pure_live `LivePlayPage`(PlayerManager 链),经 `purelive_play_bridge` 桥接入;禁止再切回 zishu 播放内核(`ZISHU_PLAY_KERNEL` define 仅作逃生口)。
+- 旧 UI 登录体系(firebase)已随 UI 弃用移除;不得为旧 UI 重新引入已删依赖。
+
 ## Project map
 
 - `lib/core/`: platform APIs, stream resolution, danmaku protocols.
