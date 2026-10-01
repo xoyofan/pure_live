@@ -16,14 +16,14 @@ import 'package:live_parser/live_parser.dart' show SiteRegistry;
 /// 默认 fixture，避免 widget 测试和离线开发依赖公网。
 const bool useRealParser = bool.fromEnvironment(
   'ZISHU_REAL_PARSER',
-  defaultValue: false,
+  defaultValue: true,
 );
 
 /// 用 pure_live 解析(lib/core LiveSite)覆盖 live_parser 自带的四家
 /// (bilibili/douyin/huya/douyu)。注册项按 id 覆盖,UI 契约不变。
 const bool usePureLiveBackend = bool.fromEnvironment(
   'PURE_LIVE_PARSER',
-  defaultValue: false,
+  defaultValue: true,
 );
 
 /// 带覆盖的 registry 构建:PURE_LIVE_PARSER 时在标准 registry 上重注册
