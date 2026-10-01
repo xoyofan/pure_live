@@ -15,6 +15,7 @@ import '../features/follow/views/settings_view.dart';
 import '../features/play/application/play_provider.dart';
 import '../features/play/application/play_screen_provider.dart';
 import '../features/play/views/play_view.dart';
+import '../shared/application/purelive_play_bridge.dart';
 import '../shared/application/auth_provider.dart';
 import '../shared/presentation/design_tokens.dart';
 import '../shared/presentation/platform_brands.dart';
@@ -218,13 +219,20 @@ final routerProvider = Provider<GoRouter>((ref) {
               ? '/$inferred/play/${Uri.encodeComponent(id)}'
               : null;
         },
-        pageBuilder: (_, state) => NoTransitionPage(
-          key: state.pageKey,
-          child: _PlayRoute(
-            site: state.pathParameters['site']!,
-            roomId: state.pathParameters['id']!,
-          ),
-        ),
+        pageBuilder: (_, state) {
+          // 用户口径(2026-10-01):流的播放用 pure_live 自己的播放链路。
+          // 桥负责解析 LiveRoom → Get.put(LivePlayController) → LivePlayPage;
+          // zishu PlayView 内核经 --dart-define=ZISHU_PLAY_KERNEL 保留。
+          const useZishuKernel = bool.fromEnvironment('ZISHU_PLAY_KERNEL');
+          final site = state.pathParameters['site']!;
+          final roomId = state.pathParameters['id']!;
+          return NoTransitionPage(
+            key: state.pageKey,
+            child: useZishuKernel
+                ? _PlayRoute(site: site, roomId: roomId)
+                : PureLivePlayBridge(site: site, roomId: roomId),
+          );
+        },
       ),
       GoRoute(
         path: '/:site/anchor/:id',

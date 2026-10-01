@@ -82,6 +82,7 @@ dependencies:
   flutter_svg: ^2.2.1 # SVG图片渲染
   # ── zishu UI 宿主所需(2026-10-01 UI 切换)──
   flutter_riverpod: ^3.0.0
+  get: ^4.7.2
   go_router: ^16.0.0
   live_parser:
     path: packages/live_parser

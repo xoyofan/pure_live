@@ -6,7 +6,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:pure_live/core/common/log.dart';
 import 'package:pure_live/plugins/file_utils.dart';
 import 'package:pure_live/modules/backup/scan_page.dart';
-import 'package:pure_live/modules/auth/auth_controller.dart';
 import 'package:pure_live/plugins/backup_recovery_service.dart';
 import 'package:pure_live/common/services/settings/log_controller.dart';
 
@@ -78,75 +77,12 @@ class _BackupPageState extends State<BackupPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(i18n("backup_recover"))),
-      body: Obx(() {
-        final auth = Get.find<AuthController>();
-        return ListView(
-          physics: const PureLiveScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          children: [
-            context.buildGroupTitle(i18n("cloud_backup")),
-            context.buildModernCard([
-              context.buildTile(
-                iconWidget: auth.isConnecting
-                    ? RotationTransition(
-                        turns: const AlwaysStoppedAnimation(0.5),
-                        child: Icon(Remix.refresh_line, color: Theme.of(context).colorScheme.primary, size: 22),
-                      )
-                    : Icon(
-                        Remix.account_circle_line,
-                        color: auth.isInitSuccess ? null : Theme.of(context).colorScheme.error,
-                        size: 22,
-                      ),
-                isLong: true,
-                stackTrailingOnNarrow: auth.isConnecting,
-                showNavigationChevronWhenStacked: false,
-                subtitleColor: auth.isInitSuccess ? null : Theme.of(context).colorScheme.error.withValues(alpha: 0.8),
-                title: auth.isConnecting
-                    ? i18n('firebase_connecting_title')
-                    : (auth.isInitSuccess
-                          ? (auth.isLogin ? i18n('firebase_mine') : i18n('firebase_sign_in'))
-                          : i18n('firebase_init_failed')),
-                subtitle: auth.isConnecting
-                    ? i18n('firebase_connecting_desc')
-                    : (auth.isInitSuccess
-                          ? (auth.isLogin ? i18n('firebase_logged_in_desc') : i18n('firebase_login_desc'))
-                          : i18n('firebase_init_failed_desc')),
-                trailing: auth.isConnecting
-                    ? SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
-                        ),
-                      )
-                    : null,
-                onTap: () {
-                  if (!auth.isInitSuccess) {
-                    if (auth.isConnecting) {
-                      Get.snackbar(
-                        i18n('firebase_init_failed'),
-                        i18n('firebase_connecting_desc'),
-                        snackPosition: SnackPosition.bottom,
-                      );
-                      return;
-                    }
-                    Get.snackbar(
-                      i18n('firebase_init_failed'),
-                      i18n('firebase_init_failed_desc'),
-                      snackPosition: SnackPosition.bottom,
-                    );
-                    auth.startAsyncInit();
-                    return;
-                  }
-                  if (auth.isLogin) {
-                    Get.toNamed(RoutePath.kMine);
-                  } else {
-                    Get.toNamed(RoutePath.kSignIn);
-                  }
-                },
-              ),
-
+      body: ListView(
+        physics: const PureLiveScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        children: [
+          context.buildGroupTitle(i18n("cloud_backup")),
+          context.buildModernCard([
               context.buildTile(
                 icon: Remix.cloud_line,
                 title: i18n("webdav"),
@@ -168,10 +104,10 @@ class _BackupPageState extends State<BackupPage> {
                   isLong: true,
                   onTap: () => Get.to(() => const ScanCodePage()),
                 ),
-            ]),
-            const SizedBox(height: 20),
-            context.buildGroupTitle(i18n("local_backup")),
-            context.buildModernCard([
+          ]),
+          const SizedBox(height: 20),
+          context.buildGroupTitle(i18n("local_backup")),
+          context.buildModernCard([
               context.buildTile(
                 icon: Remix.file_download_line,
                 title: i18n("create_backup"),
@@ -310,11 +246,9 @@ class _BackupPageState extends State<BackupPage> {
                 isLong: true,
                 onTap: _openLogDirectory,
               ),
-            ]),
-            const SizedBox(height: 32),
-          ],
-        );
-      }),
+          ]),
+        ],
+      ),
     );
   }
 }
