@@ -71,7 +71,12 @@ Map<String, String> _playbackHeaders(String site, String roomId) {
     case 'bilibili':
       return {'user-agent': _desktopUserAgent, 'origin': 'https://live.bilibili.com', 'referer': roomId.isEmpty ? 'https://live.bilibili.com/' : 'https://live.bilibili.com/$roomId'};
     case 'douyin':
-      return {'user-agent': _desktopUserAgent, 'origin': 'https://live.douyin.com', 'referer': 'https://live.douyin.com/'};
+      return {
+        'user-agent': _desktopUserAgent,
+        'origin': 'https://live.douyin.com',
+        'referer': 'https://live.douyin.com/',
+        if (DouyinSite.cookie.isNotEmpty) 'cookie': DouyinSite.cookie,
+      };
   }
   return {'user-agent': _desktopUserAgent};
 }
