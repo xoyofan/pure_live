@@ -3,6 +3,8 @@ formatter:
   page_width: 120
 analyzer:
   exclude:
+    - lib/firebase_options.dart
+    - lib/modules/auth/**
     - "**/*.g.dart"
     - "**/*_en.dart"
     - "**/*_zh_CN.dart"

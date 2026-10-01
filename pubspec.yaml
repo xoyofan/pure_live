@@ -48,9 +48,6 @@ dependencies:
   connectivity_plus: ^7.3.1 # 网络连接状态监听
   webdav_client: ^1.2.2 # WebDAV文件存储客户端
 
-  firebase_core: ^4.15.0
-  firebase_auth: ^6.7.0
-  cloud_firestore: ^6.10.0
 
   win32_registry: ^3.0.3
   best_form_validator: ^1.4.0
@@ -83,6 +80,15 @@ dependencies:
     path: plugins/flv_lzc # Vendored from liuchuancong/flv_lzc@030d611
   # -------------------------- UI组件/界面样式 --------------------------
   flutter_svg: ^2.2.1 # SVG图片渲染
+  # ── zishu UI 宿主所需(2026-10-01 UI 切换)──
+  flutter_riverpod: ^3.0.0
+  go_router: ^16.0.0
+  live_parser:
+    path: packages/live_parser
+  speech2zh:
+    path: packages/speech2zh
+  video_player: ^2.9.2
+  web: ^1.1.1
   lottie: ^3.6.1 #动画
   cached_network_image: ^4.0.2 # 网络图片缓存
   dynamic_color: ^2.1.0 # 动态主题色
@@ -315,11 +321,17 @@ flutter:
     - assets/animations/error.json
     - assets/fonts/fonts-manifest.json
     - assets/certificates/
+    - assets/badges/
+    - assets/config/
+    - assets/ui/
   # 字体配置
   fonts:
     - family: CustomIcons
       fonts:
         - asset: assets/icons/CustomIcons.ttf
+    - family: FontAwesome
+      fonts:
+        - asset: assets/fonts/fa-solid-900.ttf
 
 # FFmpeg配置
 ffmpeg_kit_extended_config:

@@ -1,247 +1,53 @@
-import 'dart:io';
-import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:live_parser/live_parser.dart' show UpstreamProxy;
+import 'package:media_kit/media_kit.dart';
+import 'package:window_manager/window_manager.dart';
 
-import 'package:flutter/foundation.dart';
-import 'package:pure_live/common/index.dart';
-import 'package:pure_live/plugins/file_utils.dart';
-import 'package:easy_localization/easy_localization.dart';
-import 'package:pure_live/common/global/initialized.dart';
-import 'package:material_ui/material_ui.dart' as material;
-import 'package:pure_live/player/utils/player_consts.dart';
-import 'package:pure_live/routes/navigation_observer.dart';
-import 'package:pure_live/player/models/player_engine.dart';
-import 'package:pure_live/common/global/platform_utils.dart';
-import 'package:pure_live/routes/route_observer_controller.dart';
-import 'package:pure_live/common/utils/shared_media_intake.dart';
-import 'package:pure_live/player/utils/popup_route_tracker.dart';
-import 'package:pure_live/common/utils/share_command_handler.dart';
-import 'package:pure_live/common/utils/shared_live_link_opener.dart';
-import 'package:pure_live/core/iptv/services/epg_import_manager.dart';
-import 'package:pure_live/common/global/platform/desktop_manager.dart';
-import 'package:pure_live/core/iptv/services/iptv_import_manager.dart';
-import 'package:pure_live/common/services/settings/player_settings_controller.dart';
+import 'src/app/app_router.dart';
+import 'src/app/app_theme.dart';
+import 'src/app/app_version.dart';
+import 'src/apps/windows/windows_app.dart';
+import 'src/platforms/common/playback/playback_log.dart';
+import 'src/platforms/common/playback/window_presentation.dart';
+import 'src/platforms/common/proxy_setup.dart';
+import 'src/shared/presentation/tokens_override.dart';
 
-void main(List<String> args) async {
-  // Flutter abbreviates every framework error after the first one. In release
-  // builds that abbreviation hides the actual exception behind a diagnostics
-  // node, making a grey player surface impossible to diagnose from logcat.
-  // Always retain the concrete exception and stack locally on the device.
-  FlutterError.onError = (details) {
-    FlutterError.dumpErrorToConsole(details, forceReport: true);
-  };
-
-  await AppInitializer().initialize(args);
-
-  runApp(
-    EasyLocalization(
-      supportedLocales: const [Locale('en'), Locale('zh')],
-      path: 'assets/translations',
-      fallbackLocale: const Locale('zh'),
-      assetLoader: const RootBundleAssetLoader(),
-      child: MyApp(),
-    ),
-  );
-}
-
-class MyApp extends StatefulWidget {
-  const MyApp({super.key});
-
-  @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> with DesktopWindowMixin {
-  SharedMediaReceiver? _sharedMediaReceiver;
-  bool _dynamicThemeChangeScheduled = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Start favourite verification after the first Flutter frame instead of
-    // waiting until HomePage is created. When the splash page is enabled this
-    // overlaps its one-second animation; when it is disabled the first frame
-    // still wins over network/JSON work. The controller already publishes the
-    // settled room snapshot as one transaction, so cards do not reshuffle as
-    // individual requests finish.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && Get.isRegistered<FavoriteController>()) {
-        Get.find<FavoriteController>();
-      }
-    });
-    if (PlatformUtils.isDesktop) {
-      DesktopManager.initializeListeners(this);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(DesktopManager.updateTrayWhenLocalized());
-      });
-    }
-    unawaited(initSharedMediaListener());
-    unawaited(initGlobalPlayer());
+/// 默认产品入口：全新的 Windows UI。
+/// 命令行参数(Flutter 桌面经 main args 注入,如 `--route /soop/category`)
+/// 供真机自动化验证直达目标页面。
+Future<void> main(List<String> args) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
+  StartupRoute.configure(args);
+  // 上游代理探测(env→Windows 系统代理)先于任何解析请求:海外站
+  // twitch/youtube 直连不可达,探测结果决定 HTTP/弹幕层是否走代理。
+  await configureUpstreamProxy();
+  // 会话分隔标记:日志会跨多次启动追加,没有它无法区分「这次运行」。
+  // 同时记录代理状态 —— 海外站解析/翻译/模型下载失败时第一个要看的字段。
+  PlaybackLog.write('app_start', {
+    'proxy': UpstreamProxy.hostPort ?? 'direct',
+    'route': StartupRoute.value,
+  });
+  // window_manager 必须先初始化:播放页的全屏(setFullScreen)与画中画都走它。
+  // 未初始化时插件不监听窗口事件,isFullScreen() 的边界与状态同步都没有保障。
+  // 非桌面平台(Web / Android)没有对应原生实现,静默跳过——那些平台的窗口呈现
+  // 不由 window_manager 承担。
+  try {
+    await windowManager.ensureInitialized();
+  } catch (_) {
+    // 非桌面平台或插件缺失:无需窗口管理器。
   }
-
-  Future<void> initGlobalPlayer() async {
-    final String savedKey = SettingsService.to.player.videoPlayerKey.v;
-    final String validKey = normalizeVideoPlayerKeyForPlatform(savedKey, defaultTargetPlatform);
-    final PlayerEngine targetEngine = PlayerConsts.engines[validKey]!;
-    final PlayerEngine defaultEngine;
-
-    if (PlatformUtils.isDesktop) {
-      defaultEngine = PlayerEngine.mediaKit;
-    } else {
-      defaultEngine = targetEngine;
-    }
-    await GlobalPlayerService.instance.initialize(defaultEngine: defaultEngine);
-  }
-
-  @override
-  void dispose() {
-    if (PlatformUtils.isDesktop) {
-      DesktopManager.disposeListeners();
-    }
-    final receiver = _sharedMediaReceiver;
-    if (receiver != null) unawaited(receiver.dispose());
-    unawaited(GlobalPlayerService.instance.dispose());
-    super.dispose();
-  }
-
-  Future<void> initSharedMediaListener() async {
-    if (!Platform.isAndroid) return;
-
-    final handler = ShareHandler.instance;
-    final intake = SharedMediaIntake(
-      isRoomCommand: ShareCommandHandler.isUsableCommand,
-      consumeRoomCommand: handleIncomingShareCommand,
-      importPlaylist: (path) => IptvImportManager().importFromSharedMedia(SharedMedia(content: path)),
-      importEpg: (path) => EpgImportManager().importFromSharedMedia(SharedMedia(content: path)),
-      releaseAttachment: (path) async {
-        await FileUtils.cleanupOwnedSharedMediaFile(File(path));
-      },
-      notifyUnsupported: (key) => ToastUtil.show(i18n(key)),
-      isLiveLink: SharedLiveLinkOpener.containsLiveLink,
-      openLiveLink: SharedLiveLinkOpener(waitForNavigator: waitForShareNavigator).open,
-      reportError: (error, stackTrace) => debugPrint('Shared media receiver failed: $error\n$stackTrace'),
-    );
-    final receiver = SharedMediaReceiver(
-      readInitialMedia: handler.getInitialSharedMedia,
-      resetInitialMedia: handler.resetInitialSharedMedia,
-      mediaStream: handler.sharedMediaStream,
-      intake: intake,
-      reportError: (error, stackTrace) => debugPrint('Shared media channel failed: $error\n$stackTrace'),
-    );
-    _sharedMediaReceiver = receiver;
-    await receiver.start();
-  }
-
-  void _applyDynamicTheme(
-    material.ColorScheme? lightDynamic,
-    material.ColorScheme? darkDynamic,
-    ThemeData lightThemeData,
-    ThemeData darkThemeData,
-  ) {
-    if (_dynamicThemeChangeScheduled) {
-      return;
-    }
-
-    _dynamicThemeChangeScheduled = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _dynamicThemeChangeScheduled = false;
-
-      if (!mounted) {
-        return;
-      }
-
-      final brightness = Theme.of(context).brightness;
-
-      if (SettingsService.to.theme.enableDynamicTheme.v && lightDynamic != null && darkDynamic != null) {
-        final scheme = brightness == Brightness.dark
-            ? toFlutterColorScheme(darkDynamic)
-            : toFlutterColorScheme(lightDynamic);
-
-        final theme = MyTheme(colorScheme: scheme);
-
-        Get.changeTheme(brightness == Brightness.dark ? theme.darkThemeData : theme.lightThemeData);
-      } else {
-        Get.changeTheme(brightness == Brightness.dark ? darkThemeData : lightThemeData);
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DynamicColorBuilder(
-      builder: (lightDynamic, darkDynamic) {
-        return Obx(() {
-          final themeColor = SettingsService.to.theme.themeColor;
-          final showSplashPage = SettingsService.to.app.showSplashPage.v;
-          final currentFactor = SettingsService.to.font.textScaleFactor.v;
-
-          ThemeData lightTheme;
-          ThemeData darkTheme;
-
-          if (SettingsService.to.theme.enableDynamicTheme.v && lightDynamic != null && darkDynamic != null) {
-            lightTheme = MyTheme(colorScheme: toFlutterColorScheme(lightDynamic)).lightThemeData;
-            darkTheme = MyTheme(colorScheme: toFlutterColorScheme(darkDynamic)).darkThemeData;
-          } else {
-            lightTheme = MyTheme(primaryColor: themeColor).lightThemeData;
-            darkTheme = MyTheme(primaryColor: themeColor).darkThemeData;
-          }
-          _applyDynamicTheme(lightDynamic, darkDynamic, lightTheme, darkTheme);
-
-          return GetMaterialApp(
-            // The localized title is rendered by CustomTitleBar. A stable
-            // application title avoids asking EasyLocalization for a key
-            // before its delegate has completed the first load.
-            title: i18n('app_name'),
-            navigatorKey: appNavigatorKey,
-            scrollBehavior: MyCustomScrollBehavior(),
-            debugShowCheckedModeBanner: false,
-            themeMode: SettingsService.to.theme.themeMode,
-            theme: lightTheme.copyWith(
-              appBarTheme: const AppBarTheme(surfaceTintColor: Colors.transparent),
-              pageTransitionsTheme: appPageTransitionsTheme,
-            ),
-            darkTheme: darkTheme.copyWith(
-              appBarTheme: const AppBarTheme(surfaceTintColor: Colors.transparent),
-              pageTransitionsTheme: appPageTransitionsTheme,
-            ),
-            locale: context.locale,
-            navigatorObservers: [FlutterSmartDialog.observer, LiveRouteObserver(), PopupRouteTracker.instance],
-            builder: FlutterSmartDialog.init(
-              builder: (context, child) {
-                Widget resultWidget = child ?? const SizedBox.shrink();
-                if (PlatformUtils.isDesktopNotMac) {
-                  resultWidget = DesktopManager.buildWithTitleBar(resultWidget);
-                } else if (Platform.isAndroid) {
-                  resultWidget = AdaptiveRefreshRateScope(
-                    mode: SettingsService.to.app.refreshRateMode,
-                    child: resultWidget,
-                  );
-                }
-                return MediaQuery(
-                  data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(currentFactor)),
-                  child: MaterialUiThemeBridge(child: resultWidget),
-                );
-              },
-            ),
-            supportedLocales: context.supportedLocales,
-            localizationsDelegates: [
-              ...context.localizationDelegates,
-              // flex_color_picker 4.x and cached_network_image 4.x use the
-              // decoupled Material library. Its localization type is distinct
-              // from flutter/material.dart and must be registered alongside it.
-              material.GlobalMaterialLocalizations.delegate,
-            ],
-            initialRoute: showSplashPage ? RoutePath.kSplash : RoutePath.kInitial,
-            defaultTransition: Transition.native,
-            routingCallback: (routing) {
-              if (routing != null) {
-                RouteObserverController.to.updateRoute(routing.current);
-              }
-            },
-            getPages: AppPages.routes,
-          );
-        });
-      },
-    );
-  }
+  await loadAppVersion();
+  // 外置主题色 token 首帧前安装(外部 override → 打包 JSON → 代码常量,
+  // 任一层失败静默回退):晚了会先闪一帧代码默认色再切 override 色。
+  // 文件监听热更由 WindowsApp 启动(见 tokens_override.dart)。
+  ZishuTheme.tokens = await resolveZishuTokenSet();
+  // 窗口几何恢复必须在 runApp(首帧)之前完成:runner 是「首帧就绪回调才
+  // Show 窗口」,此刻窗口仍隐藏;隐藏期的 setSize/setPosition 不存在
+  // 「先显示旧尺寸首帧、再 resize 触发 surface 重建」的白屏窗口期(冷启动
+  // 慢时该竞态必然复现,表现为打开白屏数秒直到下一帧数据到达)。此前恢复
+  // 挂在 WindowsApp.initState(runApp 之后),正是白屏根因。
+  await WindowPresentation.instance.restoreMainWindowGeometry();
+  runApp(const ProviderScope(child: WindowsApp()));
 }

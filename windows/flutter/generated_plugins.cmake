@@ -8,12 +8,9 @@ list(APPEND FLUTTER_PLUGIN_LIST
   battery_plus
   bonsoir_windows
   charset_converter
-  cloud_firestore
   connectivity_plus
   dynamic_color
   ffmpeg_kit_extended_flutter
-  firebase_auth
-  firebase_core
   flutter_acrylic
   flutter_inappwebview_windows
   media_kit_video
@@ -29,6 +26,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
   cnativeapi
   jni
+  sherpa_onnx_windows
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

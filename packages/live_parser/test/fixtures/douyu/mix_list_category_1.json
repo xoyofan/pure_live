@@ -1,0 +1,53 @@
+{
+  "code": 0,
+  "data": {
+    "rl": [
+      {
+        "rid": 111,
+        "rn": "房间A标题",
+        "nn": "主播A",
+        "rs16": "//rpic.douyucdn.cn/a.jpg",
+        "c2name": "英雄联盟",
+        "cid2": "1",
+        "ol": 102400,
+        "gametag": "",
+        "icv3": [
+          {
+            "cfgType": 2,
+            "cfgRich": {
+              "addr": "https://sta-op.douyucdn.cn/dy-listicon/e49a60e6cf3d6df5ca805c6a2cdfa3a6.png",
+              "backColor": "#7B90FD",
+              "rightBackColor": "#5F77F3",
+              "text": "段位LV4",
+              "fontColor": "#FFFFFF"
+            },
+            "iconId": "11736_0"
+          }
+        ],
+        "roomLabel": ["官方赛况", "帧率拉满", "国一东方镜", "峡谷之巅王者"]
+      },
+      {
+        "rid": 222,
+        "rn": "房间B标题",
+        "nn": "主播B",
+        "rs1": "//rpic.douyucdn.cn/b.jpg",
+        "c2name_display": "英雄联盟",
+        "cid2": "1",
+        "ol": 999,
+        "gametag": "",
+        "icv3": [],
+        "vipId": 3
+      },
+      {
+        "rid": 333,
+        "rn": "其他分类房",
+        "nn": "主播C",
+        "rs16": "//rpic.douyucdn.cn/c.jpg",
+        "c2name": "王者荣耀",
+        "cid2": "2",
+        "ol": 50,
+        "gametag": ""
+      }
+    ]
+  }
+}

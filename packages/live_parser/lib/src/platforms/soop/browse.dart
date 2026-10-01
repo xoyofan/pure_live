@@ -1,0 +1,196 @@
+/// SOOP 分类索引、分类房间与首页推荐。
+library;
+
+import '../../catalog/category_name_remap.dart';
+import 'zh_categories.dart';
+import '../../contracts/contracts.dart';
+import '../../http/parser_http.dart';
+import '../../models/models.dart';
+import '../../models/room_record.dart';
+import '../../utils/format_online.dart';
+import '../douyu/json_utils.dart';
+import 'normalize.dart';
+import 'room_api.dart';
+
+/// 分类索引分页大小与最大翻页数(分类总量有限,避免失控请求)。
+const int kSoopCategoryPageSize = 120;
+const int kSoopCategoryMaxPages = 3;
+
+/// 首页推荐单页条数上限。
+const int kSoopRecommendMaxLimit = 60;
+
+class SoopBrowseRepository implements BrowseRepository {
+  SoopBrowseRepository(this._http);
+
+  final ParserHttp _http;
+  List<CategoryItem>? _categoryCache;
+
+  @override
+  Future<CategoryResult> fetchCategories(String site) async {
+    final cached = _categoryCache;
+    // 空分类按未命中处理,作废重拉(web e389570 空壳分组同款校验语义)。
+    if (cached != null && cached.isNotEmpty) {
+      return CategoryResult(
+        site: kSoopSiteId,
+        groups: [CategoryGroup(id: '1', name: '热门', items: cached)],
+      );
+    }
+
+    final items = <CategoryItem>[];
+    for (var page = 1; page <= kSoopCategoryMaxPages; page++) {
+      final list = await _fetchCategoryList(page);
+      for (final raw in list) {
+        final item = jsonMapOf(raw);
+        final cid = jsonText(item['category_no']);
+        final name = jsonText(item['category_name']);
+        if (cid.isEmpty || name.isEmpty) continue;
+        // 反查表记 **remap 后的中文显示名**(web soopZhCategoryMap 记的
+        // 也是 remap 后的 c.name):上游个别分类 zh_CN 仍直出英文原名
+        // (如聊天分区 'Talk/Cam'),若记原名,房间分类反查会回填英文。
+        final displayName = remapCategoryName('soop', name);
+        rememberSoopZhCategory(cid, displayName);
+        items.add(
+          CategoryItem(
+            cid: cid,
+            name: displayName,
+            pic: httpsSoopUrl(item['cate_img']),
+          ),
+        );
+      }
+      if (list.length < kSoopCategoryPageSize) break;
+    }
+    // 空分类不落缓存,避免上游异常响应霸占缓存(web e389570 同款语义)。
+    if (items.isNotEmpty) _categoryCache = items;
+    return CategoryResult(
+      site: kSoopSiteId,
+      groups: [CategoryGroup(id: '1', name: '热门', items: items)],
+    );
+  }
+
+  @override
+  Future<RoomListResult> fetchRooms(RoomListRequest request) async {
+    final cid = request.cid;
+    if (cid != null && cid.isNotEmpty && cid != '0') {
+      return _fetchCategoryRooms(cid, request.page, request.limit);
+    }
+    return _fetchRecommend(request.page, request.limit);
+  }
+
+  Future<List<Object?>> _fetchCategoryList(int page) async {
+    final json = await _getJson(
+      Uri.https('sch.sooplive.co.kr', '/api.php', {
+        'm': 'categoryList',
+        'szKeyword': '',
+        'szOrder': 'view_cnt',
+        'nPageNo': '$page',
+        'nListCnt': '$kSoopCategoryPageSize',
+        'nOffset': '0',
+        'szPlatform': 'pc',
+        // 上游本地化:带 lang 时 categoryList 直出中文 category_name
+        // (对齐 web services/streaming-server soop.ts:5-10)。
+        'lang': 'zh_CN',
+      }),
+    );
+    return jsonListOf(jsonMapOf(json['data'])['list']);
+  }
+
+  Future<RoomListResult> _fetchCategoryRooms(
+    String cid,
+    int page,
+    int limit,
+  ) async {
+    final effectiveLimit = limit.clamp(1, kSoopRecommendMaxLimit);
+    final json = await _getJson(
+      Uri.https('sch.sooplive.co.kr', '/api.php', {
+        'm': 'categoryContentsList',
+        'szType': 'live',
+        'nPageNo': '$page',
+        'nListCnt': '$effectiveLimit',
+        'szPlatform': 'pc',
+        'szOrder': 'view_cnt_desc',
+        'szCateNo': cid,
+      }),
+    );
+    final list = jsonListOf(jsonMapOf(json['data'])['list']);
+    return _toResult(list, page, effectiveLimit, cid: cid);
+  }
+
+  Future<RoomListResult> _fetchRecommend(int page, int limit) async {
+    final effectiveLimit = limit.clamp(1, kSoopRecommendMaxLimit);
+    final json = await _getJson(
+      Uri.https('live.sooplive.co.kr', '/api/main_broad_list_api.php', {
+        'selectType': 'action',
+        'selectValue': 'all',
+        'orderType': 'view_cnt',
+        'pageNo': '$page',
+        'lang': 'ko_KR',
+      }),
+    );
+    final list = jsonListOf(json['broad']);
+    return _toResult(
+      list,
+      page,
+      effectiveLimit,
+      coverKey: 'broad_thumb',
+    );
+  }
+
+  Future<Map<String, dynamic>> _getJson(Uri url) async {
+    final response = await _http.get(
+      url,
+      // 缺 Accept-Language 时上游仍返回韩文(soop.ts 注释同款结论)。
+      headers: const {
+        'Accept': '*/*',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+      },
+    );
+    return _http.jsonMap(response);
+  }
+
+  RoomListResult _toResult(
+    List<Object?> raw,
+    int page,
+    int limit, {
+    String? cid,
+    String coverKey = 'thumbnail',
+  }) {
+    final rooms = <RoomSummary>[];
+    for (final value in raw) {
+      final item = jsonMapOf(value);
+      final roomId = jsonText(item['user_id']).trim();
+      if (roomId.isEmpty) continue;
+      // 房间流只有韩文 category_name,且**分类号字段名是 `broad_cate_no`**
+      // (实测 2026-09-26:房间列表项根本没有 `category_no` 键,只读它会恒为空
+      // 串 → 反查表永远 miss → 分类一直显示韩文)。故主取 broad_cate_no,
+      // category_no 仅作兼容回落。
+      // 命中中文反查表则覆盖,未命中回退原名 + remap。
+      final cateNo =
+          jsonText(item['broad_cate_no']).isNotEmpty
+              ? jsonText(item['broad_cate_no'])
+              : jsonText(item['category_no']);
+      final zhName = soopZhCategoryName(cateNo);
+      final category = zhName ??
+          remapCategoryName('soop', jsonText(item['category_name']));
+      rooms.add(
+        RoomSummary(
+          site: kSoopSiteId,
+          roomId: roomId,
+          title: jsonText(item['broad_title']),
+          anchorName: jsonText(item['user_nick']),
+          cid: cid ?? '',
+          category: category,
+          online: formatOnlineCount(soopOnlineViewers(item)),
+          cover: httpsSoopUrl(item[coverKey] ?? item['thumbnail']),
+          // 直播推荐/分类目录 live-only(szType=live):状态真源(6sol 裁决 Task 4a-i)。
+          roomState: RoomState.live,
+        ),
+      );
+      if (rooms.length >= limit) break;
+    }
+    return RoomListResult(
+      rooms: rooms.map(RoomRecord.fromSummary).toList(growable: false),
+      page: page,
+      hasMore: raw.length >= limit,
+    );
+  }
+}

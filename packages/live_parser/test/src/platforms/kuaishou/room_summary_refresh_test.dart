@@ -1,0 +1,87 @@
+/// 快手房间状态轻量刷新:只拉一次房间页 SSR 元信息,不解析任何播放线路。
+library;
+
+import 'package:live_parser/live_parser.dart';
+import 'package:test/test.dart';
+
+import '../../../support/fake_kuaishou_api.dart';
+
+void main() {
+  late FakeKuaishouApi fake;
+  late KuaishouRoomResolver resolver;
+
+  setUp(() {
+    fake = FakeKuaishouApi()..roomPage = kuaishouFixture('room_live.html');
+    resolver = KuaishouRoomResolver(KuaishouClient(httpClient: fake));
+  });
+
+  test('在播:元信息正确,且只请求房间页一次', () async {
+    final record = await resolver.refreshRoomSummary(
+      const RoomRequest(site: 'kuaishou', roomIdOrUrl: 'ks_user_1'),
+    );
+
+    expect(record.site, 'kuaishou');
+    expect(record.roomId, 'ks_user_1');
+    expect(record.title, '今晚八点开播 不见不散');
+    expect(record.anchorName, '快手主播');
+    expect(record.category, '王者荣耀');
+    expect(record.cid, 'ks_user_1', reason: '快手无二级分类 id,cid 即房间号');
+    expect(record.audience, '2.3万', reason: 'watchingCount=23456 格式化');
+    expect(record.cover, 'https://p1.kuaishou.com/poster.jpg');
+    // 头像取房间页 SSR 的 author.avatar(零额外请求)。
+    expect(record.avatar, 'https://p1.kuaishou.com/avatar.png');
+
+    expect(fake.requests, hasLength(1), reason: '刷新只拉一次房间页');
+    expect(fake.requests.single.url.host, 'live.kuaishou.com');
+    expect(fake.requests.single.url.path, '/u/ks_user_1');
+
+    // 统一记录:fromSummary 映射刷新摘要已提供的统计真值(6sol 口径),
+    // 且状态真源 roomState 必须随真实状态赋值(平台契约:isLiving 判在播)。
+    expect(record.site, 'kuaishou');
+    expect(record.roomId, 'ks_user_1');
+    expect(record.roomState, RoomState.live);
+    expect(record.isLive, isTrue);
+    expect(record.audience, '2.3万');
+    expect(
+      record.followers,
+      isNull,
+      reason: '快手上游无免登录粉丝接口 → null,不伪造 0',
+    );
+    expect(record.vip, isNull);
+    expect(record.svip, isNull);
+  });
+
+  test('未开播:audience 为 null,资料保留', () async {
+    fake.roomPage = kuaishouFixture('room_offline.html');
+
+    final record = await resolver.refreshRoomSummary(
+      const RoomRequest(site: 'kuaishou', roomIdOrUrl: 'ks_user_1'),
+    );
+
+    expect(record.audience, isNull, reason: '契约:离线 audience 为 null,在播判据是 roomState');
+    expect(record.anchorName, '快手主播');
+    expect(record.avatar, 'https://p1.kuaishou.com/avatar.png', reason: '离线保留头像');
+
+    expect(record.roomState, RoomState.offline);
+    expect(record.audience, isNull);
+    expect(record.followers, isNull);
+    expect(record.vip, isNull);
+    expect(record.svip, isNull);
+  });
+
+  test('房间不存在:抛 ParserHttpException(不得伪造离线摘要)', () async {
+    fake.roomPage = kuaishouFixture('room_missing.html');
+
+    await expectLater(
+      resolver.refreshRoomSummary(
+        const RoomRequest(site: 'kuaishou', roomIdOrUrl: 'ks_user_1'),
+      ),
+      throwsA(isA<ParserHttpException>()),
+    );
+  });
+
+  test('注册表包装透传刷新能力', () {
+    final registration = buildKuaishouRegistration(httpClient: fake);
+    expect(registration.resolver, isA<RoomSummaryRefresher>());
+  });
+}
