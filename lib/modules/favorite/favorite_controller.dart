@@ -29,6 +29,17 @@ class FavoriteController extends LocalReactivePageController<LiveRoom>
   Timer? _debounceTimer;
   Timer? _resumeRefreshTimer;
   Timer? _favoriteSnapshotTimer;
+
+  /// 关注在播状态轮询 timer(默认常驻,语义对齐真源 follow_status_poller)。
+  Timer? _statusPollTimer;
+
+  /// 上一轮轮询未结束时跳过本轮(真源 FollowStatusPoller._running 同语义,
+  /// 避免慢网下周期重叠把请求量翻倍)。
+  bool _statusPollInFlight = false;
+
+  /// 分批刷新游标:在收藏列表上环状推进,N 条收藏 ceil(N/16) 个周期全覆盖
+  /// (真源 FollowController._refreshCursor + _pickRefreshWindow 同语义)。
+  int _statusPollCursor = 0;
   final List<Worker> _workers = [];
   bool _selectionTransaction = false;
   int? _lastSyncedFavoriteSnapshot;
@@ -47,6 +58,18 @@ class FavoriteController extends LocalReactivePageController<LiveRoom>
   // events from rotation/PiP while keeping room state current.
   static const Duration _resumeRefreshStaleAfter = Duration(seconds: 15);
   static const Duration _roomRefreshTimeout = Duration(seconds: 10);
+
+  /// 关注在播状态轮询周期:对齐真源 follow_status_poller.dart 的
+  /// `kFollowStatusRefreshInterval`(Web followStatusHub 60s 最小刷新间隔)。
+  ///
+  /// **默认启用**:不再依赖既有 opt-in 的 [RefreshConfigController
+  /// .autoRefreshFavorite](该设置保留,驱动的是分钟级全量刷新,与本轮询
+  /// 互相独立)—— 真源侧轮询是无条件常驻,只有单房间失败冷却与分批护栏。
+  static const Duration _statusPollInterval = Duration(seconds: 60);
+
+  /// 单轮轮询批量上限(真源 kFollowStatusRefreshBatch 同值):每 tick 只刷
+  /// 一批,N 条收藏 ceil(N/16) 个周期全覆盖,不每周期把全部房间打一遍。
+  static const int _statusPollBatch = 16;
 
   final onlineRooms = <LiveRoom>[].obs;
   final offlineRooms = <LiveRoom>[].obs;
@@ -132,6 +155,8 @@ class FavoriteController extends LocalReactivePageController<LiveRoom>
       _setupRefreshStrategy();
     });
 
+    _startFollowStatusPoller();
+
     listenFavorite();
     listenRoomChanged();
   }
@@ -214,6 +239,45 @@ class FavoriteController extends LocalReactivePageController<LiveRoom>
     _resumeRefreshTimer = null;
   }
 
+  /// 启动关注在播状态轮询(幂等;onInit 启动、onClose 停,控制器销毁即停,
+  /// 无独立开关 —— 对齐真源 FollowStatusPoller.start/dispose 的常驻语义)。
+  void _startFollowStatusPoller() {
+    _statusPollTimer?.cancel();
+    _statusPollTimer = Timer.periodic(_statusPollInterval, (_) => unawaited(_pollFollowStatusTick()));
+  }
+
+  /// 单轮轮询(真源 FollowStatusPoller.tick 同语义):
+  /// - 上一轮未结束时跳过本轮([_statusPollInFlight]);
+  /// - 启动校验在跑时跳过(它本就覆盖全量,叠加只会重复打请求);
+  /// - 单轮失败静默(条目级失败已隔离在 [_refreshOneRoom],这里只兜
+  ///   未预期异常,不弹提示、不打扰 UI);
+  /// - 每 tick 按 [_statusPollCursor] 环状取一批(16 条)只刷元信息/状态。
+  Future<int> _pollFollowStatusTick() async {
+    if (isClosed || _statusPollInFlight) return 0;
+    if (_startupRefresh != null) return 0;
+    _statusPollInFlight = true;
+    try {
+      final rooms = getAllRooms();
+      if (rooms.isEmpty) return 0;
+      final count = rooms.length;
+      final window = <LiveRoom>[
+        for (var i = 0; i < _statusPollBatch && i < count; i++) rooms[(_statusPollCursor + i) % count],
+      ];
+      _statusPollCursor = (_statusPollCursor + _statusPollBatch) % count;
+      // 最廉路径:复用既有逐房间刷新管线(_runRoomRefresh → getRoomDetail/
+      // getRoomDetailForRefresh),静默(showLoading/emitFinish 均关)、
+      // 非权威合并(invalidateUnverified 关 —— 未刷到的条目不得被轮询
+      // 翻成离线)、不吃满刷冷却豁免(bypassFailureCooldown 关,沿用
+      // 5 分钟失败冷却,死房间不反复重试)。
+      await _runRoomRefresh(window, showLoading: false, emitFinish: false);
+      return window.length;
+    } catch (_) {
+      return 0;
+    } finally {
+      _statusPollInFlight = false;
+    }
+  }
+
   @override
   void onClose() {
     _refreshEpoch++;
@@ -225,6 +289,7 @@ class FavoriteController extends LocalReactivePageController<LiveRoom>
     _configSubscription?.cancel();
     _autoRefreshTimer?.cancel();
     _debounceTimer?.cancel();
+    _statusPollTimer?.cancel();
     _cancelPendingResumeRefresh();
     _favoriteSnapshotTimer?.cancel();
     for (final worker in _workers) {
@@ -302,6 +367,20 @@ class FavoriteController extends LocalReactivePageController<LiveRoom>
 
   List<LiveRoom> getAllRooms() {
     return List<LiveRoom>.from(SettingsService.to.fav.favoriteRooms.v);
+  }
+
+  /// 批量取消收藏(关注页批量管理「删除所选」;真源 FollowController
+  /// removeMany 同语义)。走既有 [FavoriteRoomController.mutateRoomsDurably]
+  /// 管线一次落盘:同 key(`platform:roomId`)条目一次性移除,持久化失败
+  /// 由该管线回滚,不产生多次写盘。
+  Future<bool> removeMany(Iterable<LiveRoom> rooms) async {
+    if (isClosed) return false;
+    final keys = rooms.map((room) => room.identityKey).toSet();
+    if (keys.isEmpty) return false;
+    final changed = await SettingsService.to.fav.mutateRoomsDurably((current) =>
+        [for (final room in current) if (!keys.contains(room.identityKey)) room]);
+    applyLocalFilter();
+    return changed;
   }
 
   List<LiveRoom> getFilteredRoomsIgnoringLiveStatus() {

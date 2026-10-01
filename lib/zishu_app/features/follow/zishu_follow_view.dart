@@ -3,11 +3,15 @@ import 'dart:async';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/core/site/douyin/douyin_follow_import.dart';
 import 'package:pure_live/core/site/douyin/douyin_site.dart';
+import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/follow/zishu_follow_empty_state.dart';
 import 'package:pure_live/zishu_app/features/follow/zishu_follow_filters.dart';
 import 'package:pure_live/zishu_app/features/follow/zishu_follow_room_list.dart';
+import 'package:pure_live/zishu_app/features/play/room_reminder_store.dart';
+import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
 
 /// zishu 关注页(pure_live [FavoriteController] 适配版)。
 ///
@@ -17,8 +21,14 @@ import 'package:pure_live/zishu_app/features/follow/zishu_follow_room_list.dart'
 /// - 状态筛选 → `tabOnlineIndex`(0 开播 / 1 录播 / 2 未开播),
 ///   经 `animateToStatusIndex` 与 `tabController` 保持同步;
 /// - 平台筛选 → `availableFavoriteSites` + `tabSiteIndex`,经 `selectSiteIndex`;
-/// - 列表/刷新 → [BasePageView](与收藏页同一套分页/刷新/错误接线)+ `refreshData`。
-/// 卡片档网格复用 [ZishuRoomCard];空态为 zishu FollowEmptyState 移植版。
+/// - 列表/刷新 → [BasePageView](与收藏页同一套分页/刷新/错误接线)+ `refreshData`;
+/// - 批量管理 → 头部工具行 + 长按进批量(真源 _batchMode/_selectedKeys
+///   语义;删除所选 = [FavoriteController.removeMany],开关提醒 =
+///   [RoomReminderStore] 批量接口);
+/// - 抖音筛选下另有「导入直播中」入口(真源 _importLive 语义,反馈走
+///   [ZishuStageHint])。
+/// 卡片档为关注条目卡 [ZishuFollowEntryCard](真源 follow_entry_card
+/// 页面态移植);空态为 zishu FollowEmptyState 移植版。
 class ZishuFollowView extends StatelessWidget {
   const ZishuFollowView({super.key});
 
@@ -49,14 +59,56 @@ class _ZishuFollowBodyState extends State<_ZishuFollowBody> {
   /// 组合同步进行中(按钮转圈防重入,真源 _importing 同款)。
   bool _syncing = false;
 
+  /// 「导入直播中」进行中(按钮转圈防重入,真源 _importingLive 同款)。
+  bool _importingLive = false;
+
+  /// 批量管理进行中(真源 _batchMode 同名语义)。
+  bool _batchMode = false;
+
+  /// 批量选中集(key = `platform:roomId`,真源 _selectedKeys 同语义)。
+  final Set<String> _selectedKeys = {};
+
+  // —— 批量管理文案:无既有 i18n key,中文常量(文案照真源 _buildHeader
+  // / _deleteSelected / _setRemindSelected,翻译 key 由主会话统一裁决)。
+  static const String _kBatchEntry = '批量管理';
+  static const String _kBatchCancel = '取消';
+  static const String _kBatchSelectAll = '全选';
+  static const String _kBatchSelectNone = '全不选';
+  static const String _kBatchRemindOff = '关提醒';
+
+  static String _deletedToast(int count) => '已删除 $count 个关注';
+
+  static String _remindOnToast(int count) => '已为 $count 个关注开启提醒';
+
+  static String _remindOffToast(int count) => '已为 $count 个关注关闭提醒';
+
+  // —— 导入直播中文案:无既有 i18n key,中文常量(照真源 _importLive)。
+  static const String _kImportLiveEntry = '导入直播中';
+  static const String _kImportLiveTooltip = '导入关注中正在直播的房间';
+  static const String _kImportLiveDoneNone = '没有发现新的直播关注';
+  static const String _kImportLiveFailed = '直播关注导入失败,请稍后重试';
+
+  static String _importLiveDoneToast(int count) => '已导入 $count 个直播关注';
+
+  static String _removedToast(LiveRoom room) => '已移除「${(room.nick ?? '').trim()}」的关注';
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    // 舞台提示浮层挂页面 Stack 顶层:「导入直播中」的完成/失败反馈走
+    // ZishuStageHint 通道(任务口径;该通道需要页面内挂 Overlay 才可见)。
+    return Stack(
       children: [
-        _buildHeader(context),
-        _buildToolbar(context),
-        Expanded(child: _buildContent()),
+        Positioned.fill(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildHeader(context),
+              _buildToolbar(context),
+              Expanded(child: _buildContent()),
+            ],
+          ),
+        ),
+        const ZishuStageHintOverlay(),
       ],
     );
   }
@@ -69,9 +121,9 @@ class _ZishuFollowBodyState extends State<_ZishuFollowBody> {
     return index >= 0 && index < sites.length && sites[index].id == Sites.douyinSite;
   }
 
-  /// 标题 + 刷新行(对齐 zishu follow_view 头部:标题 headline 档,
-  /// 刷新中显示 16px 进度圈替代按钮;真源 2c8d208:抖音筛选下替换为
-  /// 「导入抖音关注」组合同步刷新按钮 follow-sync-douyin)。
+  /// 标题 + 刷新/批量操作行(真源 _buildHeader 口径:平台操作与批量操作
+  /// 同一个 Wrap;批量模式展开 取消/全选/删除所选/开关提醒,否则显示
+  /// 「批量管理」入口)。
   Widget _buildHeader(BuildContext context) {
     final controller = widget.controller;
     return Padding(
@@ -80,34 +132,186 @@ class _ZishuFollowBodyState extends State<_ZishuFollowBody> {
         children: [
           Text(i18n('favorites_title'), style: context.textTitle.copyWith(fontSize: AppFontSize.headline)),
           const Spacer(),
-          Obx(() {
-            if (_isDouyinFilterActive(controller)) {
-              if (_syncing) {
-                return const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2));
-              }
-              // DouyinFollowImporter 与 LiveSite 无子类型关系,is 提升不生效,
-              // 用具体类 DouyinSite 转换(douyinSite 恒为 DouyinSite)。
-              final importer = Sites.of(Sites.douyinSite).liveSite as DouyinSite;
-              final hasCookie = importer.hasFollowImportCookie;
-              return IconButton(
-                key: const Key('follow-sync-douyin'),
-                tooltip: hasCookie ? i18n('follow_sync_douyin_tooltip') : i18n('follow_sync_need_cookie'),
-                onPressed: hasCookie ? _syncFollows : null,
-                icon: Icon(Icons.refresh_rounded, size: 20, color: context.tokens.textSecondary),
+          Flexible(
+            child: Obx(() {
+              return Wrap(
+                alignment: WrapAlignment.end,
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.xs,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [..._buildPlatformActions(context, controller), ..._buildBatchActions(context, controller)],
               );
-            }
-            if (controller.loadding.value) {
-              return const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2));
-            }
-            return IconButton(
-              tooltip: i18n('refresh'),
-              onPressed: controller.refreshData,
-              icon: Icon(Icons.refresh_rounded, size: 20, color: context.tokens.textSecondary),
-            );
-          }),
+            }),
+          ),
         ],
       ),
     );
+  }
+
+  /// 平台相关操作:抖音筛选下 = 「导入直播中」+ 组合同步刷新钮
+  /// (真源 2c8d208/195-209 同序),否则通用刷新钮。
+  List<Widget> _buildPlatformActions(BuildContext context, FavoriteController controller) {
+    if (_isDouyinFilterActive(controller)) {
+      // DouyinFollowImporter 与 LiveSite 无子类型关系,is 提升不生效,
+      // 用具体类 DouyinSite 转换(douyinSite 恒为 DouyinSite)。
+      final importer = Sites.of(Sites.douyinSite).liveSite as DouyinSite;
+      final hasCookie = importer.hasFollowImportCookie;
+      return [
+        // 「导入直播中」(真源 _importLive 口径):只拉关注中在播的房间,
+        // 无 cookie 置灰(tooltip 提示,与组合同步钮同一护栏)。
+        if (_importingLive)
+          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+        else
+          Tooltip(
+            message: hasCookie ? _kImportLiveTooltip : i18n('follow_sync_need_cookie'),
+            child: TextButton.icon(
+              key: const Key('follow-import-live'),
+              onPressed: hasCookie ? _importLive : null,
+              icon: Icon(Icons.podcasts_rounded, size: 16, color: context.tokens.liveBadge),
+              label: Text(_kImportLiveEntry, style: context.textBody.copyWith(color: context.tokens.liveBadge)),
+            ),
+          ),
+        if (_syncing)
+          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+        else
+          IconButton(
+            key: const Key('follow-sync-douyin'),
+            tooltip: hasCookie ? i18n('follow_sync_douyin_tooltip') : i18n('follow_sync_need_cookie'),
+            onPressed: hasCookie ? _syncFollows : null,
+            icon: Icon(Icons.refresh_rounded, size: 20, color: context.tokens.textSecondary),
+          ),
+      ];
+    }
+    if (controller.loadding.value) {
+      return const [SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))];
+    }
+    return [
+      IconButton(
+        tooltip: i18n('refresh'),
+        onPressed: controller.refreshData,
+        icon: Icon(Icons.refresh_rounded, size: 20, color: context.tokens.textSecondary),
+      ),
+    ];
+  }
+
+  /// 批量操作组(真源 _buildHeader _batchMode 分支逐字:取消/全选·全不选/
+  /// 删除所选 (N) 红/开提醒 (N) accent/关提醒 textSecondary;非批量态
+  /// 显「批量管理」入口 checklist_rounded 16 textSecondary)。
+  List<Widget> _buildBatchActions(BuildContext context, FavoriteController controller) {
+    final tokens = context.tokens;
+    if (!_batchMode) {
+      return [
+        TextButton.icon(
+          onPressed: () => _enterBatch(),
+          icon: Icon(Icons.checklist_rounded, size: 16, color: tokens.textSecondary),
+          label: Text(_kBatchEntry, style: context.textBody.copyWith(color: tokens.textSecondary)),
+        ),
+      ];
+    }
+    // 全选范围 = 当前可见条目(控制器已过滤 + 分页后的展示列表;真源
+    // 同样只对当页可见条目做全选)。
+    final visible = controller.list.toList(growable: false);
+    return [
+      TextButton(
+        onPressed: _exitBatch,
+        child: Text(_kBatchCancel, style: context.textBody.copyWith(color: tokens.textSecondary)),
+      ),
+      TextButton(
+        onPressed: () => _toggleSelectAll(visible),
+        child: Text(_allSelected(visible) ? _kBatchSelectNone : _kBatchSelectAll, style: context.textBody),
+      ),
+      TextButton.icon(
+        onPressed: _selectedKeys.isEmpty ? null : _deleteSelected,
+        icon: Icon(Icons.delete_outline_rounded, size: 16, color: tokens.error),
+        label: Text('删除所选 (${_selectedKeys.length})', style: context.textBody.copyWith(color: tokens.error)),
+      ),
+      TextButton.icon(
+        onPressed: _selectedKeys.isEmpty ? null : () => _setRemindSelected(true),
+        icon: Icon(Icons.notifications_active_rounded, size: 16, color: tokens.accent),
+        label: Text('开提醒 (${_selectedKeys.length})', style: context.textBody.copyWith(color: tokens.accent)),
+      ),
+      TextButton(
+        onPressed: _selectedKeys.isEmpty ? null : () => _setRemindSelected(false),
+        child: Text(_kBatchRemindOff, style: context.textBody.copyWith(color: tokens.textSecondary)),
+      ),
+    ];
+  }
+
+  // —— 批量管理(真源 _enterBatch/_exitBatch/_toggleSelect/_toggleSelectAll
+  // /_deleteSelected/_setRemindSelected 同语义,选中键 = identityKey)。
+
+  void _enterBatch([String? selectKey]) {
+    setState(() {
+      _batchMode = true;
+      if (selectKey != null) _selectedKeys.add(selectKey);
+    });
+  }
+
+  void _exitBatch() {
+    setState(() {
+      _batchMode = false;
+      _selectedKeys.clear();
+    });
+  }
+
+  void _toggleSelect(LiveRoom room) {
+    setState(() {
+      // add 返回 false 表示已存在 → 移除(切换语义)。
+      if (!_selectedKeys.add(room.identityKey)) _selectedKeys.remove(room.identityKey);
+    });
+  }
+
+  bool _allSelected(List<LiveRoom> items) =>
+      items.isNotEmpty && items.every((room) => _selectedKeys.contains(room.identityKey));
+
+  void _toggleSelectAll(List<LiveRoom> items) {
+    setState(() {
+      if (_allSelected(items)) {
+        _selectedKeys.clear();
+      } else {
+        _selectedKeys
+          ..clear()
+          ..addAll([for (final room in items) room.identityKey]);
+      }
+    });
+  }
+
+  /// 选中键 → 完整房间记录(取消收藏/批量提醒都以房间为准;从全量收藏
+  /// 解析,选中后切换筛选也不丢条目)。
+  List<LiveRoom> _selectedRooms() {
+    final keys = Set<String>.from(_selectedKeys);
+    return [
+      for (final room in widget.controller.getAllRooms())
+        if (keys.contains(room.identityKey)) room,
+    ];
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_selectedKeys.isEmpty) return;
+    final count = _selectedKeys.length;
+    await widget.controller.removeMany(_selectedRooms());
+    if (!mounted) return;
+    _exitBatch();
+    ToastUtil.show(_deletedToast(count));
+  }
+
+  void _setRemindSelected(bool enabled) {
+    if (_selectedKeys.isEmpty) return;
+    final count = _selectedKeys.length;
+    final targets = _selectedRooms();
+    if (enabled) {
+      RoomReminderStore.to.addMany(targets);
+    } else {
+      RoomReminderStore.to.removeMany(targets);
+    }
+    ToastUtil.show(enabled ? _remindOnToast(count) : _remindOffToast(count));
+  }
+
+  /// 条目级移除(卡片操作钮的垃圾桶;真源无确认就不加确认)。
+  Future<void> _removeEntry(LiveRoom room) async {
+    await widget.controller.removeMany([room]);
+    if (!mounted) return;
+    ToastUtil.show(_removedToast(room));
   }
 
   /// 组合同步(真源 2c8d208 关注页入口,04e8a4b「双线并行」语义):
@@ -191,6 +395,38 @@ class _ZishuFollowBodyState extends State<_ZishuFollowBody> {
     return added;
   }
 
+  /// 「导入直播中」(真源 _importLive 语义):拉取关注中在播的房间并合并
+  /// 进收藏,反馈走 ZishuStageHint(转圈防重入,失败提示不抛细节)。
+  Future<void> _importLive() async {
+    if (_importingLive) return;
+    setState(() => _importingLive = true);
+    try {
+      final added = await _runImportLive();
+      if (!mounted) return;
+      ZishuStageHint.show(added == 0 ? _kImportLiveDoneNone : _importLiveDoneToast(added));
+    } catch (_) {
+      if (mounted) ZishuStageHint.show(_kImportLiveFailed);
+    } finally {
+      if (mounted) setState(() => _importingLive = false);
+    }
+  }
+
+  /// 导入直播中业务流(返回本次新增条数):follow_top 只回在播房间,
+  /// 导入条目自带在播状态,无需补刷新(真源 importDouyinLiveFollows 只
+  /// 追加同语义);合并走既有 [DouyinFollowImport.mergeImportedRooms]。
+  Future<int> _runImportLive() async {
+    // DouyinFollowImporterLive 扩展成员:接口默认实现(follow_top 协议)。
+    final DouyinFollowImporter importer = Sites.of(Sites.douyinSite).liveSite as DouyinSite;
+    final imported = await importer.importFollowingLive();
+    var added = 0;
+    await SettingsService.to.fav.mutateRoomsDurably((current) {
+      final (merged, count) = DouyinFollowImport.mergeImportedRooms(current, imported);
+      added = count;
+      return merged;
+    });
+    return added;
+  }
+
   /// 筛选行:状态三段 + 平台 chips + 视图两档,Wrap 自适应换行。
   Widget _buildToolbar(BuildContext context) {
     final controller = widget.controller;
@@ -257,6 +493,26 @@ class _ZishuFollowBodyState extends State<_ZishuFollowBody> {
           density: _density,
           scrollController: scrollController,
           emptyView: ZishuFollowEmptyState(controller: controller),
+          // 批量管理:条目行首/封面左上出复选框,长按进批量(卡片与行都
+          // 支持);批量态点击改为切换选中,退出恢复进播放页。
+          selectMode: _batchMode,
+          selectedKeys: _selectedKeys,
+          onTap: (room) {
+            if (_batchMode) {
+              _toggleSelect(room);
+            } else {
+              AppNavigator.toLiveRoomDetail(liveRoom: room);
+            }
+          },
+          onLongPress: (room) {
+            if (!_batchMode) _enterBatch(room.identityKey);
+          },
+          onToggleSelect: _toggleSelect,
+          // 超关=本仓「特别关注」语义(真源 onToggleSpecial);提醒/移除
+          // 分别走本地提醒标记与批量移除管线。
+          onToggleSuper: (room) => SuperFollowController.to.toggle(room),
+          onToggleRemind: (room) => RoomReminderStore.to.toggle(room),
+          onRemove: _removeEntry,
         );
       },
     );

@@ -14,6 +14,10 @@
 //   SuperFollowController);
 // - 头像取图与顶栏关注浮层小卡同源:avatar 优先、封面兜底,斗鱼过期截图
 //   CDN(`rpic.douyucdn.cn/asrpic…`)排除(真源 `_followAvatarSrc` 正则);
+// - 分页窗口对齐真源 follow_panel.dart:26-34/79-89/134-138/203/225-243:
+//   单页 48 条(web PLAY_FOLLOW_PAGE_SIZE),首屏 48,滚动距底 96px 内
+//   再放一页,hasMore 时底部提示「向下滚动加载更多…」;换平台回卷首屏
+//   (真源 onChanged 口径),视图切换不回卷(真源同款)。
 // - 视图/平台筛选是会话级记忆(切房重建侧栏后保持,与
 //   zishu_play_side_panel.dart 的 `_lastSidePanelTab` 同款机制):
 //   真源收进 PlaySidePanelPrefs(followGrid/followSite),本仓库最小等价物
@@ -30,6 +34,7 @@ import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/browse/zishu_room_card.dart';
 import 'package:pure_live/zishu_app/features/follow/zishu_follow_filters.dart';
 import 'package:pure_live/zishu_app/features/follow/zishu_follow_room_list.dart';
+import 'package:pure_live/zishu_app/features/follow/zishu_follow_entry_card.dart';
 import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
 
@@ -53,10 +58,35 @@ class _ZishuPlayFollowPanelState extends State<ZishuPlayFollowPanel> {
   set _grid(bool value) => setState(() => _sideFollowGrid = value);
 
   String get _siteId => _sideFollowSiteId;
-  set _siteId(String value) => setState(() => _sideFollowSiteId = value);
+
+  /// 已展示条数(分页窗口)。对齐 web `PLAY_FOLLOW_PAGE_SIZE = 48`
+  /// (真源 follow_panel.dart:26-34):首屏只放 48 条,滚动距底 96px 内
+  /// 再放一页,底部提示「向下滚动加载更多…」。
+  int _visibleCount = _kFollowPageSize;
+
+  /// 距底部多少像素内视为「滚到底」(触发下一页加载)。
+  static const double _kLoadMoreTriggerExtent = 96;
+
+  /// 单页条数(web `PLAY_FOLLOW_PAGE_SIZE`)。
+  static const int _kFollowPageSize = 48;
+
+  /// 本轮待渲染的可见条目总数(由 build 写回,供滚动回调判定还有没有下一页)。
+  int _visibleTotal = 0;
 
   /// 组合同步进行中(按钮转圈防重入,真源 _syncing 同款)。
   bool _syncing = false;
+
+  /// 滚动到底附近再放一页(真源 follow_panel.dart:79-89:竖轴通知 +
+  /// 距底 ≤96px 才触发;返回 false 不消费通知)。
+  bool _onScroll(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical || _visibleTotal <= _visibleCount) {
+      return false;
+    }
+    if (notification.metrics.maxScrollExtent - notification.metrics.pixels <= _kLoadMoreTriggerExtent) {
+      setState(() => _visibleCount += _kFollowPageSize);
+    }
+    return false;
+  }
 
   /// 平台筛选候选表:全平台 + 有关注条目的平台。与「我的关注」页
   /// (`FavoriteController.availableFavoriteSites`)同源同算:
@@ -172,6 +202,12 @@ class _ZishuPlayFollowPanelState extends State<ZishuPlayFollowPanel> {
       final favorites = SettingsService.to.fav.favoriteRooms.v;
       final sites = _availableSites(favorites);
       final rooms = _visibleRooms(favorites);
+      // 分页窗口(真源 follow_panel.dart:95-97):_visibleTotal 由 build
+      // 写回,供滚动回调判定还有没有下一页;hasMore 才把窗口裁到
+      // _visibleCount,数据变少时自然回卷为全量。
+      _visibleTotal = rooms.length;
+      final hasMore = rooms.length > _visibleCount;
+      final windowed = hasMore ? rooms.sublist(0, _visibleCount) : rooms;
       return Column(
         key: const Key('play-side-follow-panel'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -184,10 +220,17 @@ class _ZishuPlayFollowPanelState extends State<ZishuPlayFollowPanel> {
                     title: i18n('favorites_title'),
                     text: i18n('empty_favorite_online_title'),
                   )
-                : _grid
-                ? _buildCardGrid(context, rooms)
-                : _buildCompactList(rooms),
+                : NotificationListener<ScrollNotification>(
+                    // 滚动到底附近再放一页(真源 follow_panel.dart:182 同款
+                    // NotificationListener<ScrollNotification> 挂法,只包
+                    // 列表区,不包空态/工具行)。
+                    onNotification: _onScroll,
+                    child: _grid ? _buildCardGrid(context, windowed) : _buildCompactList(windowed),
+                  ),
           ),
+          // 还有更多时底部提示行(真源 follow_panel.dart:203 同款 Column
+          // 尾挂法):列表滚到底自动再放一页,这行提示是给用户的可见信号。
+          if (hasMore) const _FollowMoreHint(),
         ],
       );
     });
@@ -228,7 +271,15 @@ class _ZishuPlayFollowPanelState extends State<ZishuPlayFollowPanel> {
               selectedIndex: sites.indexWhere((site) => site.id == _siteId),
               onSelected: (index) {
                 if (index < 0 || index >= sites.length) return;
-                _siteId = sites[index].id;
+                // 换平台 = 换列表(真源 follow_panel.dart:134-138:平台
+                // onChanged 单次 setState 同时换筛选并把 _visibleCount 回卷
+                // 首屏,否则一换平台就直接铺满 48×n);视图切换真源不重置
+                // 窗口 —— 照真源,只平台筛选重置。这里直接写顶层变量而非
+                // 走 _siteId setter,保持与真源同款的单次 setState。
+                setState(() {
+                  _sideFollowSiteId = sites[index].id;
+                  _visibleCount = _kFollowPageSize;
+                });
               },
             ),
           ),
@@ -288,9 +339,32 @@ class _ZishuPlayFollowPanelState extends State<ZishuPlayFollowPanel> {
             childAspectRatio: cardWidth / (cardWidth * 9 / 16 + metaHeight),
           ),
           itemCount: rooms.length,
-          itemBuilder: (context, index) => ZishuRoomCard(room: rooms[index]),
+          // compact 语义对齐真源:侧栏网格走关注卡紧凑形态(隐藏统计/
+          // 操作行,元信息只主播名+标题),非浏览卡。
+          itemBuilder: (context, index) => ZishuFollowEntryCard(room: rooms[index], compact: true),
         );
       },
+    );
+  }
+}
+
+/// 侧栏关注列表底部提示(真源 follow_panel.dart:225-243 `_FollowMoreHint`
+/// 复刻,对齐 web `.follow-recommend__more-hint`):还有更多时引导滚动 ——
+/// 列表滚到底部会自动再放一页,这行提示是给用户的可见信号。
+class _FollowMoreHint extends StatelessWidget {
+  const _FollowMoreHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Text(
+        // 真源同为字面量、本仓无对应 i18n key(搜索页的 load_more_results
+        // 是按钮文案,语义不合),按规约用中文常量并记录。
+        '向下滚动加载更多…',
+        textAlign: TextAlign.center,
+        style: context.textCaption,
+      ),
     );
   }
 }

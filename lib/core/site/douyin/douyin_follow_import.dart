@@ -26,7 +26,9 @@ import 'dart:math';
 import 'package:pure_live/common/models/live_room.dart';
 import 'package:pure_live/core/common/core_log.dart';
 import 'package:pure_live/core/common/http_client.dart';
+import 'package:pure_live/core/common/parser_config.dart';
 import 'package:pure_live/core/common/site_ids.dart';
+import 'package:pure_live/core/site/douyin/douyin_audience.dart';
 import 'package:pure_live/core/utils/douyin/douyin_request_params.dart';
 import 'package:pure_live/core/utils/douyin/douyin_utils.dart';
 
@@ -43,12 +45,37 @@ class DouyinFollowImportProgress {
 /// 「导入抖音关注」能力位:[DouyinSite] 实现;UI 经
 /// `Sites.of(Sites.douyinSite).liveSite is DouyinFollowImporter` 探测,
 /// 与逐房间刷新的 LiveSiteRoomRefresher 能力位同一套用法。
+///
+/// 「导入直播中」([importFollowingLive])以**扩展**提供默认实现
+/// ([DouyinFollowImporterLive]):接口本体不能加抽象成员 —— 本仓
+/// DouyinSite 用 `implements` 实现该接口(implements 不继承方法体),
+/// 加抽象成员会逼 DouyinSite 同步补实现,而 douyin_site.dart 不在本轨
+/// 白名单内;扩展成员对所有实现者可见且零侵入,是 Dart 侧「接口默认
+/// 实现」的等价机制。
 abstract interface class DouyinFollowImporter {
   /// 拉取当前登录账号的全部关注并转为离线占位房间。
   Future<List<LiveRoom>> importFollowing({void Function(DouyinFollowImportProgress progress)? onProgress});
 
   /// 登录 cookie 是否就绪(无 cookie 时 UI 置灰导入按钮)。
   bool get hasFollowImportCookie;
+}
+
+/// 「导入直播中」默认实现(关注页抖音筛选下的直播关注导入):
+/// 协议层直接走**只返回在播房间**的 `/webcast/feed/follow_top/`
+/// (真源 fetchDouyinFollowLiveRooms 同端点)—— 而非「importFollowing
+/// 结果按 isLiveNow 过滤」:关注列表接口(`following/list`)不带可信
+/// 在播状态,导入条目恒为离线占位,过滤它恒得空集,等于假按钮。
+extension DouyinFollowImporterLive on DouyinFollowImporter {
+  /// 拉取当前登录账号关注中正在直播的房间(真源 follow_provider
+  /// importDouyinLiveFollows 的协议位,complete 关注导入的轻量回退:
+  /// `/following/list/` 被限流时仍可先把在播房间加入关注)。
+  ///
+  /// 登录 cookie 经 [DouyinFollowImport.fetchFollowingLive] 从
+  /// ParserConfig 解析,口径与 [DouyinFollowImporter.hasFollowImportCookie]
+  /// 对应的账号页 douyinCookie 一致。
+  Future<List<LiveRoom>> importFollowingLive({void Function(DouyinFollowImportProgress progress)? onProgress}) {
+    return DouyinFollowImport.fetchFollowingLive(onProgress: onProgress);
+  }
 }
 
 class DouyinFollowImport {
@@ -119,6 +146,198 @@ class DouyinFollowImport {
       sourceType = 1;
     }
     return rooms;
+  }
+
+  /// 分页上限(真源 fetchDouyinFollowLiveRooms 同款护栏:游标异常时停)。
+  static const int _maxFollowLivePages = 200;
+
+  /// 登录 cookie:与 [DouyinSite] 关注导入同源(ParserConfig 账号页
+  /// douyinCookie,trim 后判空;不做 ttwid 匿名兜底)。此处按同一表达式
+  /// 解析而非从 DouyinSite 取 —— 该字段是其私有 getter,本轨白名单不含
+  /// douyin_site.dart;两侧口径耦合点在此注释锚定,cookie 来源变更须同改。
+  static String _followImportCookie() => (ParserConfig.instance?.persistentCookieFor(SiteIds.douyinSite) ?? '').trim();
+
+  /// 拉取当前登录账号关注中**正在直播**的房间([DouyinFollowImporterLive
+  /// .importFollowingLive] 的协议实现)。
+  ///
+  /// - 端点 `/webcast/feed/follow_top/`:返回关注直播流,翻页游标为
+  ///   `extra.follow_session_id` + `extra.max_time`(真源
+  ///   fetchDouyinFollowLiveRooms 同参数表;与 following/list 的 offset
+  ///   游标不同源,不混用);
+  /// - 响应 envelope 解析与首页 feed 同形(data 列表 / data.data 两种代次),
+  ///   房间恒带在播状态(feed 只含在播间,导入占位无需刷新回填);
+  /// - [cookie] 缺省走 [_followImportCookie];空 cookie 抛 StateError
+  ///   (与 [fetchFollowing] 同语义,UI 侧经 hasFollowImportCookie 置灰);
+  /// - [onProgress]:feed 无关注总数(total 恒 0,不伪造),报第 page 页
+  ///   已发现 imported 个。
+  static Future<List<LiveRoom>> fetchFollowingLive({
+    String? cookie,
+    void Function(DouyinFollowImportProgress progress)? onProgress,
+  }) async {
+    final sessionCookie = (cookie ?? _followImportCookie()).trim();
+    if (sessionCookie.isEmpty) {
+      throw StateError('导入抖音直播关注需要登录 Cookie');
+    }
+
+    final rooms = <LiveRoom>[];
+    final seen = <String>{};
+    var followSessionId = '0';
+    var maxTime = '0';
+    for (var page = 0; page < _maxFollowLivePages; page++) {
+      // webcast 系端点在 live 宿主(真源 signedDouyinGet 基址
+      // live.douyin.com;本仓 getRecommendRooms 的 /webcast/feed/ 同宿主),
+      // 与 aweme 系的 following/list(www 宿主)不同源。
+      final json = await _signedWebGet(
+        'https://live.douyin.com/webcast/feed/follow_top/',
+        cookie: sessionCookie,
+        referer: 'https://live.douyin.com/',
+        params: <String, dynamic>{
+          'aid': '6383',
+          'app_name': 'douyin_web',
+          'live_id': '1',
+          'device_platform': 'web',
+          'language': 'zh-CN',
+          'enter_from': 'link_share',
+          'cookie_enabled': 'true',
+          'screen_width': '1920',
+          'screen_height': '1080',
+          'browser_language': 'zh-CN',
+          'browser_platform': 'Win32',
+          'browser_name': 'Chrome',
+          'browser_version': '141.0.0.0',
+          'os_name': 'Windows',
+          'os_version': '10',
+          'enter_source': 'homepage_pc_followtop',
+          'need_pinned_info': '0',
+          'source_key': 'web_homepage_follow_top',
+          'webcast_version_code': '170400',
+          'version_code': '170400',
+          'need_map': '1',
+          'follow_session_id': followSessionId,
+          'maxtime': maxTime,
+        },
+      );
+      final statusCode = _asInt(json['status_code']);
+      if (statusCode != 0) {
+        throw StateError('抖音关注直播流获取失败(code=$statusCode)');
+      }
+
+      _collectFollowingLiveRooms(json, rooms, seen);
+      onProgress?.call(DouyinFollowImportProgress(page: page + 1, imported: rooms.length));
+
+      final extra = json['extra'] is Map ? Map<String, dynamic>.from(json['extra'] as Map) : const <String, dynamic>{};
+      if (!_asBool(extra['has_more'])) break;
+      final nextSessionId = _firstText([extra['follow_session_id']]);
+      final nextMaxTime = _firstText([extra['max_time']]);
+      // 游标缺失或未推进:停,不再空转请求(真源同款护栏)。
+      if (nextSessionId.isEmpty || nextMaxTime.isEmpty) break;
+      if (nextSessionId == followSessionId && nextMaxTime == maxTime) break;
+      followSessionId = nextSessionId;
+      maxTime = nextMaxTime;
+    }
+    return rooms;
+  }
+
+  /// 递归收集 follow_top feed 的房间 envelope(响应与首页 feed 同形:
+  /// envelope 内嵌 data(JSON 字符串或 Map)/ room / 自身三代候选,
+  /// 对齐 DouyinSite.parseRecommendRooms 的形状兼容口径)。
+  static void _collectFollowingLiveRooms(Object? value, List<LiveRoom> rooms, Set<String> seen) {
+    final rawData = value is Map ? value['data'] : null;
+    final entries = rawData is Map ? rawData['data'] : rawData;
+    if (entries is! List) return;
+    for (final raw in entries) {
+      final room = _followLiveRoomFromEnvelope(raw);
+      if (room != null && seen.add(room.normalizedRoomId)) rooms.add(room);
+    }
+  }
+
+  /// 单条 feed envelope → 在播 [LiveRoom];无房间号/无房间形状返回 null。
+  static LiveRoom? _followLiveRoomFromEnvelope(Object? raw) {
+    final envelope = _mapOf(raw);
+    if (envelope == null) return null;
+    final embedded = _mapOf(_decodeEmbeddedJson(envelope['data']));
+    final nestedRoom = _mapOf(envelope['room']);
+    final room = <Map<String, dynamic>?>[embedded, nestedRoom, envelope].firstWhere(
+      (candidate) => candidate != null && _looksLikeLiveFeedRoom(candidate),
+      orElse: () => null,
+    );
+    if (room == null) return null;
+
+    final owner = _mapOf(room['owner']) ?? _mapOf(envelope['owner']) ?? const <String, dynamic>{};
+    final roomId = _firstText([
+      envelope['web_rid'],
+      owner['web_rid'],
+      room['web_rid'],
+      room['id_str'],
+      room['id'],
+    ]);
+    if (roomId.isEmpty) return null;
+
+    final nick = _firstText([owner['nickname'], envelope['nickname']]);
+    final title = _firstText([room['title'], envelope['title'], nick]);
+    final totalViewers = douyinTotalViewers(room);
+    final onlineViewers = douyinOnlineViewers(room);
+    final cover = _imageUrl(room['cover']);
+    final avatar = _firstText([
+      _imageUrl(owner['avatar_thumb']),
+      _imageUrl(owner['avatar_large']),
+      _imageUrl(envelope['avatar_thumb']),
+    ]);
+    return LiveRoom(
+      roomId: roomId,
+      userId: '',
+      title: title,
+      nick: nick,
+      avatar: avatar,
+      cover: cover.isEmpty ? _imageUrl(envelope['cover']) : cover,
+      area: _followLiveCategory(envelope, room),
+      typeName: '',
+      watching: totalViewers.isNotEmpty ? totalViewers : onlineViewers,
+      followers: '0',
+      platform: SiteIds.douyinSite,
+      link: 'https://live.douyin.com/$roomId',
+      status: true,
+      liveStatus: LiveStatus.live,
+      totalViewers: totalViewers,
+      onlineViewers: onlineViewers,
+      audienceMetricType: totalViewers.isNotEmpty ? AudienceMetricType.totalViewers : AudienceMetricType.onlineViewers,
+    );
+  }
+
+  /// envelope 内嵌 data 兼容:直接是 Map,或是 JSON 字符串(新版 feed 把
+  /// 房间塞进字符串编码的 data 字段,首页 feed 同款)。
+  static Object? _decodeEmbeddedJson(Object? value) {
+    if (value is Map) return value;
+    final text = value?.toString().trim() ?? '';
+    if (!text.startsWith('{')) return null;
+    try {
+      return jsonDecode(text);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  static Map<String, dynamic>? _mapOf(Object? value) => value is Map ? Map<String, dynamic>.from(value) : null;
+
+  static bool _looksLikeLiveFeedRoom(Map<String, dynamic> value) =>
+      value['owner'] is Map || value['title'] != null || value['id_str'] != null || value['stream_url'] is Map;
+
+  /// follow feed 的分类:tag_name 直取,缺失走 partition_road_map/tags 的
+  /// 标签表;全缺回落「关注」—— 与本文件导入占位分类同口径(feed 房间
+  /// 无分类不是「热门推荐」,不伪造真源首页 feed 的兜底文案)。
+  static String _followLiveCategory(Map<String, dynamic> envelope, Map<String, dynamic> room) {
+    final direct = _firstText([room['tag_name'], envelope['tag_name']]);
+    if (direct.isNotEmpty) return direct;
+    for (final source in [room['partition_road_map'], envelope['tags']]) {
+      if (source is! List) continue;
+      for (final rawTag in source) {
+        final tag = _mapOf(rawTag);
+        if (tag == null) continue;
+        final text = _firstText([tag['title'], tag['name'], tag['tag_name']]);
+        if (text.isNotEmpty) return text;
+      }
+    }
+    return '关注';
   }
 
   /// 导入结果与已有收藏合并(真源「组合同步:合并重复」口径)。

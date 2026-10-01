@@ -6,7 +6,7 @@ import 'package:pure_live/zishu/presentation/category_colors.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/platform_brands.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
-import 'package:pure_live/zishu_app/features/browse/zishu_room_card.dart';
+import 'package:pure_live/zishu_app/features/follow/zishu_follow_entry_card.dart';
 import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
 import 'package:pure_live/zishu_app/translation/translated_text.dart';
 
@@ -34,6 +34,10 @@ enum ZishuFollowDensity {
 ///
 /// 空列表时在内容区内以 [emptyView] 占位(SliverFillRemaining),
 /// 保持滚动体挂在 [scrollController] 上,下拉刷新仍然可用。
+///
+/// 批量管理(真源 FollowRoomList selectMode 口径):[selectMode] 打开时
+/// 条目行首/封面左上出现复选框,点击语义交由 [onTap](页面在批量态改为
+/// 切换选中),[onLongPress] 供长按进批量。
 class ZishuFollowRoomList extends StatelessWidget {
   const ZishuFollowRoomList({
     super.key,
@@ -41,12 +45,32 @@ class ZishuFollowRoomList extends StatelessWidget {
     required this.density,
     required this.emptyView,
     this.scrollController,
+    this.selectMode = false,
+    this.selectedKeys = const <String>{},
+    this.onTap,
+    this.onLongPress,
+    this.onToggleSelect,
+    this.onToggleSuper,
+    this.onToggleRemind,
+    this.onRemove,
   });
 
   final List<LiveRoom> rooms;
   final ZishuFollowDensity density;
   final Widget emptyView;
   final ScrollController? scrollController;
+
+  /// 批量选择态与选择集(key = `platform:roomId`,即 [LiveRoom.identityKey])。
+  final bool selectMode;
+  final Set<String> selectedKeys;
+
+  /// 点击条目(缺省进播放页;批量模式下由页面改为切换选中)。
+  final void Function(LiveRoom room)? onTap;
+  final void Function(LiveRoom room)? onLongPress;
+  final void Function(LiveRoom room)? onToggleSelect;
+  final void Function(LiveRoom room)? onToggleSuper;
+  final void Function(LiveRoom room)? onToggleRemind;
+  final void Function(LiveRoom room)? onRemove;
 
   final EdgeInsetsGeometry padding = const EdgeInsets.fromLTRB(
     AppSpacing.lg,
@@ -58,8 +82,10 @@ class ZishuFollowRoomList extends StatelessWidget {
   /// 卡片档最小列宽(对齐 zishu 页面网格,web `minmax(240px, 1fr)`)。
   static const double _cardMaxExtent = 240;
 
-  /// 卡片元信息区高度预算(与 ZishuBrowseGrid 的 58px 两行口径同源)。
-  static const double _cardMetaHeight = 58;
+  /// 卡片元信息区高度预算:页面档 92(真源 follow_room_list.dart:99
+  /// `_cardMetaHeight` 页面档,含统计/操作行三行),侧栏 compact 46 不在
+  /// 本列表内(侧栏网格由播放页侧栏轨自建)。
+  static const double _cardMetaHeight = 92;
 
   /// 列表档列宽约束(web `FollowRoomRowView--multi-col` 直译):
   /// 列宽下限 300px、单行上限 400px、列距 4.5px(0.28rem @16px 根字号)。
@@ -107,7 +133,18 @@ class ZishuFollowRoomList extends StatelessWidget {
           itemCount: rooms.length,
           itemBuilder: (context, index) {
             final room = rooms[index];
-            return ZishuRoomCard(key: ValueKey('${room.platform}:${room.roomId}'), room: room);
+            return ZishuFollowEntryCard(
+              key: ValueKey('${room.platform}:${room.roomId}'),
+              room: room,
+              selectMode: selectMode,
+              selected: selectedKeys.contains(room.identityKey),
+              onTap: () => (onTap ?? (r) => AppNavigator.toLiveRoomDetail(liveRoom: r))(room),
+              onLongPress: onLongPress == null ? null : () => onLongPress!(room),
+              onToggleSelect: onToggleSelect == null ? null : () => onToggleSelect!(room),
+              onToggleSuper: onToggleSuper == null ? null : () => onToggleSuper!(room),
+              onToggleRemind: onToggleRemind == null ? null : () => onToggleRemind!(room),
+              onRemove: onRemove == null ? null : () => onRemove!(room),
+            );
           },
         );
       },
@@ -135,7 +172,14 @@ class ZishuFollowRoomList extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: _rowColMax),
-              child: ZishuFollowRowItem(room: rooms[index]),
+              child: ZishuFollowRowItem(
+                room: rooms[index],
+                selectMode: selectMode,
+                selected: selectedKeys.contains(rooms[index].identityKey),
+                onTap: onTap == null ? null : () => onTap!(rooms[index]),
+                onLongPress: onLongPress == null ? null : () => onLongPress!(rooms[index]),
+                onToggleSelect: onToggleSelect == null ? null : () => onToggleSelect!(rooms[index]),
+              ),
             ),
           ),
         );
@@ -166,11 +210,31 @@ class ZishuFollowRoomList extends StatelessWidget {
 /// 列表档单行(对齐真源 zishu `FollowEntryRow` 四列表格,「我的关注」页与
 /// 播放页侧栏共用同一行组件 —— 真源口径:两处只有一套行视图):
 /// 分类 / 主播名 / 标题 / 状态(在播 = 人形图标 + 人数、轮播 = 金色描边
-/// 「轮播」小标签、未开播 = 次级文案)。
+/// 「轮播」小标签、未开播 = 次级文案)。批量模式在行首插入复选框
+/// (真源 FollowEntryRow selectMode 分支同款)。
 class ZishuFollowRowItem extends StatelessWidget {
-  const ZishuFollowRowItem({super.key, required this.room});
+  const ZishuFollowRowItem({
+    super.key,
+    required this.room,
+    this.selectMode = false,
+    this.selected = false,
+    this.onTap,
+    this.onLongPress,
+    this.onToggleSelect,
+  });
 
   final LiveRoom room;
+
+  /// 批量选择模式:行首 18px 复选框,选中行铺品牌色淡底(真源同款)。
+  final bool selectMode;
+  final bool selected;
+
+  /// 点击回调(缺省进播放页;批量模式下由页面改为切换选中)。
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  /// 复选框勾选回调(行本体点击的切换由页面 onTap 承担)。
+  final VoidCallback? onToggleSelect;
 
   /// 状态列宽(人形图标 + 最多 5 字人数/状态文案)。
   static const double _statusColumnWidth = 72;
@@ -191,11 +255,16 @@ class ZishuFollowRowItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final live = room.isLiveNow && room.isRecord != true;
+    // 批量选中行底:品牌色淡底,未收录平台回退 accent(真源
+    // FollowEntryRow selectedBg 同口径)。
+    final brand = PlatformBrandCatalog.byId(room.normalizedPlatformId);
+    final selectedBg = (brand?.color ?? tokens.accent).withValues(alpha: 0.14);
     final row = Material(
       key: Key('follow-row-${room.platform}-${room.roomId}'),
-      color: tokens.surface,
+      color: selectMode && selected ? selectedBg : tokens.surface,
       child: InkWell(
-        onTap: () => AppNavigator.toLiveRoomDetail(liveRoom: room),
+        onTap: onTap ?? () => AppNavigator.toLiveRoomDetail(liveRoom: room),
+        onLongPress: onLongPress,
         // 状态反馈(真源 FollowEntryRow 同款):hover 抬亮;焦点/按压 accent 低 alpha。
         hoverColor: tokens.surfaceRaised,
         splashColor: AppStateLayer.splashOf(tokens.accent),
@@ -209,6 +278,24 @@ class ZishuFollowRowItem extends StatelessWidget {
           ),
           child: Row(
             children: [
+              if (selectMode) ...[
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: Checkbox(
+                    value: selected,
+                    onChanged: (_) => onToggleSelect?.call(),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    activeColor: tokens.accent,
+                    checkColor: tokens.surfaceSoft,
+                    side: BorderSide(color: tokens.border),
+                    // hover/焦点/按压状态层走 token(AppStateLayer 等价)。
+                    overlayColor: zishuFollowControlStateLayer(tokens),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+              ],
               _categoryCell(context),
               const SizedBox(width: 4),
               _anchorCell(context),

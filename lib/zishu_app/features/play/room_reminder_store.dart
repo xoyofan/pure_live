@@ -57,4 +57,33 @@ class RoomReminderStore extends GetxController {
     remindRoomKeys.add(key);
     return true;
   }
+
+  /// 批量开启提醒(关注页批量管理「开提醒」;真源 FollowController
+  /// setRemindMany(keys, true) 的本仓等价物 —— pure_live 的提醒是本地
+  /// 标记集合,批量即集合并集)。一次 assignAll 落 Hive,返回是否有变化。
+  bool addMany(Iterable<LiveRoom> rooms) {
+    final next = remindRoomKeys.toSet();
+    var changed = false;
+    for (final room in rooms) {
+      if (room.normalizedRoomId.isEmpty) continue;
+      if (next.add(keyOf(room))) changed = true;
+    }
+    if (!changed) return false;
+    remindRoomKeys.assignAll(next);
+    return true;
+  }
+
+  /// 批量关闭提醒(关注页批量管理「关提醒」):集合差集一次落 Hive,
+  /// 返回是否有变化。
+  bool removeMany(Iterable<LiveRoom> rooms) {
+    final targets = {
+      for (final room in rooms)
+        if (room.normalizedRoomId.isNotEmpty) keyOf(room),
+    };
+    if (targets.isEmpty) return false;
+    final next = remindRoomKeys.where((key) => !targets.contains(key)).toList();
+    if (next.length == remindRoomKeys.length) return false;
+    remindRoomKeys.assignAll(next);
+    return true;
+  }
 }
