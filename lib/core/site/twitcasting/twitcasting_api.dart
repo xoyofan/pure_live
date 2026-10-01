@@ -8,6 +8,7 @@ import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
 import 'package:pure_live/core/common/http_client.dart';
 import 'package:pure_live/core/common/request_scope.dart';
+import 'package:pure_live/core/danmaku/twitcasting_danmaku.dart';
 import 'package:pure_live/model/live_play_quality.dart';
 
 enum TwitcastingFailure { transport, access, rateLimited, service, notFound, schema, cancelled, qualityUnavailable }
@@ -383,6 +384,9 @@ class TwitcastingApi {
     }
     final movieId = integer(movie['id']);
     if (movieId == null || movieId <= 0) throw const TwitcastingException(TwitcastingFailure.schema);
+    // The comment pubsub endpoint needs the live movie id; access-protected
+    // lives never reach here because the secret word check threw earlier.
+    room.danmakuData = TwitcastingDanmakuArgs(movieId: '$movieId');
     final streams = object(object(stream['tc-hls'])['streams']);
     final qualities = <LivePlayQuality>[];
     for (final key in ['high', 'medium', 'low']) {

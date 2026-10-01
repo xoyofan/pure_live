@@ -2,7 +2,7 @@
 
 > 当前焦点(2026-10-01 启动,2026-10-02 转入弹幕专项,多轮迭代):
 > 第一焦点**首页房间卡的观看人数与分类展示按平台补齐**已完成(迭代1-3);
-> 第二焦点**弹幕接入**(第四节清单 ❌ 未接入平台)进行中,SHOWROOM 已全链路落地(迭代4)。
+> 第二焦点**弹幕接入**(第四节清单 ❌ 未接入平台)进行中,SHOWROOM+TwitCasting 已全链路落地(迭代4-6)。
 > 数据链路:UI 房间卡(`lib/src/features/browse/widgets/room_card.dart` 渲染 `audience`/`category` 徽标)
 > ← `RoomSummary.online/category` ← `lib/src/shared/application/purelive_backend.dart`(裸映射 `room.watching`/`room.area`)
 > ← 各平台 LiveSite(`lib/core/site/*`,经 `Sites.supportSites` 全量注册覆盖)。
@@ -30,7 +30,7 @@
 | YY | ✅ | ✅ 迭代2 预热 | ✅ | ✅ | 真数据 | ✅ 迭代2 预热 | ✅ WS | 已对齐 |
 | AcFun | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(结果卡无观看,结构性) | ❌ | 完整参照实现 |
 | Picarto | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(搜索无观看,结构性) | ❌ | 无缺口 |
-| TwitCasting | ✅ | ✅ 迭代1 | ✅ | ✅ 迭代1 | 真实(HTML) | ✅(搜索无观看,结构性) | ❌ | 无缺口 |
+| TwitCasting | ✅ | ✅ 迭代1 | ✅ | ✅ 迭代1 | 真实(HTML) | ✅(搜索无观看,结构性) | ✅ 迭代6 WS(pubsub) | 弹幕已全链路验收 |
 | 猫耳FM | ✅(热度) | ✅ | ✅ | ✅ | 真数据 | ✅ | ❌(契约未验证) | 完整参照实现 |
 | CHZZK | ✅ 迭代1 透出 | ✅ | ✅ 迭代1 透出 | ✅ | 伪目录(仅popular) | ✅(仅频道卡) | ❌ | 已修 |
 | niconico | ✅ 迭代1 透出(累计观看口径) | 🚫 recent 行无分类 | ✅ 迭代1 透出 | ✅ 迭代1 | 硬编码7 tab | ✅ | ❌ | 已修 |
@@ -102,9 +102,24 @@
   - `wss://realtime.twitcasting.tv/pages/<id>?comment=true` → 404(路径/握手格式不对)
   - `frontendapi.twitcasting.tv/movies/<id>/comments` GET/POST → 405 Method Not Allowed(需登录态)
   - 频道 live 页 / movie 页 → 0 字节/404(匿名反爬),无法从播放器 JS 逆向 WS 协议
-  - **结论:协议未确证,按"不盲写"原则暂缓**;需登录态抓包或境外环境逆向播放器 JS 后再接
+  - ~~结论:协议未确证,按"不盲写"原则暂缓~~ → **迭代6 找到正确入口后已落地,见下**
 - [x] PandaTV / Picarto:聊天主机可达但协议无公开文档,列为后续探针候选(优先级低于 TwitCasting/CHZZK)
 - [x] CHZZK 弹幕:探针脚本已存档(`tool/probes/chzzk_chat_probe.dart`,REST+ALPN 已验证可拿 chatChannelId),待境外网络跑 WS 帧实测后按 SHOWROOM 模式接入
+
+### 迭代 6(2026-10-02)✅ 弹幕专项三:TwitCasting 全链路落地
+
+- [x] 协议确认(参考 [biliup danmaku crates](https://github.com/biliup/biliup) 协议实现 + 本机实测):
+  POST `https://twitcasting.tv/eventpubsuburl.php`(form: movie_id+password)→ 返回**带签名、约 1 小时时效的 WS 地址** → 连接后直接收 JSON 数组评论帧(`message`/`from_user.name`),无需心跳,首帧为 `[]`
+- [x] `TwitcastingDanmaku` 实现(`lib/core/danmaku/twitcasting_danmaku.dart`):因 pubsub URL 每次连接都要重新换取(签名过期),自管重连循环(有界 8 次失败上限,成功后清零),`parseFrame` 纯函数可单测,URL 主机白名单校验;`twitcasting_api.detail()` 把 movieId 写入 `danmakuData`
+- [x] 单测 5 用例全过;改动文件 analyze 零问题
+- [x] **全链路验收**:矩阵探针 twitcasting 平台 `result: passed`(readyCount=1, chatCount=1, 零重连零断开, roomId=ihacocone)
+- [x] 迭代5 记录修正:上轮 realtime WS 路径 404 的结论系入口未找到,非协议不可用
+
+### 迭代 7(2026-10-02)✅ 收尾摸底
+
+- [x] niconico:主站/watch API 可达(301)但弹幕服务器 `msg*.live2.nicovideo.jp` 000 不可达 → 暂缓(网络结构性)
+- [x] PandaTV:API 对本机 IP 返回"제재된 IP"(封禁)→ 暂缓(网络结构性)
+- [x] CC:目录/房间接口可达,但房间页为 JS 壳、无公开协议文档、biliup 亦已移除 CC 弹幕实现 → 协议未知,暂缓;候选路径:抓包或逆向 umi bundle(工作量大,另行立项)
 
 ## 四、上轮审计:解析字段缺口(2026-10-01 上一轮,保留)
 

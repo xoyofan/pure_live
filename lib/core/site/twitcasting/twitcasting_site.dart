@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/core/danmaku/empty_danmaku.dart';
+import 'package:pure_live/core/danmaku/twitcasting_danmaku.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/interface/live_search.dart';
 import 'package:pure_live/core/interface/live_site.dart';
@@ -19,7 +19,7 @@ class TwitcastingSite extends LiveSite
   @override
   String get name => 'TwitCasting';
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => TwitcastingDanmaku();
   @override
   Future<List<LiveCategory>> getCategores(int page, int pageSize) async =>
       page == 1 ? [LiveCategory(id: id, name: name, children: await _api.categories())] : [];
