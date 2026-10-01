@@ -96,49 +96,11 @@ class _ExpandedContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _FollowRow(tokens: tokens),
         _PlatformTabs(site: site, tokens: tokens),
         Expanded(
           child: _CategoryTree(site: site, categoriesAsync: categoriesAsync),
         ),
       ],
-    );
-  }
-}
-
-/// 关注入口(`__follow-wrap`):固定行高 + 金色星标,点击进入关注页。
-///
-/// 顶部不再展示关注主播头像堆叠，避免在窄侧栏占用分类导航空间。
-class _FollowRow extends StatelessWidget {
-  const _FollowRow({required this.tokens});
-
-  final ZishuTokens tokens;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => context.go('/follow'),
-        hoverColor: tokens.surfaceRaised,
-        splashColor: AppStateLayer.splashOf(tokens.accent),
-        highlightColor: AppStateLayer.pressedOf(tokens.accent),
-        focusColor: AppStateLayer.focusOf(tokens.accent),
-        child: Container(
-          height: AppDirectoryDrawer.followRowHeight,
-          padding: const EdgeInsets.only(
-            left: AppDirectoryDrawer.followPadLeft,
-          ),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Icon(
-              Icons.star_rounded,
-              size: AppDirectoryDrawer.followIconSize,
-              color: tokens.brand,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

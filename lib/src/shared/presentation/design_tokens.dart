@@ -881,11 +881,11 @@ abstract final class AppDirectoryDrawer {
   static const double platformIconSize = 32;
 
   /// tab 水平/垂直间距(`gap: .35rem`)。
-  static const double platformGap = 5.6;
+  static const double platformGap = 2.4;
 
   /// 平台区上下内边距(`padding: .45rem .35rem`)。
-  static const double platformPadV = 7.2;
-  static const double platformPadH = 5.6;
+  static const double platformPadV = 3.6;
+  static const double platformPadH = 2.8;
 
   // ---- 分类网格(__body / __cat-grid / __cat-item / __cat-name) ----
 
