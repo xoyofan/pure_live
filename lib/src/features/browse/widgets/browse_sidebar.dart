@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:live_parser/live_parser.dart';
 
+import '../../../shared/application/platform_prefs.dart';
 import '../../../shared/domain/category_display.dart';
 import '../../../shared/domain/category_sections.dart';
 import '../../../shared/presentation/design_tokens.dart';
-import '../../../shared/presentation/platform_brands.dart';
 import '../../../shared/presentation/widgets/platform_icon.dart';
 import '../../../shared/presentation/zishu_tokens.dart';
 import '../application/browse_provider.dart';
@@ -145,21 +145,23 @@ class _FollowRow extends StatelessWidget {
 
 /// 收起态内容:平台图标竖列(单列,无文字),对齐参考
 /// `directory-drawer__rail-platform`(全宽按钮、竖直 padding .5rem、图标 32px)。
-class _RailContent extends StatelessWidget {
+///
+/// 平台清单与顶栏 tab 同源(「全平台」+ 用户可见列表,设置「平台」分区同步)。
+class _RailContent extends ConsumerWidget {
   const _RailContent({required this.site});
 
   final String site;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final tokens = context.tokens;
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       children: [
-        for (final brand in PlatformBrandCatalog.navigationPlatforms)
+        for (final entry in visibleSidebarPlatforms(ref))
           _PlatformTab(
-            brand: brand,
-            selected: brand.id == site,
+            entry: entry,
+            selected: entry.id == site,
             tokens: tokens,
             size: AppDirectoryDrawer.platformIconSize,
             fullWidth: true,
@@ -224,14 +226,17 @@ class _ToggleRail extends StatelessWidget {
 }
 
 /// 平台 tab 网格(`__platform-tabs`):Wrap 流式排布 + 底部分隔线。
-class _PlatformTabs extends StatelessWidget {
+///
+/// 清单与顶栏 tab 同源:「全平台」固定首位 + 用户可见平台
+/// ([visiblePlatformsProvider],设置「平台」分区隐藏/排序后同步生效)。
+class _PlatformTabs extends ConsumerWidget {
   const _PlatformTabs({required this.site, required this.tokens});
 
   final String site;
   final ZishuTokens tokens;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       padding: const EdgeInsets.symmetric(
         vertical: AppDirectoryDrawer.platformPadV,
@@ -244,10 +249,10 @@ class _PlatformTabs extends StatelessWidget {
         spacing: AppDirectoryDrawer.platformGap,
         runSpacing: AppDirectoryDrawer.platformGap,
         children: [
-          for (final brand in PlatformBrandCatalog.navigationPlatforms)
+          for (final entry in visibleSidebarPlatforms(ref))
             _PlatformTab(
-              brand: brand,
-              selected: brand.id == site,
+              entry: entry,
+              selected: entry.id == site,
               tokens: tokens,
               size: AppDirectoryDrawer.platformTabSize,
             ),
@@ -257,20 +262,26 @@ class _PlatformTabs extends StatelessWidget {
   }
 }
 
+/// 侧栏平台清单:「全平台」固定首位,其余按用户可见次序。
+List<PlatformEntry> visibleSidebarPlatforms(WidgetRef ref) => [
+  const PlatformEntry(id: 'all', name: '全平台', logo: ''),
+  ...ref.watch(visiblePlatformsProvider),
+];
+
 /// 单个平台入口:图标型 FilterChip,承载 [home-platform-chip-{id}] 锚点。
 ///
 /// 对齐参考 `__platform-tab` / `__rail-platform`:非选中无边框透明底,
 /// 选中金色边框 + 金色 12% 底;[fullWidth] 用于收起态(全宽按钮)。
 class _PlatformTab extends StatelessWidget {
   const _PlatformTab({
-    required this.brand,
+    required this.entry,
     required this.selected,
     required this.tokens,
     required this.size,
     this.fullWidth = false,
   });
 
-  final PlatformBrand brand;
+  final PlatformEntry entry;
   final bool selected;
   final ZishuTokens tokens;
 
@@ -283,17 +294,17 @@ class _PlatformTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: brand.name,
+      message: entry.name,
       child: SizedBox(
         width: fullWidth ? double.infinity : size,
         height: size,
         child: FilterChip(
           // 测试锚点:定位/点击平台入口(前缀同原内容区 chips,见 [BrowseSidebar])。
-          key: Key('home-platform-chip-${brand.id}'),
+          key: Key('home-platform-chip-${entry.id}'),
           selected: selected,
           showCheckmark: false,
-          avatar: PlatformIcon(
-            id: brand.id,
+          avatar: _SidebarPlatformLogo(
+            entry: entry,
             size: AppDirectoryDrawer.platformIconSize,
           ),
           label: const SizedBox.shrink(),
@@ -323,9 +334,29 @@ class _PlatformTab extends StatelessWidget {
           side: selected ? BorderSide(color: tokens.accent) : BorderSide.none,
           shape: RoundedRectangleBorder(borderRadius: AppRadius.allSm),
           onSelected: (_) =>
-              context.go(brand.id == 'all' ? '/all' : '/${brand.id}'),
+              context.go(entry.id == 'all' ? '/all' : '/${entry.id}'),
         ),
       ),
+    );
+  }
+}
+
+/// 侧栏站点 logo:与顶栏同源(pure_live 素材直读,缺失退 [PlatformIcon])。
+class _SidebarPlatformLogo extends StatelessWidget {
+  const _SidebarPlatformLogo({required this.entry, required this.size});
+
+  final PlatformEntry entry;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (entry.id == 'all') return PlatformIcon(id: 'all', size: size);
+    return Image.asset(
+      entry.logo,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (_, _, _) => PlatformIcon(id: entry.id, size: size),
     );
   }
 }

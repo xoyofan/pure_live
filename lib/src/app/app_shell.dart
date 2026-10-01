@@ -15,6 +15,7 @@ import '../features/follow/application/follow_sort.dart';
 import '../features/follow/application/follow_status_poller.dart';
 import '../features/follow/application/settings_provider.dart';
 import '../shared/application/auth_provider.dart';
+import '../shared/application/platform_prefs.dart';
 import '../shared/domain/category_display.dart';
 import '../shared/domain/category_sections.dart';
 import '../shared/presentation/design_tokens.dart';

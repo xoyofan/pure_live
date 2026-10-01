@@ -133,6 +133,172 @@ abstract final class PlatformBrandCatalog {
     color: Color(0xFFFF0000),
   );
 
+  /// pure_live 全量平台条目(`Sites.supportSites` 的其余各站),补齐
+  /// lib/core/sites.dart:346 `_supportedSites` 的完整目录。
+  ///
+  /// - `id` = lib/core SiteIds 值:图标经 `Sites.logoForId(id)` 取
+  ///   `assets/images/*.png`(部分站名不同,如 `pandalive` → panda.png、
+  ///   `steambroadcast` → steam.png),id 与 SiteIds 对齐才能解析到素材。
+  /// - `name` 取 assets/translations/zh.json 的 `site_*` 键值。
+  /// - `color` 取 lib/modules/live_play/widgets/local_interaction/
+  ///   local_interaction_controller.dart `platformPacks` 的同站
+  ///   `accentColor`(pure_live 已有平台色系)。
+  /// - `browseSupported` 按该站 LiveSite 是否 override `getCategores`:
+  ///   未覆盖的站(liveme / tiktok / 17live)继承基类
+  ///   lib/core/interface/live_site.dart:210 的空实现,置 false。
+  ///   小红书沿用上方 `xhs` 条目(pure_live 侧 id 为 `xiaohongshu`)。
+  static const PlatformBrand cc = PlatformBrand(
+    id: 'cc',
+    name: '网易CC',
+    color: Color(0xFFFF4D7D),
+  );
+
+  static const PlatformBrand acfun = PlatformBrand(
+    id: 'acfun',
+    name: 'AcFun 直播',
+    color: Color(0xFFFD4C5D),
+  );
+
+  static const PlatformBrand picarto = PlatformBrand(
+    id: 'picarto',
+    name: 'Picarto',
+    color: Color(0xFF25BFA4),
+  );
+
+  static const PlatformBrand twitcasting = PlatformBrand(
+    id: 'twitcasting',
+    name: 'TwitCasting',
+    color: Color(0xFF294DDB),
+  );
+
+  static const PlatformBrand missevan = PlatformBrand(
+    id: 'missevan',
+    name: '猫耳 FM',
+    color: Color(0xFFF38AAE),
+  );
+
+  static const PlatformBrand inke = PlatformBrand(
+    id: 'inke',
+    name: '映客',
+    color: Color(0xFFFF4F9A),
+  );
+
+  static const PlatformBrand kilakila = PlatformBrand(
+    id: 'kilakila',
+    name: '克拉克拉',
+    color: Color(0xFF7C5CFC),
+  );
+
+  static const PlatformBrand niconico = PlatformBrand(
+    id: 'niconico',
+    name: 'niconico',
+    color: Color(0xFF252525),
+  );
+
+  static const PlatformBrand weibo = PlatformBrand(
+    id: 'weibo',
+    name: '微博直播',
+    color: Color(0xFFFF8200),
+  );
+
+  static const PlatformBrand showroom = PlatformBrand(
+    id: 'showroom',
+    name: 'SHOWROOM',
+    color: Color(0xFFFF2B67),
+  );
+
+  static const PlatformBrand chzzk = PlatformBrand(
+    id: 'chzzk',
+    name: 'CHZZK',
+    color: Color(0xFF00FFA3),
+    // 荧光绿亮底(同 yy / huya 的亮底约定),白字不可读,用深色字。
+    chipForeground: chipForegroundDark,
+  );
+
+  static const PlatformBrand liveme = PlatformBrand(
+    id: 'liveme',
+    name: 'LiveMe',
+    color: Color(0xFF7C4DFF),
+    // LiveMeSite 未 override getCategores(基类空实现),不支持栏目浏览。
+    browseSupported: false,
+  );
+
+  static const PlatformBrand tiktok = PlatformBrand(
+    id: 'tiktok',
+    name: 'TikTok LIVE',
+    color: Color(0xFFFE2C55),
+    // TikTokSite 未 override getCategores,不支持栏目浏览。
+    browseSupported: false,
+  );
+
+  static const PlatformBrand bigo = PlatformBrand(
+    id: 'bigo',
+    name: 'Bigo Live',
+    color: Color(0xFF6A5CFF),
+  );
+
+  static const PlatformBrand pandalive = PlatformBrand(
+    id: 'pandalive',
+    name: 'PandaTV',
+    color: Color(0xFFFE4D6A),
+  );
+
+  static const PlatformBrand fc2live = PlatformBrand(
+    id: 'fc2live',
+    name: 'FC2 Live',
+    color: Color(0xFFEA4C89),
+  );
+
+  static const PlatformBrand steambroadcast = PlatformBrand(
+    id: 'steambroadcast',
+    name: 'Steam Broadcasts',
+    color: Color(0xFF1B2838),
+  );
+
+  static const PlatformBrand jdlive = PlatformBrand(
+    id: 'jdlive',
+    name: '京东直播',
+    color: Color(0xFFE1251B),
+  );
+
+  static const PlatformBrand kugoulive = PlatformBrand(
+    id: 'kugoulive',
+    name: '酷狗直播',
+    color: Color(0xFF19A7FF),
+  );
+
+  static const PlatformBrand baidulive = PlatformBrand(
+    id: 'baidulive',
+    name: '百度直播',
+    color: Color(0xFF2932E1),
+  );
+
+  static const PlatformBrand sixroom = PlatformBrand(
+    id: 'sixroom',
+    name: '六间房直播',
+    color: Color(0xFFFF5A5F),
+  );
+
+  static const PlatformBrand looklive = PlatformBrand(
+    id: 'looklive',
+    name: 'LOOK 直播',
+    color: Color(0xFFFF2C55),
+  );
+
+  static const PlatformBrand seventeenLive = PlatformBrand(
+    id: '17live',
+    name: '17LIVE',
+    color: Color(0xFFFF2D55),
+    // SeventeenLiveSite 未 override getCategores,不支持栏目浏览。
+    browseSupported: false,
+  );
+
+  static const PlatformBrand iptv = PlatformBrand(
+    id: 'iptv',
+    name: '网络',
+    color: Color(0xFF00A2FF),
+  );
+
   static const bool realParserEnabled = bool.fromEnvironment(
     'ZISHU_REAL_PARSER',
     defaultValue: false,
@@ -228,6 +394,9 @@ abstract final class PlatformBrandCatalog {
     return test(registration.capabilities);
   }
 
+  /// 全量平台目录:前段为 zishu 精选位次(既有条目,位次不变),
+  /// 追加段按 lib/core/sites.dart `_supportedSites` 的站点顺序排列。
+  /// 真实解析构建下 [filterPlatforms] 会按注册表能力裁剪本表。
   static const List<PlatformBrand> navPlatforms = [
     all,
     douyu,
@@ -240,6 +409,30 @@ abstract final class PlatformBrandCatalog {
     soop,
     xhs,
     youtube,
+    cc,
+    acfun,
+    picarto,
+    twitcasting,
+    missevan,
+    inke,
+    kilakila,
+    niconico,
+    weibo,
+    showroom,
+    chzzk,
+    liveme,
+    tiktok,
+    bigo,
+    pandalive,
+    fc2live,
+    steambroadcast,
+    jdlive,
+    kugoulive,
+    baidulive,
+    sixroom,
+    looklive,
+    seventeenLive,
+    iptv,
   ];
 
   static PlatformBrand? byId(String id) {

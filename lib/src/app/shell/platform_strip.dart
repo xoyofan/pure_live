@@ -217,7 +217,12 @@ Future<void> _openCategorySheet(BuildContext context, String site) {
   );
 }
 
-class _PlatformTabs extends StatelessWidget {
+/// 桌面顶栏平台 tab:固定「全平台」入口 + 用户可见的 pure_live 各站
+/// (设置对话框「平台」分区可隐藏/排序,经 [visiblePlatformsProvider] 同步;
+/// 顶栏/侧栏/路由守卫共用同一份列表)。站点图标改用 pure_live 素材
+/// ([PlatformEntry.logo],`assets/images/*.png`):既有 platform-icons 目录
+/// 只覆盖 9 站,全量目录下其余站不再落文字字形兜底。
+class _PlatformTabs extends ConsumerWidget {
   const _PlatformTabs({
     required this.currentSite,
     required this.onHover,
@@ -231,73 +236,134 @@ class _PlatformTabs extends StatelessWidget {
   final VoidCallback onHoverEnd;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final platforms = ref.watch(visiblePlatformsProvider);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (final brand in PlatformBrandCatalog.navigationPlatforms)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 1),
-              child: Builder(
-                builder: (hoverContext) => MouseRegion(
-                  onEnter: (_) {
-                    final box = hoverContext.findRenderObject() as RenderBox?;
-                    if (box == null) return;
-                    final dx = box.localToGlobal(Offset.zero).dx;
-                    onHover(brand.id, dx + box.size.width / 2);
-                  },
-                  onExit: (_) => onHoverEnd(),
-                  child: Tooltip(
-                    message: brand.name,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        key: Key('platform-tab-${brand.id}'),
-                        borderRadius: AppRadius.allSm,
-                        hoverColor: context.tokens.surfaceSoft,
-                        focusColor: AppStateLayer.focusOf(
-                          context.tokens.accent,
-                        ),
-                        splashColor: AppStateLayer.splashOf(
-                          context.tokens.accent,
-                        ),
-                        highlightColor: AppStateLayer.pressedOf(
-                          context.tokens.accent,
-                        ),
-                        onTap: () => context.go(_platformRoute(brand.id)),
-                        child: AnimatedContainer(
-                          duration: AppMotion.fast,
-                          curve: AppMotion.curve,
-                          width: 34,
-                          height: 34,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: currentSite == brand.id
-                                ? context.tokens.surfaceRaised
-                                : Colors.transparent,
-                            border: Border.all(
-                              color: currentSite == brand.id
-                                  ? brand.color
-                                  : Colors.transparent,
-                            ),
-                            borderRadius: AppRadius.allSm,
-                            boxShadow: currentSite == brand.id
-                                ? AppElevation.accentGlow(brand.color)
-                                : null,
-                          ),
-                          child: PlatformIcon(id: brand.id, size: 28),
-                        ),
+          _PlatformTab(
+            entry: const PlatformEntry(id: 'all', name: '全平台', logo: ''),
+            selected: currentSite == 'all',
+            onHover: onHover,
+            onHoverEnd: onHoverEnd,
+          ),
+          for (final entry in platforms)
+            _PlatformTab(
+              entry: entry,
+              selected: currentSite == entry.id,
+              onHover: onHover,
+              onHoverEnd: onHoverEnd,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 顶栏单个平台 tab(34px 点击盒 + 28px 站点 logo,品牌色描边选中态)。
+class _PlatformTab extends StatelessWidget {
+  const _PlatformTab({
+    required this.entry,
+    required this.selected,
+    required this.onHover,
+    required this.onHoverEnd,
+  });
+
+  final PlatformEntry entry;
+  final bool selected;
+
+  /// hover 平台 tab → `(平台 id, 触发点中心 x)`;移出触发 800ms 后关闭。
+  final void Function(String id, double centerX) onHover;
+  final VoidCallback onHoverEnd;
+
+  /// 选中态描边/光晕的品牌色:色表未收录的站退 accent。
+  Color _brandColor(ZishuTokens tokens) =>
+      PlatformBrandCatalog.byId(entry.id)?.color ?? tokens.accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 1),
+      child: Builder(
+        builder: (hoverContext) {
+          // 触发点中心 x:与 _NavAction 同法,RenderBox 快照按需取。
+          RenderBox? box;
+          double centerX() {
+            final target =
+                box ??= hoverContext.findRenderObject() as RenderBox?;
+            if (target == null) return 0;
+            final dx = target.localToGlobal(Offset.zero).dx;
+            return dx + target.size.width / 2;
+          }
+
+          return MouseRegion(
+            onEnter: (_) => onHover(entry.id, centerX()),
+            onExit: (_) => onHoverEnd(),
+            child: Tooltip(
+              message: entry.name,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  key: Key('platform-tab-${entry.id}'),
+                  borderRadius: AppRadius.allSm,
+                  hoverColor: tokens.surfaceSoft,
+                  focusColor: AppStateLayer.focusOf(tokens.accent),
+                  splashColor: AppStateLayer.splashOf(tokens.accent),
+                  highlightColor: AppStateLayer.pressedOf(tokens.accent),
+                  onTap: () => context.go(_platformRoute(entry.id)),
+                  child: AnimatedContainer(
+                    duration: AppMotion.fast,
+                    curve: AppMotion.curve,
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? tokens.surfaceRaised
+                          : Colors.transparent,
+                      border: Border.all(
+                        color: selected
+                            ? _brandColor(tokens)
+                            : Colors.transparent,
                       ),
+                      borderRadius: AppRadius.allSm,
+                      boxShadow: selected
+                          ? AppElevation.accentGlow(_brandColor(tokens))
+                          : null,
                     ),
+                    child: _PlatformTabLogo(entry: entry, size: 28),
                   ),
                 ),
               ),
             ),
-        ],
+          );
+        },
       ),
+    );
+  }
+}
+
+/// 站点 logo:直接读 pure_live 素材;素材缺失时退既有 [PlatformIcon]
+/// (全平台四象限 / 品牌色字形),顶栏/侧栏/设置行共用同一兜底口径。
+class _PlatformTabLogo extends StatelessWidget {
+  const _PlatformTabLogo({required this.entry, required this.size});
+
+  final PlatformEntry entry;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (entry.id == 'all') return PlatformIcon(id: 'all', size: size);
+    return Image.asset(
+      entry.logo,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (_, _, _) => PlatformIcon(id: entry.id, size: size),
     );
   }
 }
