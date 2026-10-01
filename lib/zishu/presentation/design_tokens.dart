@@ -877,6 +877,11 @@ abstract final class AppDirectoryDrawer {
   /// 分类条目最小高(`min-height: 1.3rem`)。
   static const double catItemHeight = 20.8;
 
+  /// 叶子分类格宽(zishu browse_sidebar `GridView.count(crossAxisCount: 2,
+  /// childAspectRatio: 99.4 / catItemHeight)` 的 99.4:两列网格每格宽度,
+  /// 侧栏 chips 的最大宽按此口径,不再借用浮层列宽 67.2)。
+  static const double catCellWidth = 99.4;
+
   /// 分类名称字号(`font-size: .72rem`)。
   static const double catFontSize = 11.5;
 

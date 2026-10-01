@@ -6,8 +6,8 @@ import '../platform_brands.dart';
 
 /// 平台图标:统一走 pure_live 官方映射 [Sites.logoForId]
 /// (与 README.md 平台表格同一套 `assets/images/<platform>.png` 素材,
-/// 含 all.png/iptv.png 与退役站兜底 logo.png);不在站点表里的 id
-/// (如 zishu 品牌表别名 xhs)回退品牌色首字母。
+/// 含 iptv.png 与退役站兜底 logo.png;「全部」除外,见 build 内特判);
+/// 不在站点表里的 id(如 zishu 品牌表别名 xhs)回退品牌色首字母。
 class PlatformIcon extends StatelessWidget {
   const PlatformIcon({super.key, required this.id, this.size = 28});
 
@@ -36,7 +36,12 @@ class PlatformIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final normalizedId = id.trim().toLowerCase();
-    // 站点表内的 id(含 all)走官方素材映射;表外 id(zishu 品牌别名等)走字母兜底。
+    // 「全部」入口不走素材映射:官方 all.png 是无关素材(蓝底「文」字圆标),
+    // 按 zishu 口径渲染 Material 的 all_inclusive(∞)字形。
+    if (normalizedId == Sites.allSite) {
+      return Icon(Icons.all_inclusive, size: size);
+    }
+    // 站点表内的 id 走官方素材映射;表外 id(zishu 品牌别名等)走字母兜底。
     final asset = normalizedId == Sites.allSite || Sites.supportedSiteIds.contains(normalizedId)
         ? Sites.logoForId(normalizedId)
         : null;

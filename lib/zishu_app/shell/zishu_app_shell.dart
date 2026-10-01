@@ -21,8 +21,6 @@ import 'package:pure_live/zishu_app/features/follow/zishu_follow_view.dart';
 import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
 import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 import 'package:pure_live/zishu_app/shell/category_warmup.dart';
-import 'package:pure_live/zishu_app/shell/flyouts/zishu_category_flyout.dart';
-import 'package:pure_live/zishu_app/shell/flyouts/zishu_my_category_flyout.dart';
 import 'package:pure_live/zishu_app/shell/zishu_app_nav_shortcuts.dart';
 import 'package:pure_live/zishu_app/shell/zishu_shell_flyout_machine.dart';
 import 'package:pure_live/zishu_app/shell/zishu_shell_top_bar.dart';
@@ -569,11 +567,6 @@ class _BrowseSidebar extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.lg),
-        // 「我的分类」入口行 + 内嵌展开区(位于热门分类区上方):点击行
-        // 展开/收起收藏 chips,面板与 my_category flyout 同一份内容;
-        // chip 点击经壳层 onOpenCategory 进内嵌分类详情。
-        _SidebarMyCategorySection(onOpenCategory: onOpenCategory),
-        const SizedBox(height: AppSpacing.md),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.xs),
           child: Row(
@@ -658,49 +651,6 @@ class _BrowseSidebar extends StatelessWidget {
             ),
           ),
         ),
-      ],
-    );
-  }
-}
-
-/// 侧栏「我的分类」入口行 + 内嵌展开区:点击行展开/收起收藏 chips(行
-/// 图标 Remix.star_line,展开态文字/图标转品牌金,对齐 zishu「收藏分类」
-/// 金色语义);展开区复用 [ZishuMyCategoryPanel](与 my_category flyout、
-/// 窄屏底栏弹层同一份面板:管理入口 + chips),chip 点击按名称匹配平台
-/// 目录后经 [onOpenCategory](壳层 selectAreaCategory)进外壳内嵌分类详情
-/// (无宿主可收,close 钩子留空)。
-class _SidebarMyCategorySection extends StatefulWidget {
-  const _SidebarMyCategorySection({required this.onOpenCategory});
-
-  /// 注入的分类跳转(壳层 selectAreaCategory,收藏 chip 进内嵌分类详情)。
-  final void Function(Site site, LiveArea area) onOpenCategory;
-
-  @override
-  State<_SidebarMyCategorySection> createState() => _SidebarMyCategorySectionState();
-}
-
-class _SidebarMyCategorySectionState extends State<_SidebarMyCategorySection> {
-  /// 展开态:本地 State,不持久化(对齐侧栏折叠态口径)。
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _CategoryRow(
-          name: i18n('my_category_title'),
-          icon: Remix.star_line,
-          selected: _expanded,
-          onTap: () => setState(() => _expanded = !_expanded),
-        ),
-        if (_expanded) ...[
-          const SizedBox(height: AppSpacing.xs),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-            child: ZishuMyCategoryPanel(onOpenCategory: widget.onOpenCategory),
-          ),
-        ],
       ],
     );
   }
@@ -907,7 +857,7 @@ class _SidebarHotCategoriesState extends State<_SidebarHotCategories> {
       children: [
         for (final category in widget.fallback)
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: ZishuPlatformCategoryFlyout.columnWidth),
+            constraints: const BoxConstraints(maxWidth: AppDirectoryDrawer.catCellWidth),
             child: _SidebarCategoryChip(label: category, onTap: widget.onFallbackTap),
           ),
       ],
@@ -918,14 +868,13 @@ class _SidebarHotCategoriesState extends State<_SidebarHotCategories> {
   bool _visibleArea(LiveArea area) => (area.areaName ?? '').trim().isNotEmpty;
 
   /// 叶子分类横向平铺(用户口径 2026-10-01:侧栏最下级分类与顶部 hover
-  /// 浮层同形态)。每条 chip 限最大宽 [ZishuPlatformCategoryFlyout.columnWidth]
-  /// (67.2,即浮层一列宽 4.2rem —— 浮层「一列一 chip」的列宽就是 chip
-  /// 可视宽,直接对齐该口径;侧栏可用宽 220 - 外层 ListView 左右
-  /// AppSpacing.sm×2 = 204,限宽 67.2 每行容 2~3 条,放不下由 Wrap 自动
-  /// 换第二行),文字超长 ellipsis;横向 [AppDirectoryDrawer.catGapCross]
+  /// 浮层同形态)。每条 chip 限最大宽 [AppDirectoryDrawer.catCellWidth]
+  /// (99.4,即 zishu browse_sidebar 两列网格的叶子格宽 —— 侧栏可用宽
+  /// 220 - 外层 ListView 左右 AppSpacing.sm×2 = 204,限宽 99.4 每行容
+  /// 1~2 条(soop 韩文长名等超 67.2 的条目不再截断),放不下由 Wrap
+  /// 自动换行),文字超长 ellipsis;横向 [AppDirectoryDrawer.catGapCross]
   /// (3.52)/纵向 [AppDirectoryDrawer.catGapMain](2.56)取目录抽屉分类
-  /// 网格既有紧凑档(≈用户口径的 4px/2-4px 级)。点击仍经
-  /// [onOpenCategory] 统一收口,行为不变。
+  /// 网格既有紧凑档。点击仍经 [onOpenCategory] 统一收口,行为不变。
   Widget _categoryWrap(Site site, List<LiveArea> areas) {
     return Wrap(
       spacing: AppDirectoryDrawer.catGapCross,
@@ -934,7 +883,7 @@ class _SidebarHotCategoriesState extends State<_SidebarHotCategories> {
         for (final area in areas)
           if (_visibleArea(area))
             ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: ZishuPlatformCategoryFlyout.columnWidth),
+              constraints: const BoxConstraints(maxWidth: AppDirectoryDrawer.catCellWidth),
               child: _SidebarCategoryChip(
                 label: displayCategoryName(site.id, area.areaName, area.areaId),
                 onTap: () => widget.onOpenCategory(site, area),
