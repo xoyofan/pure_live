@@ -14,6 +14,8 @@ import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/platform_icon.dart';
 import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
+// 平台凭证弹框入口(公开函数,真源 user_area 的账号菜单凭证项同源)。
+import 'package:pure_live/zishu_app/features/settings/zishu_credentials_dialog.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_follow_avatars.dart';
 
 /// hover 浮层关闭延迟:对齐 zishu 真源 `_AppShellState` 的
@@ -386,6 +388,11 @@ class _TopNavTool extends StatelessWidget {
   }
 }
 
+/// 「平台凭证」菜单文案(真源 user_area.dart:100 同款;无既有 i18n key,
+/// 中文常量记录;与 zishu_settings_platform.dart 的 _kCredentialsTitle
+/// 同文案 —— 该处为私有 const 不可引,本处独立声明保持同值)。
+const String _kCredentialsMenuLabel = '平台凭证';
+
 /// 顶栏右侧用户区:圆形头像钮 + PopupMenu。
 ///
 /// 菜单在 zishu 原三项(历史/设置/关于)之外并入 pure_live 工具四项
@@ -418,6 +425,11 @@ class _TopUserArea extends StatelessWidget {
             Get.toNamed(RoutePath.kHistory);
           case 'settings':
             onOpenSettings();
+          // 平台凭证弹框(真源 user_area.dart:84 账号菜单凭证项同款口径:
+          // 低频配置不占路由页,直接弹框)。走设置页「平台凭证」行同款
+          // 公开入口 showZishuCredentialsDialog。
+          case 'credentials':
+            unawaited(showZishuCredentialsDialog(context));
           case 'about':
             Get.toNamed(RoutePath.kAbout);
           case 'backup':
@@ -433,6 +445,9 @@ class _TopUserArea extends StatelessWidget {
       itemBuilder: (menuContext) => [
         _item(menuContext, 'history', Icons.history_rounded, i18n('history')),
         _item(menuContext, 'settings', Remix.settings_5_line, i18n('settings_title')),
+        // 凭证项规格复用 _item(高 34/图标 15/字号 bodySecondary),图标与
+        // 文案照真源 user_area.dart:94/100(Icons.key_outlined + 平台凭证)。
+        _item(menuContext, 'credentials', Icons.key_outlined, _kCredentialsMenuLabel),
         _item(menuContext, 'about', Remix.information_line, i18n('about')),
         _item(menuContext, 'backup', Remix.cloud_line, i18n('backup_recover')),
         _item(menuContext, 'toolbox', Remix.link, i18n('open_link')),

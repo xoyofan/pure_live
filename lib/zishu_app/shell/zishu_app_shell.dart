@@ -25,6 +25,8 @@ import 'package:pure_live/zishu_app/shell/zishu_app_nav_shortcuts.dart';
 import 'package:pure_live/zishu_app/shell/zishu_global_actions.dart';
 import 'package:pure_live/zishu_app/shell/zishu_shell_flyout_machine.dart';
 import 'package:pure_live/zishu_app/shell/zishu_shell_top_bar.dart';
+import 'package:pure_live/zishu_app/shell/zishu_sidebar_pref.dart';
+import 'package:pure_live/zishu_app/shell/zishu_window_title.dart';
 
 /// zishu 前端移植主外壳(宽屏 >680):44px 顶栏 + 可折叠浏览侧栏。
 ///
@@ -84,7 +86,13 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
   PopularController? _popular;
   VoidCallback? _tabListener;
   bool _bound = false;
-  bool _collapsed = false;
+
+  /// 侧栏折叠态:读全局偏好 Rx([zishuSidebarOpen],true = 展开,折叠 =
+  /// 取反;真源 sidebarOpenProvider 同语义「默认展开、开合即持久化」)。
+  /// 不再持有本地 bool 字段:读/写全走 Rx,本壳 build 的 Obx 订阅到变化
+  /// 后驱动侧栏 AnimatedContainer 与把手 AnimatedPositioned 的动画状态,
+  /// 写入即自动落盘(zishu_sidebar_pref.dart 注释)。
+  bool get _collapsed => !zishuSidebarOpen.v;
   int _siteIndex = 0;
 
   /// 「全平台」选中态:真源默认首页即 `/all`(全平台交错混排网格),
@@ -162,6 +170,19 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
     widget.onDestinationSelected(index);
   }
 
+  /// 主导航页名(窗口标题用;真源路由 meta.title 的「页面名」口径):
+  /// 四个菜单各有既有 i18n 文案(热门/分区/关注/录制中心,zh.json 既有
+  /// key),无 key 的场合(理论外 index)回 null → 标题落应用名。热门页
+  /// 在全平台/单站之间统一用「热门」页名,平台名细化未做(不在本任务
+  /// 口径内,真源 /:site 路由的平台名标题对应到顶栏单站态才有意义)。
+  String? _menuWindowTitle(int index) {
+    if (index == HomeMenu.popular.index) return i18n('popular_title');
+    if (index == HomeMenu.areas.index) return i18n('areas_title');
+    if (index == HomeMenu.favorites.index) return i18n('favorites_title');
+    if (index == HomeMenu.record.index) return i18n('record_center');
+    return null;
+  }
+
   Site? _siteById(String siteId) {
     for (final site in _sites) {
       if (site.id == siteId) return site;
@@ -237,6 +258,9 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
     // 不持有壳层状态,由路由内的本壳层上报/落地)。
     ZishuAppNavHistory.instance.attachMenuExit(owner: this, exit: _navigateToMenu);
     ZishuAppNavHistory.instance.reportMenuChanged(widget.index);
+    // 窗口标题对齐主导航页名(真源 app_router _WindowTitle initState 同位:
+    // 页面挂载即设标题;后续导航切换在 didUpdateWidget 补设)。
+    unawaited(setZishuWindowTitle(_menuWindowTitle(widget.index)));
     // 分类目录预热:首帧后延迟 2s 启动(不与首屏抢带宽),悬停分类 flyout 秒开。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(const Duration(seconds: 2), CategoryWarmup.schedule);
@@ -252,6 +276,9 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
     // _selfNavigation 标记消化,不构成历史边)。
     if (widget.index != oldWidget.index) {
       ZishuAppNavHistory.instance.reportMenuChanged(widget.index);
+      // 窗口标题随主导航页名切换(真源 _WindowTitle.didUpdateWidget 的
+      // old != new 分支同语义;setZishuWindowTitle 内部同值去重)。
+      unawaited(setZishuWindowTitle(_menuWindowTitle(widget.index)));
     }
   }
 
@@ -489,7 +516,10 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
                                     borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
                                     elevation: 1,
                                     child: InkWell(
-                                      onTap: () => setState(() => _collapsed = !_collapsed),
+                                      // 开合写全局偏好 Rx(HiveRx 自动落盘,
+                                      // 见 _collapsed 注释);Obx 订阅重建,
+                                      // 不再走本 State setState。
+                                      onTap: () => zishuSidebarOpen.toggle(),
                                       borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
                                       focusColor: Theme.of(context).focusColor,
                                       child: SizedBox(
@@ -575,6 +605,10 @@ class _BrowseSidebar extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.sm),
       children: [
+        // 关注入口行置顶(真源 browse_sidebar 侧栏首项 _FollowRow 同位):
+        // 经壳层菜单导航收口切关注页(HomeMenu.favorites 即壳层导航表的
+        // 关注项)。
+        _FollowEntryRow(onTap: () => onSelectMenu(HomeMenu.favorites.index)),
         Wrap(
           spacing: AppSpacing.sm,
           runSpacing: AppSpacing.sm,
@@ -673,6 +707,55 @@ class _BrowseSidebar extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 侧栏「我的关注」入口行(真源 browse_sidebar.dart:112-144 _FollowRow):
+/// 展开态顶部固定 [AppDirectoryDrawer.followRowHeight](64)高行,brand
+/// 金星 [AppDirectoryDrawer.followIconSize](36,Icons.star_rounded)+
+/// 文案「我的关注」。真源行内仅金星图标,文案为本任务明确要求附加
+/// (无既有 i18n key,中文常量记录;文字规格对齐侧栏 _CategoryRow 的
+/// 13px 正文行)。交互态照真源:hover surfaceRaised,splash/pressed/
+/// focus 取 accent 的 [AppStateLayer] 档;点击经壳层菜单导航收口切关注页。
+class _FollowEntryRow extends StatelessWidget {
+  const _FollowEntryRow({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        hoverColor: tokens.surfaceRaised,
+        splashColor: AppStateLayer.splashOf(tokens.accent),
+        highlightColor: AppStateLayer.pressedOf(tokens.accent),
+        focusColor: AppStateLayer.focusOf(tokens.accent),
+        child: SizedBox(
+          height: AppDirectoryDrawer.followRowHeight,
+          child: Row(
+            children: [
+              // 左缘距取真源行同款内距(AppDirectoryDrawer.followPadLeft)。
+              Padding(
+                padding: const EdgeInsets.only(left: AppDirectoryDrawer.followPadLeft),
+                child: Icon(Icons.star_rounded, size: AppDirectoryDrawer.followIconSize, color: tokens.brand),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  '我的关注',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.textBody.copyWith(fontSize: 13, color: tokens.textPrimary),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

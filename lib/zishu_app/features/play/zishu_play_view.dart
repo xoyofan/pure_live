@@ -29,6 +29,7 @@ import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 import 'package:pure_live/zishu_app/shell/zishu_global_actions.dart';
 import 'package:pure_live/zishu_app/shell/zishu_shell_flyout_machine.dart';
 import 'package:pure_live/zishu_app/shell/zishu_shell_top_bar.dart';
+import 'package:pure_live/zishu_app/shell/zishu_window_title.dart';
 
 /// zishu 播放页布局骨架(对齐 zishu_flutter play_view 的 U5 左右布局):
 /// 常规态 = Column[壳层顶栏(ZishuShellTopBar,真源 play 路由套壳:顶栏
@@ -466,6 +467,10 @@ class _ZishuPlayViewState extends State<ZishuPlayView> with ZishuShellFlyoutMach
           } else {
             title = '加载中…';
           }
+          // 窗口标题挂房间标题(真源 _PlayRoute 的 formatWindowTitle 口径:
+          // 房间标题覆盖页面名);本处属 Obx 重建路径,setZishuWindowTitle
+          // 内部同值去重,仅标题实际变化时才发平台通道。
+          setZishuWindowTitle(title);
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

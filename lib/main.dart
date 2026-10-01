@@ -21,6 +21,7 @@ import 'package:pure_live/common/global/platform/desktop_manager.dart';
 import 'package:pure_live/core/iptv/services/iptv_import_manager.dart';
 import 'package:pure_live/common/services/settings/player_settings_controller.dart';
 import 'package:pure_live/zishu_app/shell/zishu_app_nav_shortcuts.dart';
+import 'package:pure_live/zishu_app/shell/zishu_window_title.dart';
 
 void main(List<String> args) async {
   // Flutter abbreviates every framework error after the first one. In release
@@ -70,6 +71,9 @@ class _MyAppState extends State<MyApp> with DesktopWindowMixin {
       }
     });
     if (PlatformUtils.isDesktop) {
+      // 窗口标题基线:壳层挂载前先落应用名(真源 app_router _WindowTitle
+      // initState 同口径;壳层/播放页挂载后由页面名/房间标题接管)。
+      unawaited(setZishuWindowTitle(null));
       DesktopManager.initializeListeners(this);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(DesktopManager.updateTrayWhenLocalized());
