@@ -1,15 +1,15 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/plugins/event_bus.dart';
-import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
-import 'package:pure_live/zishu/presentation/widgets/empty_view.dart' as zishu;
+import 'package:pure_live/zishu/presentation/widgets/compact_switch.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_chat_tab.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_play_follow_panel.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_play_meta_bar.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_play_recommend_panel.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
 import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 
@@ -22,11 +22,13 @@ int _lastSidePanelTab = 0;
 /// surface 底 + 左缘描边;头部(贴边出血头像 + 三行信息 + 头内纵向双 chip)+
 /// 「聊天/关注/推荐/设置」四等分 tab(高 32,默认聊天)。
 ///
-/// 内容接线:
+/// 内容接线(对齐 zishu play_side_panel 的 part 拆分,本仓库拆独立文件):
 /// - 聊天 → `ZishuChatTab` 纯聊天流(对齐 zishu _ChatTab,替换原
 ///   DanmakuTabView 四子页签);
-/// - 关注 → `FavoriteController` 数据源;
-/// - 推荐 → 热门页 `PopularController` 分类房间流;
+/// - 关注 → `ZishuPlayFollowPanel`(真源 _FollowPanel 适配:紧凑列表/
+///   封面网格 + 平台筛选,只显在播);
+/// - 推荐 → `ZishuPlayRecommendPanel`(真源 _RecommendPanel 适配:2 列
+///   封面网格 + 骨架 + 滚动加载,热门页分类房间流);
 /// - 设置 → 就地渲染弹幕设置(对齐 zishu settings_panel,非跳转列表)。
 class ZishuPlaySidePanel extends StatelessWidget {
   const ZishuPlaySidePanel({super.key, required this.room, required this.isLive, this.compactHeader = false});
@@ -68,10 +70,26 @@ class ZishuPlaySidePanel extends StatelessWidget {
                 height: 32,
                 child: TabBar(
                   tabs: [
-                    Tab(text: i18n('danmaku')),
-                    Tab(text: i18n('favorites_title')),
-                    Tab(text: i18n('recommended')),
-                    Tab(text: i18n('settings_title')),
+                    // 首 tab 文案「聊天」对齐 zishu play_side_panel.dart:290
+                    // (Tab(text:'聊天'),四 tab 序 0=聊天 1=关注 2=推荐 3=设置)。
+                    // i18n key `chat` 已升级问询获批:zh「聊天」/en "Chat",
+                    // json 由主会话合并阶段补入。
+                    KeyedSubtree(
+                      key: const Key('play-side-tab-chat'),
+                      child: Tab(text: i18n('chat')),
+                    ),
+                    KeyedSubtree(
+                      key: const Key('play-side-tab-follow'),
+                      child: Tab(text: i18n('favorites_title')),
+                    ),
+                    KeyedSubtree(
+                      key: const Key('play-side-tab-recommend'),
+                      child: Tab(text: i18n('recommended')),
+                    ),
+                    KeyedSubtree(
+                      key: const Key('play-side-tab-settings'),
+                      child: Tab(text: i18n('settings_title')),
+                    ),
                   ],
                   labelColor: tokens.accent,
                   unselectedLabelColor: tokens.textSecondary,
@@ -100,8 +118,10 @@ class ZishuPlaySidePanel extends StatelessWidget {
                     // 聊天:纯聊天流(对齐 zishu _ChatTab:正向列表最新在底 +
                     // 贴底跟随 + 「N 条新消息」跳底,无输入框/子页签)。
                     ZishuChatTab(room: room),
-                    _FollowTab(room: room),
-                    _RecommendTab(platform: room.platform ?? ''),
+                    // 关注/推荐:面板化接线(对齐 zishu _FollowPanel /
+                    // _RecommendPanel 的薄壳挂接,实现见各自新文件)。
+                    const ZishuPlayFollowPanel(),
+                    ZishuPlayRecommendPanel(room: room),
                     const _SettingsPanel(),
                   ],
                 ),
@@ -182,196 +202,9 @@ Future<void> toggleRoomFavorite(LiveRoom room) async {
   }
 }
 
-/// 关注 tab:当前房间收藏操作 + 「关注中(开播)」房间行,点击换房。
-/// 数据源 `SettingsService.to.fav`(本机持久化)。
-class _FollowTab extends StatelessWidget {
-  const _FollowTab({required this.room});
-
-  final LiveRoom room;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    return Obx(() {
-      final isFollowed = SettingsService.to.fav.isFavorite(room);
-      final liveRooms = SettingsService.to.fav.favoriteRooms.v.where((r) => r.isLiveNow).toList(growable: false);
-      return ListView(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        children: [
-          // 当前房间收藏:大操作行(星标 + 文案 + 状态)。
-          InkWell(
-            onTap: () => toggleRoomFavorite(room),
-            borderRadius: AppRadius.allSm,
-            hoverColor: tokens.surfaceRaised,
-            focusColor: Theme.of(context).focusColor,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.md),
-              decoration: BoxDecoration(
-                color: isFollowed ? tokens.brand.withValues(alpha: 0.12) : tokens.surfaceRaised.withValues(alpha: 0.4),
-                borderRadius: AppRadius.allSm,
-                border: Border.all(color: isFollowed ? tokens.brandBright : tokens.border),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    isFollowed ? Icons.star_rounded : Icons.star_outline_rounded,
-                    size: 20,
-                    color: isFollowed ? tokens.brandBright : tokens.textSecondary,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      isFollowed ? i18n('followed') : i18n('follow'),
-                      style: context.textBody.copyWith(
-                        fontSize: AppFontSize.subtitle,
-                        fontWeight: FontWeight.w600,
-                        color: isFollowed ? tokens.brandBright : tokens.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (liveRooms.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.md),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.xs),
-              child: Text('${i18n('online_room_title')} · ${liveRooms.length}', style: context.textSecondary),
-            ),
-            for (final live in liveRooms.take(30)) _RecommendRow(room: live, dense: true),
-          ],
-        ],
-      );
-    });
-  }
-}
-
-/// 推荐 tab:同平台热门流(热门页分页控制器 tag=platform),行项点击换房。
-/// 无该站点控制器(iptv 等)或未注册时给空态。
-class _RecommendTab extends StatefulWidget {
-  const _RecommendTab({required this.platform});
-
-  final String platform;
-
-  @override
-  State<_RecommendTab> createState() => _RecommendTabState();
-}
-
-class _RecommendTabState extends State<_RecommendTab> {
-  bool _kicked = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final platform = widget.platform;
-    if (platform.isEmpty || !Get.isRegistered<BasePageScrollAndStateBone<LiveRoom>>(tag: platform)) {
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: zishu.EmptyView(icon: Icons.live_tv_rounded, message: i18n('empty_live_title')),
-      );
-    }
-    final controller = Get.find<BasePageScrollAndStateBone<LiveRoom>>(tag: platform);
-    if (!_kicked && controller.list.isEmpty && !controller.loadding.value) {
-      _kicked = true;
-      controller.loadData();
-    }
-    return Obx(() {
-      final list = controller.list;
-      if (list.isEmpty) {
-        return Center(
-          child: SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2, color: context.tokens.accent),
-          ),
-        );
-      }
-      return ListView.builder(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        itemCount: list.length,
-        itemBuilder: (context, index) => _RecommendRow(room: list[index]),
-      );
-    });
-  }
-}
-
-/// 推荐行:16:9 小封面 + 标题/主播 + 人气,点击进房。
-class _RecommendRow extends StatelessWidget {
-  const _RecommendRow({required this.room, this.dense = false});
-
-  final LiveRoom room;
-  final bool dense;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    final coverUrl = normalizeNetworkImageUrl(room.cover);
-    return InkWell(
-      onTap: () => AppNavigator.toLiveRoomDetail(liveRoom: room),
-      borderRadius: AppRadius.allSm,
-      hoverColor: tokens.surfaceRaised,
-      focusColor: Theme.of(context).focusColor,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: dense ? 72 : 88,
-              height: dense ? 40.5 : 49.5,
-              child: ClipRRect(
-                borderRadius: AppRadius.allSm,
-                child: coverUrl.isEmpty
-                    ? ColoredBox(color: tokens.surfaceRaised)
-                    : CachedNetworkImage(
-                        imageUrl: coverUrl,
-                        fit: BoxFit.cover,
-                        httpHeaders: networkImageHeaders(coverUrl),
-                        fadeInDuration: Duration.zero,
-                        fadeOutDuration: Duration.zero,
-                        errorWidget: (_, _, _) => ColoredBox(color: tokens.surfaceRaised),
-                      ),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    room.title?.trim().isNotEmpty == true ? room.title! : (room.nick ?? ''),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.textBody.copyWith(fontSize: AppFontSize.body, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.visibility_outlined, size: 11, color: tokens.statAudience),
-                      const SizedBox(width: 3),
-                      Flexible(
-                        child: Text(
-                          readableCount(room.onlineViewers ?? room.popularity ?? '—'),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.textCaption.copyWith(
-                            fontSize: AppFontSize.caption,
-                            color: tokens.statAudience,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+/// 关注 tab 与推荐 tab 的面板实现分别见 zishu_play_follow_panel.dart /
+/// zishu_play_recommend_panel.dart(对齐真源 side_panel/follow_panel.dart、
+/// recommend_panel.dart 的拆文件方式)。
 
 /// 侧栏信息头(对齐 zishu side_panel_header `_SideHeader` 三行结构):
 /// Row[贴边出血头像(64 宽 × 头高,仅右下小圆角) | Expanded 三行 Column
@@ -574,7 +407,13 @@ class _SideStatValue extends StatelessWidget {
           value,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: context.textBody.copyWith(fontSize: AppFontSize.body, height: 1, color: color),
+          // 数字等宽(fontFeatures)对齐真源 _StatValue(side_panel_header.dart:641)。
+          style: context.textBody.copyWith(
+            fontSize: AppFontSize.body,
+            height: 1,
+            color: color,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
         ),
       ],
     );
@@ -794,10 +633,18 @@ class _SettingsPanel extends StatelessWidget {
           _SettingsGroup(
             title: i18n('danmaku_settings'),
             children: [
-              // 行1:弹幕开关(hideDanmaku)。
+              // 行1:弹幕开关(hideDanmaku,取反 = 显示态)。开关语义对齐
+              // zishu settings_panel「聊天」行(value = 开)与播放器控制条
+              // 同款绑定(zishu_player_controls.dart:689:value: show,
+              // onChanged: hide = !value);控件用全局 CompactSwitch(对齐
+              // 真源 _SettingRow 的开关密度)。
               _SettingsRow(
                 label: i18n('danmaku'),
-                trailing: Switch(value: danmaku.hideDanmaku.v, onChanged: (value) => danmaku.hideDanmaku.v = value),
+                trailing: CompactSwitch(
+                  key: const Key('play-side-setting-danmaku'),
+                  value: !danmaku.hideDanmaku.v,
+                  onChanged: (value) => danmaku.hideDanmaku.v = !value,
+                ),
               ),
               // 行2:透明度(0-1,百分比显示,对齐既有弹幕设置页口径)。
               _SettingsSliderRow(

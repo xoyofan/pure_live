@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:pure_live/common/index.dart';
+import 'package:pure_live/common/consts/app_consts.dart';
 import 'package:pure_live/modules/areas/areas_list_controller.dart';
 import 'package:pure_live/modules/live_play/controllers/live_play_controller.dart';
 import 'package:pure_live/modules/live_play/states/ui_state.dart';
@@ -22,9 +23,16 @@ import 'package:pure_live/zishu_app/features/play/zishu_play_immersive_sheet.dar
 import 'package:pure_live/zishu_app/features/play/zishu_sleep_timer_badge.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_play_keyboard_ext.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
+import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
+import 'package:pure_live/zishu_app/shell/zishu_shell_flyout_machine.dart';
+import 'package:pure_live/zishu_app/shell/zishu_shell_top_bar.dart';
 
 /// zishu 播放页布局骨架(对齐 zishu_flutter play_view 的 U5 左右布局):
-/// Scaffold(transparent) → Row[Expanded(左列[房间头, Expanded(舞台帧)]), 侧栏]。
+/// 常规态 = Column[壳层顶栏(ZishuShellTopBar,真源 play 路由套壳:顶栏
+/// 常驻), Divider, Expanded(Scaffold(transparent) →
+/// Row[Expanded(左列[房间头, Expanded(舞台帧)]), 侧栏])] +
+/// hover 浮层 Stack;沉浸态(全屏/网页全屏)与画中画收 chrome(真源
+/// chromeHidden 同口径),视频占满窗口。
 /// <768 宽时侧栏堆叠到视频下方(flex 3:2);舞台 ClipRRect 12px(<640 为 0)。
 ///
 /// 控制逻辑不重写:舞台直接嵌入 pure_live 既有播放页部件 [LivePlayVideo],
@@ -46,7 +54,7 @@ class ZishuPlayView extends StatefulWidget {
   State<ZishuPlayView> createState() => _ZishuPlayViewState();
 }
 
-class _ZishuPlayViewState extends State<ZishuPlayView> {
+class _ZishuPlayViewState extends State<ZishuPlayView> with ZishuShellFlyoutMachine {
   /// 侧栏开合:本地 State,不持久化(对齐本轮骨架口径)。
   bool _sidePanelVisible = true;
 
@@ -60,6 +68,12 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
     // 旧顶栏/底栏(手势层/DanmakuViewer/锁定逻辑保留);沉浸态(全屏/PiP)
     // 由面板内部按当前 screenMode 自行恢复完整渲染,不受此开关影响。
     VideoControllerPanel.renderLegacyBars = false;
+  }
+
+  @override
+  void dispose() {
+    disposeFlyoutMachine();
+    super.dispose();
   }
 
   @override
@@ -101,8 +115,12 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
           ],
         );
       } else {
-        body = _buildZishuLayout(controller);
+        body = _buildShellChrome(controller);
       }
+      // hover 浮层(平台分类/关注在播/我的分类)只随常规态顶栏:沉浸态与
+      // 画中画无 chrome,不渲染浮层(对齐真源 chromeHidden:视频占满窗口,
+      // 鼠标划过不可见顶栏也不飘浮层)。
+      final showChrome = !isInPip && !immersive;
       // 桌面路由快捷键:既有键位(Space/R/↑↓/Esc)+ zishu 扩展(M 静音/F 全屏/W 宽屏)。
       return VideoKeyboardShortcuts(
         controller: state.player.videoController,
@@ -122,10 +140,115 @@ class _ZishuPlayViewState extends State<ZishuPlayView> {
             final videoController = controller.state.value.player.videoController;
             videoController?.toggleWindowFullScreen();
           },
-          child: body,
+          child: Stack(
+            children: [
+              body,
+              // hover 浮层:Stack 覆盖在页面最上层(Positioned 顶格按
+              // AppSpacing.topNavHeight 定位,与壳层同口径)。
+              if (showChrome)
+                ...buildFlyoutOverlays(
+                  siteById: _siteById,
+                  onOpenCategory: _openCategoryFromFlyout,
+                  onOpenRoom: _openRoomFromFlyout,
+                ),
+            ],
+          ),
         ),
       );
     });
+  }
+
+  /// 常规态壳层 chrome:44px 顶栏([ZishuShellTopBar],与壳层共用一份)+
+  /// 分隔线 + 既有 zishu 布局(左列 + 侧栏)。沉浸态/画中画不走本分支
+  /// (真源 play 路由套壳:chromeHidden 时顶栏收起,视频占满窗口)。
+  ///
+  /// 顶栏语义(对齐真源 play 路由):无主导航选中态(index = -1,nav-home/
+  /// nav-category 均不激活);平台 tab 选中 = 当前房间平台(platformTabsActive
+  /// 恒真 + currentSiteId 取房间平台);主导航点击 / 平台 tab 点击 = pop 到
+  /// 根回壳层再切换(见 [_goHomeMenu] / [_goHomeSite])。
+  Widget _buildShellChrome(LivePlayController controller) {
+    final tokens = context.tokens;
+    final room = controller.state.value.room.detail ?? controller.room;
+    return Theme(
+      // 交互态收口:与壳层根部同口径,顶栏焦点色统一(AppStateLayer focus)。
+      data: Theme.of(context).copyWith(focusColor: AppStateLayer.focusOf(tokens.accent)),
+      child: Column(
+        children: [
+          ZishuShellTopBar(
+            index: -1,
+            // 平台入口渲染表与壳层同源(savedPlatformIds 过滤,Obx 订阅)。
+            sites: visibleTopBarSites(),
+            currentSiteId: room.platform,
+            platformTabsActive: true,
+            onSelectMenu: _goHomeMenu,
+            onSelectSite: _goHomeSite,
+            onPlatformHoverStart: schedulePlatformFlyout,
+            onPlatformHoverEnd: cancelPlatformFlyoutOpen,
+            onFollowHoverStart: openFollowFlyout,
+            onFollowHoverEnd: scheduleFlyoutClose,
+            onMyCategoryHoverStart: scheduleMyCategoryFlyout,
+            onMyCategoryTap: toggleMyCategoryFlyout,
+            onMyCategoryHoverEnd: cancelMyCategoryFlyoutOpen,
+            onOpenSettings: () => unawaited(openZishuSettingsDialog(context)),
+          ),
+          const Divider(height: 1, thickness: 1),
+          Expanded(child: _buildZishuLayout(controller)),
+        ],
+      ),
+    );
+  }
+
+  // ---- 顶栏导航:播放页 → 回壳层(pop 到根再切,对齐真源 context.go) ----
+
+  /// 主导航点击:回壳层并切到对应菜单。真源 play 路由下点 nav-home 是
+  /// `context.go('/all')` 整栈替换;GetX 对应 pop 到根(kInitial,HomePage),
+  /// 再经 FavoriteController.tabBottomIndex 通道切菜单(HomePage 监听该 Rx
+  /// 同步 _selectedIndex,见 home_page 的 _favoriteTabListener)。
+  void _goHomeMenu(int menuIndex) {
+    closeAllFlyouts();
+    Get.until((route) => route.name == RoutePath.kInitial);
+    if (Get.isRegistered<FavoriteController>()) {
+      Get.find<FavoriteController>().tabBottomIndex.value = menuIndex;
+    }
+  }
+
+  /// 平台 tab 点击:回壳层切该平台热门(pop 到根 + 热门页站点 tab 就位,
+  /// 同壳层 _selectSiteId 的 animateTo 口径;落地页是热门页,分区页同步从略)。
+  void _goHomeSite(String siteId) {
+    closeAllFlyouts();
+    Get.until((route) => route.name == RoutePath.kInitial);
+    if (Get.isRegistered<FavoriteController>()) {
+      Get.find<FavoriteController>().tabBottomIndex.value = HomeMenu.popular.index;
+    }
+    if (Get.isRegistered<PopularController>()) {
+      final controller = Get.find<PopularController>();
+      final fullIndex = controller.sites.indexWhere((s) => s.id == siteId);
+      if (fullIndex >= 0) controller.tabController.animateTo(fullIndex);
+    }
+  }
+
+  /// 浮层站点解析:热门页站点表按 id 查(与壳层 _siteById 同源同表)。
+  Site? _siteById(String siteId) {
+    if (!Get.isRegistered<PopularController>()) return null;
+    for (final site in Get.find<PopularController>().sites) {
+      if (site.id == siteId) return site;
+    }
+    return null;
+  }
+
+  /// 平台浮层点分类:先收浮层,回壳层(pop 到根)再进分类详情 —— 真源
+  /// play 路由下 chip 是 context.go 离开播放页,对齐为「回壳层 + 推分类
+  /// 房间路由」(kAreaRooms;CC 官方入口由 AppNavigator 回落外链)。
+  void _openCategoryFromFlyout(Site site, LiveArea area) {
+    closeAllFlyouts();
+    Get.until((route) => route.name == RoutePath.kInitial);
+    unawaited(AppNavigator.toCategoryDetail(site: site, category: area));
+  }
+
+  /// 关注浮层点小卡:先收浮层,再进播放页(压栈,真源同款 push)。
+  void _openRoomFromFlyout(LiveRoom room) {
+    closeAllFlyouts();
+    unawaited(AppNavigator.toLiveRoomDetail(liveRoom: room));
   }
 
   /// 常规态 zishu 布局:左列(房间头 + 舞台) + 右侧侧栏。

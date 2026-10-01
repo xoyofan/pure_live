@@ -10,7 +10,8 @@
 // - 行 = 单个 Text.rich 内联流(对齐真源 chat_row):等级牌 → 粉丝牌 →
 //   用户名(协议色非白时用之,w600)→「：」→ 正文,行高 1.48;徽章复用
 //   chat_badges.dart 的 zishuInlineBadge/ZishuChatUserLevelBadge/
-//   ZishuChatFanBadge;
+//   ZishuChatFanBadge,按 room.platform 分站取真源同名分支的文字态规格
+//   (斗鱼/虎牙/抖音/其余),粉丝牌显隐走 zishuFanBadgeVisible 闸门;
 // - 顶部状态条:连接态圆点/文案 + 「刷新」重连钮(真源还带播放状态指示,
 //   pure_live 无对应数据源,省);
 // - 无输入框(对齐真源)。
@@ -236,7 +237,8 @@ class _ZishuChatTabState extends State<ZishuChatTab> with AutomaticKeepAliveClie
                     controller: _scrollController,
                     padding: const EdgeInsets.fromLTRB(AppSpacing.sm, AppSpacing.xs, AppSpacing.sm, AppSpacing.sm),
                     itemCount: rows.length,
-                    itemBuilder: (context, index) => _ZishuChatRow(message: rows[index]),
+                    itemBuilder: (context, index) =>
+                        _ZishuChatRow(message: rows[index], site: widget.room.platform ?? ''),
                   ),
                 if (newCount > 0)
                   // 对齐真源 .chat-new-bar:底部水平居中,距底 8。
@@ -329,9 +331,13 @@ class _ZishuChatTabState extends State<ZishuChatTab> with AutomaticKeepAliveClie
 /// 聊天消息行:单个 Text.rich 内联流(对齐真源 chat_row `_ChatRow` 的单段落
 /// 结构 —— 徽章/昵称/正文同处一个段落,正文折行时第二行从段落最左顶格起排)。
 class _ZishuChatRow extends StatelessWidget {
-  const _ZishuChatRow({required this.message});
+  const _ZishuChatRow({required this.message, required this.site});
 
   final LiveMessage message;
+
+  /// 站点 id(LiveRoom.platform:'douyu'/'huya'/'douyin'/'bilibili'…),
+  /// 徽章分站渲染依据(对齐真源 `_ChatRowData.site`)。
+  final String site;
 
   /// 系统消息:`addSystemMessage` 固定以 i18n('system_message')(zh
   /// 「系统消息」)作 userName、type 仍是 chat,模型上无独立 type 可分,
@@ -360,11 +366,17 @@ class _ZishuChatRow extends StatelessWidget {
       strutStyle: StrutStyle(fontSize: _kChatFontSize, height: _kChatLineHeight, forceStrutHeight: true),
       TextSpan(
         children: [
-          // 徽章顺序对齐真源:平台用户等级 pill 在前、粉丝牌在后。
-          if (message.userLevel.trim().isNotEmpty) zishuInlineBadge(ZishuChatUserLevelBadge(level: message.userLevel)),
-          if (message.badgeName?.trim().isNotEmpty == true)
+          // 徽章顺序对齐真源:平台用户等级 pill 在前、粉丝牌在后
+          // (真源 chat_row.dart:107-119;真源 userLevel gate 是 >0,我们
+          // 是字符串非空白,引擎侧只在 >0 时填,语义一致)。
+          if (message.userLevel.trim().isNotEmpty)
+            zishuInlineBadge(ZishuChatUserLevelBadge(site: site, level: message.userLevel)),
+          // 粉丝牌缺字段不渲染(现口径;zishuFanBadgeVisible 另对抖音要求
+          // 等级非空 —— 圆盘只承载数字,空等级会画出空心红圆)。
+          if (zishuFanBadgeVisible(site: site, name: message.badgeName, level: message.badgeLevel))
             zishuInlineBadge(
               ZishuChatFanBadge(
+                site: site,
                 name: message.badgeName!,
                 level: message.badgeLevel,
                 colorStart: message.badgeColorStart,

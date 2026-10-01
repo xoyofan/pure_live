@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/consts/app_consts.dart';
-import 'package:pure_live/common/utils/windows_multi_instance_launcher.dart';
 import 'package:pure_live/core/site/cc/cc_catalog.dart';
 import 'package:pure_live/modules/areas/areas_list_controller.dart';
 import 'package:pure_live/routes/app_navigation.dart';
@@ -21,13 +19,11 @@ import 'package:pure_live/zishu_app/features/browse/zishu_browse_view.dart';
 import 'package:pure_live/zishu_app/features/follow/zishu_follow_view.dart';
 import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
 import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
-import 'package:pure_live/zishu_app/shell/flyouts/zishu_category_flyout.dart';
-import 'package:pure_live/zishu_app/shell/flyouts/zishu_follow_avatars.dart';
 import 'package:pure_live/zishu_app/shell/category_warmup.dart';
-import 'package:pure_live/zishu_app/shell/flyouts/zishu_follow_flyout.dart';
-import 'package:pure_live/zishu_app/shell/flyouts/zishu_hover_overlay.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_my_category_flyout.dart';
 import 'package:pure_live/zishu_app/shell/zishu_app_nav_shortcuts.dart';
+import 'package:pure_live/zishu_app/shell/zishu_shell_flyout_machine.dart';
+import 'package:pure_live/zishu_app/shell/zishu_shell_top_bar.dart';
 
 /// zishu 前端移植主外壳(宽屏 >680):44px 顶栏 + 可折叠浏览侧栏。
 ///
@@ -59,7 +55,7 @@ class ZishuAppShell extends StatefulWidget {
   State<ZishuAppShell> createState() => _ZishuAppShellState();
 }
 
-class _ZishuAppShellState extends State<ZishuAppShell> {
+class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMachine {
   static const List<String> _hotCategories = [
     '英雄联盟',
     '王者荣耀',
@@ -77,13 +73,6 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
     '影视娱乐',
     '二次元',
   ];
-
-  /// hover 浮层关闭延迟:对齐 zishu 真源 `_AppShellState` 的
-  /// `_kHoverCloseDelay`(800)—— 离开触发区后留时间把鼠标移进浮层。
-  static const Duration _kHoverCloseDelay = Duration(milliseconds: 800);
-
-  /// 平台 tab 悬停到浮层弹出的延迟(300ms):扫过顶栏不弹,停留才弹。
-  static const Duration _kPlatformHoverOpenDelay = Duration(milliseconds: 300);
 
   /// 侧栏宽/把手位动画时长(展开 220 ↔ 收起 52):侧栏本体
   /// AnimatedContainer 与外壳把手的 AnimatedPositioned 同源同曲线。
@@ -111,21 +100,8 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
   Site? _pendingCategorySite;
   LiveArea? _pendingCategoryArea;
 
-  // ---- hover 浮层态机(自持于本 State;Timer 管开/关延迟,浮层互斥) ----
-
-  /// 300ms 悬停开门定时器(平台 tab 用;关注钮即时开)。
-  Timer? _openTimer;
-
-  /// 800ms 延迟关门定时器(离开触发区/浮层后统一走它)。
-  Timer? _closeTimer;
-
-  /// 当前打开分类浮层的站点 id(null = 关闭)。
-  String? _flyoutPlatformId;
-  double _platformFlyoutX = 0;
-
-  /// 关注在播浮层开关与触发点中心 x。
-  bool _followFlyoutOpen = false;
-  double _followFlyoutX = 0;
+  // ---- hover 浮层态机(scheduleFlyoutClose / buildFlyoutOverlays 等) ----
+  // 挂在 [ZishuShellFlyoutMachine]:与播放页共用同一份开/关调度与浮层渲染。
 
   /// 搜索防重入:showZishuSearchDialog 本身不防叠,连按两次 Ctrl+F 会开
   /// 两层(对齐 zishu 真源 `_searchOpening` 同款处理)。
@@ -136,83 +112,9 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
   /// 顶层且覆盖整页,焦点空闲时由它兜底持有。
   final FocusNode _shortcutFocusNode = FocusNode(debugLabel: 'zishu-app-shell-shortcuts');
 
-  void _cancelFlyoutClose() => _closeTimer?.cancel();
-
-  /// 离开触发区/浮层:取消未成的开门,再排 800ms 延迟关门。
-  void _scheduleFlyoutClose() {
-    _openTimer?.cancel();
-    _closeTimer?.cancel();
-    _closeTimer = Timer(_kHoverCloseDelay, () {
-      if (!mounted) return;
-      setState(() {
-        _flyoutPlatformId = null;
-        _followFlyoutOpen = false;
-      });
-    });
-  }
-
-  /// 立即收起所有浮层(点分类跳转 / 点小卡进播放页 / 顶栏点击导航前调用)。
-  void _closeAllFlyouts() {
-    _openTimer?.cancel();
-    _closeTimer?.cancel();
-    if (!mounted) return;
-    setState(() {
-      _flyoutPlatformId = null;
-      _followFlyoutOpen = false;
-    });
-  }
-
-  /// 平台 tab 悬停:先取消既有的开/关,300ms 后弹该平台分类浮层。
-  void _schedulePlatformFlyout(String siteId, double centerX) {
-    _closeTimer?.cancel();
-    _openTimer?.cancel();
-    _openTimer = Timer(_kPlatformHoverOpenDelay, () => _openPlatformFlyout(siteId, centerX));
-  }
-
-  /// 移出平台 tab:取消未成的开门,交给延迟关门。
-  void _cancelPlatformFlyoutOpen() {
-    _openTimer?.cancel();
-    _scheduleFlyoutClose();
-  }
-
-  void _openPlatformFlyout(String siteId, double centerX) {
-    if (!mounted) return;
-    _closeTimer?.cancel();
-    // 浮层一开就补跑一轮目录加载:用户看到的应是此刻目录,而不是等分区页
-    // 先被打开过。loadData 幂等(进行中复用同一 Future,已有数据不重拉)。
-    if (Get.isRegistered<AreasListController>(tag: siteId)) {
-      final controller = Get.find<AreasListController>(tag: siteId);
-      if (controller.categories.isEmpty) {
-        unawaited(controller.loadData());
-      }
-    }
-    if (_flyoutPlatformId == siteId) {
-      // 同一平台重复触发:浮层已开,不重建(触发点 x 不变,无需 setState)。
-      return;
-    }
-    setState(() {
-      _flyoutPlatformId = siteId;
-      _platformFlyoutX = centerX;
-      _followFlyoutOpen = false;
-    });
-  }
-
-  void _openFollowFlyout(double centerX) {
-    _closeTimer?.cancel();
-    if (_followFlyoutOpen) {
-      _followFlyoutX = centerX;
-      return;
-    }
-    setState(() {
-      _followFlyoutOpen = true;
-      _followFlyoutX = centerX;
-      _flyoutPlatformId = null;
-    });
-  }
-
   /// 关注浮层点小卡:先收浮层,再进播放页。
   void _openRoomFromFlyout(LiveRoom room) {
-    _closeAllFlyouts();
+    closeAllFlyouts();
     unawaited(AppNavigator.toLiveRoomDetail(liveRoom: room));
   }
 
@@ -223,7 +125,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
   /// 内嵌渲染(外壳内两级,不再推 kAreaRooms 路由)。
   void selectAreaCategory(Site site, LiveArea area) {
     if (!mounted) return;
-    _closeAllFlyouts();
+    closeAllFlyouts();
     // CC 官方入口是外链分类,不进内嵌房间流(对齐
     // AppNavigator.toCategoryDetail 的口径,维持既有外链/提示行为)。
     if (CCCatalog.isOfficialEntry(area)) {
@@ -338,8 +240,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
 
   @override
   void dispose() {
-    _openTimer?.cancel();
-    _closeTimer?.cancel();
+    disposeFlyoutMachine();
     _shortcutFocusNode.dispose();
     if (_popular != null && _tabListener != null) {
       _popular!.tabController.removeListener(_tabListener!);
@@ -424,23 +325,6 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
     return widget.body;
   }
 
-  /// 平台入口渲染表:严格按 `savedPlatformIds` 顺序;未保存(隐藏)的站点
-  /// 一律不渲染。新平台在「平台顺序与可见」设置里默认关,勾选后才进外壳。
-  List<Site> _visibleSites() {
-    final saved = SettingsService.to.app.savedPlatformIds.v;
-    final all = _sites;
-    final visible = <Site>[];
-    for (final id in saved) {
-      for (final site in all) {
-        if (site.id == id) {
-          visible.add(site);
-          break;
-        }
-      }
-    }
-    return visible;
-  }
-
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
@@ -484,21 +368,27 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
                 child: Scaffold(
                   backgroundColor: tokens.background,
                   body: SafeArea(
-                    // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表。
+                    // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表
+                    // (visibleTopBarSites 内读 Rx,与顶栏/侧栏共用同一份)。
                     child: Obx(() {
-                      final visibleSites = _visibleSites();
+                      final visibleSites = visibleTopBarSites();
                       return Column(
                         children: [
-                          _TopBar(
+                          ZishuShellTopBar(
                             index: widget.index,
                             sites: visibleSites,
                             currentSiteId: _currentSiteId,
+                            // 平台 tab 选中口径:仅热门页随站点高亮(分区/关注页不亮)。
+                            platformTabsActive: widget.index == HomeMenu.popular.index,
                             onSelectMenu: _navigateToMenu,
                             onSelectSite: _selectSiteId,
-                            onPlatformHoverStart: _schedulePlatformFlyout,
-                            onPlatformHoverEnd: _cancelPlatformFlyoutOpen,
-                            onFollowHoverStart: _openFollowFlyout,
-                            onFollowHoverEnd: _scheduleFlyoutClose,
+                            onPlatformHoverStart: schedulePlatformFlyout,
+                            onPlatformHoverEnd: cancelPlatformFlyoutOpen,
+                            onFollowHoverStart: openFollowFlyout,
+                            onFollowHoverEnd: scheduleFlyoutClose,
+                            onMyCategoryHoverStart: scheduleMyCategoryFlyout,
+                            onMyCategoryTap: toggleMyCategoryFlyout,
+                            onMyCategoryHoverEnd: cancelMyCategoryFlyoutOpen,
                             onOpenSettings: _openSettingsDialog,
                           ),
                           const Divider(height: 1, thickness: 1),
@@ -568,409 +458,10 @@ class _ZishuAppShellState extends State<ZishuAppShell> {
             ),
           ),
           // hover 浮层:Stack 覆盖在外壳最上层(Scaffold 之外)。
-          ..._buildFlyouts(),
-        ],
-      ),
-    );
-  }
-
-  /// 当前应展示的浮层(平台分类 / 关注在播)。宽度与内容同源:分类宽度随
-  /// `categories` 分组数收缩(Obx 订阅),关注宽度随在播数收缩。
-  List<Widget> _buildFlyouts() {
-    final flyouts = <Widget>[];
-    final platformId = _flyoutPlatformId;
-    if (platformId != null) {
-      final site = _siteById(platformId);
-      if (Get.isRegistered<AreasListController>(tag: platformId)) {
-        flyouts.add(
-          Obx(() {
-            // 每次 Obx 重建都重新 find:lazyPut(fenix) 的实例可能被 smart
-            // management 换新,闭包不能持有旧引用。
-            final controller = Get.find<AreasListController>(tag: platformId);
-            final groups = controller.categories;
-            // 空目录区分「加载中 / 失败」:pageError 是 RxBool,失败时本 Obx
-            // 也会随之重建(加载中文案见 _openPlatformFlyout 触发的 loadData)。
-            final emptyHint = controller.pageError.value ? '分类加载失败' : i18n('zishu_category_flyout_loading');
-            return ZishuHoverOverlay(
-              centerX: _platformFlyoutX,
-              // siteId 与浮层同传:hover 平台 tab 的站点 id,浮层/宽度都按
-              // 它做分区归一(与侧栏同源,见 category_sections.dart)。
-              width: ZishuPlatformCategoryFlyout.widthFor(groups, siteId: platformId),
-              child: ZishuPlatformCategoryFlyout(
-                siteId: platformId,
-                groups: groups,
-                onEnter: _cancelFlyoutClose,
-                onExit: _scheduleFlyoutClose,
-                onOpenCategory: site == null ? null : (area) => selectAreaCategory(site, area),
-                emptyHint: groups.isEmpty ? emptyHint : i18n('zishu_category_flyout_empty'),
-              ),
-            );
-          }),
-        );
-      } else {
-        // 站点目录控制器未注册(分区页尚未打开过):兜底空面板。
-        flyouts.add(
-          ZishuHoverOverlay(
-            centerX: _platformFlyoutX,
-            width: ZishuPlatformCategoryFlyout.minFlyoutWidth,
-            child: ZishuPlatformCategoryFlyout(
-              siteId: platformId,
-              groups: const <AppLiveCategory>[],
-              onEnter: _cancelFlyoutClose,
-              onExit: _scheduleFlyoutClose,
-            ),
-          ),
-        );
-      }
-    }
-    if (_followFlyoutOpen) {
-      flyouts.add(
-        Obx(() {
-          final rooms = SettingsService.to.fav.favoriteRooms.v.where((room) => room.isLiveNow).toList();
-          final layout = ZishuFollowFlyout.layoutFor(rooms.length);
-          return ZishuHoverOverlay(
-            centerX: _followFlyoutX,
-            width: layout.width,
-            child: ZishuFollowFlyout(
-              columns: layout.columns,
-              rooms: rooms,
-              onEnter: _cancelFlyoutClose,
-              onExit: _scheduleFlyoutClose,
-              onOpenRoom: _openRoomFromFlyout,
-            ),
-          );
-        }),
-      );
-    }
-    return flyouts;
-  }
-}
-
-/// 44px 顶栏:surface 底,主导航图标组 | 平台 tab 居中 | 工具区(关注/搜索/设置/账号)。
-class _TopBar extends StatelessWidget {
-  final int index;
-  final List<Site> sites;
-  final String? currentSiteId;
-  final void Function(int) onSelectMenu;
-  final void Function(String) onSelectSite;
-
-  /// 「关注」钮 hover → 触发点中心 x(弹在播头像网格);移出交给延迟关门。
-  final void Function(double centerX) onFollowHoverStart;
-  final VoidCallback onFollowHoverEnd;
-
-  /// 平台 tab hover → `(站点 id, 触发点中心 x)`,300ms 后弹分类浮层;
-  /// 移出取消开门并交给延迟关门。
-  final void Function(String siteId, double centerX) onPlatformHoverStart;
-  final VoidCallback onPlatformHoverEnd;
-
-  /// 打开 zishu 设置弹窗(设置钮与账号菜单共用)。
-  final VoidCallback onOpenSettings;
-
-  const _TopBar({
-    required this.index,
-    required this.sites,
-    required this.currentSiteId,
-    required this.onSelectMenu,
-    required this.onSelectSite,
-    required this.onPlatformHoverStart,
-    required this.onPlatformHoverEnd,
-    required this.onFollowHoverStart,
-    required this.onFollowHoverEnd,
-    required this.onOpenSettings,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    return Container(
-      height: AppSpacing.topNavHeight,
-      color: tokens.surface,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-      child: Row(
-        children: [
-          _TopNavBrand(index: index, onSelectMenu: onSelectMenu),
-          const Spacer(),
-          for (final site in sites)
-            _PlatformTab(
-              site: site,
-              selected: site.id == currentSiteId && index == HomeMenu.popular.index,
-              onTap: () => onSelectSite(site.id),
-              onHoverStart: onPlatformHoverStart,
-              onHoverEnd: onPlatformHoverEnd,
-            ),
-          const Spacer(),
-          // 关注触发器:在播头像堆叠(无在播回落星形),悬停仍走既有
-          // follow flyout 态机(_openFollowFlyout / 延迟关门),点击进关注页。
-          ZishuFollowAvatars(
-            tooltip: i18n('favorites_title'),
-            onTap: () => onSelectMenu(HomeMenu.favorites.index),
-            onHoverStart: onFollowHoverStart,
-            onHoverEnd: onFollowHoverEnd,
-          ),
-          _TopNavTool(
-            tooltip: '${i18n('search_live')}  Ctrl+F',
-            icon: Remix.search_line,
-            onTap: () => showZishuSearchDialog(context),
-          ),
-          const SizedBox(width: AppSpacing.xs),
-          _TopNavTool(tooltip: i18n('settings_title'), icon: Remix.settings_5_line, onTap: onOpenSettings),
-          _TopUserArea(onOpenSettings: onOpenSettings),
-        ],
-      ),
-    );
-  }
-}
-
-/// 品牌字 + 主导航图标组(首页/分区/我的分类);关注等工具入口在顶栏右侧。
-/// 组成与顺序对齐 zishu 真源 top_nav.dart 的 nav-home / nav-category /
-/// nav-my-category(真源图标 Icons.star_border_rounded);我的分类无对应
-/// 菜单页签(点击弹 ZishuMyCategorySheet),无持久选中态,图标恒为
-/// 主组未选色 textSecondary。
-class _TopNavBrand extends StatelessWidget {
-  final int index;
-  final void Function(int) onSelectMenu;
-
-  const _TopNavBrand({required this.index, required this.onSelectMenu});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(right: AppSpacing.sm),
-          child: Text(
-            'Pure Live',
-            style: context.textTitle.copyWith(
-              fontSize: AppFontSize.title,
-              color: tokens.brandBright,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        _TopNavIcon(
-          key: const Key('nav-home'),
-          icon: Remix.home_5_fill,
-          tooltip: i18n('popular_title'),
-          color: index == HomeMenu.popular.index ? tokens.textPrimary : tokens.textSecondary,
-          onTap: () => onSelectMenu(HomeMenu.popular.index),
-        ),
-        _TopNavIcon(
-          key: const Key('nav-category'),
-          icon: Remix.apps_2_fill,
-          tooltip: i18n('areas_title'),
-          color: index == HomeMenu.areas.index ? tokens.textPrimary : tokens.textSecondary,
-          onTap: () => onSelectMenu(HomeMenu.areas.index),
-        ),
-        _TopNavIcon(
-          key: const Key('nav-my-category'),
-          icon: Icons.star_border_rounded,
-          tooltip: i18n('my_category_title'),
-          color: tokens.textSecondary,
-          onTap: () => unawaited(showZishuMyCategorySheet(context)),
-        ),
-      ],
-    );
-  }
-}
-
-class _TopNavIcon extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _TopNavIcon({super.key, required this.icon, required this.tooltip, required this.color, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onTap,
-      icon: Icon(icon, size: 18, color: color),
-      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-      padding: EdgeInsets.zero,
-      splashRadius: 18,
-    );
-  }
-}
-
-/// 顶栏平台 tab:32×32 悬停 pill 内放平台图标;hover ≥300ms 弹分类浮层
-/// (延迟由壳层态机持有,这里只回传触发点中心 x 与移出事件)。
-class _PlatformTab extends StatelessWidget {
-  final Site site;
-  final bool selected;
-  final VoidCallback onTap;
-
-  /// hover 浮层挂钩:进入回传 `(站点 id, 触发点中心 x)`(全局坐标),
-  /// 移出取消开门并交给壳层延迟关门。
-  final void Function(String siteId, double centerX) onHoverStart;
-  final VoidCallback onHoverEnd;
-
-  const _PlatformTab({
-    required this.site,
-    required this.selected,
-    required this.onTap,
-    required this.onHoverStart,
-    required this.onHoverEnd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: Builder(
-        builder: (hoverContext) {
-          // 触发点中心 x:MouseRegion 与点击区共用同一个 RenderBox 快照
-          // (真源 _NavAction 同款处理)。
-          RenderBox? box;
-          double centerX() {
-            final target = box ??= hoverContext.findRenderObject() as RenderBox?;
-            if (target == null) return 0;
-            final dx = target.localToGlobal(Offset.zero).dx;
-            return dx + target.size.width / 2;
-          }
-
-          return MouseRegion(
-            onEnter: (_) => onHoverStart(site.id, centerX()),
-            onExit: (_) => onHoverEnd(),
-            child: InkResponse(
-              onTap: onTap,
-              radius: 18,
-              hoverColor: tokens.surfaceRaised,
-              focusColor: Theme.of(context).focusColor,
-              child: Tooltip(
-                message: site.name,
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: selected ? tokens.surfaceRaised : Colors.transparent,
-                    borderRadius: AppRadius.allMd,
-                    border: Border.all(color: selected ? tokens.accent : Colors.transparent, width: 1),
-                  ),
-                  padding: const EdgeInsets.all(4),
-                  child: PlatformIcon(id: site.id, size: 22),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _TopNavTool extends StatelessWidget {
-  const _TopNavTool({required this.tooltip, required this.icon, required this.onTap});
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onTap,
-      icon: Icon(icon, size: 18, color: Theme.of(context).extension<ZishuTokens>()!.textSecondary),
-      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-      padding: EdgeInsets.zero,
-      splashRadius: 18,
-    );
-  }
-}
-
-/// 顶栏右侧用户区:圆形头像钮 + PopupMenu。
-///
-/// 菜单在 zishu 原三项(历史/设置/关于)之外并入 pure_live 工具四项
-/// (备份/工具箱/多窗/新窗口),对齐旧 UI 的 MenuButton + CommonAppBarActions
-/// 能力面 —— 顶栏不另加图标避免拥挤,全部收进用户菜单。原
-/// 原 `ZishuUserArea` 菢单固定为三项且不可扩展,故按其视觉(头像钮、菜单
-/// 行高/图标/字级)在本壳内重建;工具项图标与文案沿用旧 UI 口径
-/// (cloud_line/link/layout_grid_line/add_to_photos_outlined)。
-///
-/// 开关门控在 itemBuilder 内读取(菜单每次打开即时取值,对齐旧 UI):
-/// 多窗受 `enableMultiView`,新窗口受 `Platform.isWindows && enableNewWindowPlay`,
-/// 关闭的项不渲染。
-class _TopUserArea extends StatelessWidget {
-  const _TopUserArea({required this.onOpenSettings});
-
-  /// 打开 zishu 设置弹窗(与顶栏设置钮同一入口,由壳层注入)。
-  final VoidCallback onOpenSettings;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    return PopupMenuButton<String>(
-      key: const Key('zishu-nav-user'),
-      tooltip: i18n('account'),
-      offset: const Offset(0, 30),
-      color: tokens.surface,
-      onSelected: (action) {
-        switch (action) {
-          case 'history':
-            Get.toNamed(RoutePath.kHistory);
-          case 'settings':
-            onOpenSettings();
-          case 'about':
-            Get.toNamed(RoutePath.kAbout);
-          case 'backup':
-            Get.toNamed(RoutePath.kBackup);
-          case 'toolbox':
-            Get.toNamed(RoutePath.kToolbox);
-          case 'multiview':
-            unawaited(AppNavigator.toMultiview());
-          case 'new_window':
-            unawaited(_launchNewWindow());
-        }
-      },
-      itemBuilder: (menuContext) => [
-        _item(menuContext, 'history', Icons.history_rounded, i18n('history')),
-        _item(menuContext, 'settings', Remix.settings_5_line, i18n('settings_title')),
-        _item(menuContext, 'about', Remix.information_line, i18n('about')),
-        _item(menuContext, 'backup', Remix.cloud_line, i18n('backup_recover')),
-        _item(menuContext, 'toolbox', Remix.link, i18n('open_link')),
-        if (SettingsService.to.app.enableMultiView.v)
-          _item(menuContext, 'multiview', Remix.layout_grid_line, i18n('multiview_title')),
-        if (Platform.isWindows && SettingsService.to.app.enableNewWindowPlay.v)
-          _item(menuContext, 'new_window', Icons.add_to_photos_outlined, i18n('open_new_window')),
-      ],
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-        child: CircleAvatar(
-          radius: 14,
-          backgroundColor: tokens.accent,
-          child: Icon(Icons.person_outline_rounded, size: 16, color: AppOnBright.white),
-        ),
-      ),
-    );
-  }
-
-  /// 新窗口:launch 已自守 `Platform.isWindows`;失败时对齐旧 UI MenuButton
-  /// 的 toast 提示。
-  Future<void> _launchNewWindow() async {
-    try {
-      await WindowsMultiInstanceLauncher.launch();
-    } catch (_) {
-      ToastUtil.show(i18n('open_new_window_failed'));
-    }
-  }
-
-  PopupMenuItem<String> _item(BuildContext context, String value, IconData icon, String label) {
-    final tokens = context.tokens;
-    return PopupMenuItem(
-      value: value,
-      height: 34,
-      child: Row(
-        children: [
-          Icon(icon, size: 15, color: tokens.textSecondary),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(fontSize: AppFontSize.bodySecondary, color: tokens.textPrimary),
+          ...buildFlyoutOverlays(
+            siteById: _siteById,
+            onOpenCategory: selectAreaCategory,
+            onOpenRoom: _openRoomFromFlyout,
           ),
         ],
       ),
