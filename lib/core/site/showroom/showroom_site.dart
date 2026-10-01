@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/core/danmaku/empty_danmaku.dart';
+import 'package:pure_live/core/danmaku/showroom_danmaku.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/interface/live_directory.dart';
 import 'package:pure_live/core/interface/live_search.dart';
@@ -43,7 +43,7 @@ class ShowroomSite extends LiveSite
   String get directoryNoticeKey => 'showroom_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => ShowroomDanmaku();
 
   Future<ShowroomCatalog> _catalog({CancelToken? cancel}) {
     if (cancel != null) return _api.catalog(cancel: cancel);
@@ -192,6 +192,7 @@ class ShowroomSite extends LiveSite
   LiveRoom _detailCard(ShowroomRoom room) {
     final profile = room.profile;
     final audience = profile.totalViewers?.toString();
+    final comments = room.commentServer;
     final qualities = room.streams.map(_quality).toList(growable: false)
       ..sort((left, right) {
         final rank = right.sort.compareTo(left.sort);
@@ -213,6 +214,9 @@ class ShowroomSite extends LiveSite
       introduction: profile.description,
       liveStatus: profile.isLive ? LiveStatus.live : LiveStatus.offline,
       data: profile.isLive && qualities.isNotEmpty ? _ShowroomPlayback('${profile.roomId}', qualities) : null,
+      danmakuData: comments == null
+          ? null
+          : ShowroomDanmakuArgs(host: comments.host, port: comments.port, key: comments.key),
       httpHeaders: ShowroomApi.mediaHeaders,
     );
   }

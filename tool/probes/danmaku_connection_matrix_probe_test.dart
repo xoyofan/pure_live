@@ -109,7 +109,7 @@ void main() {
   );
 }
 
-const _supportedProbePlatforms = <String>{Sites.bilibiliSite, Sites.huyaSite, Sites.douyinSite};
+const _supportedProbePlatforms = <String>{Sites.bilibiliSite, Sites.huyaSite, Sites.douyinSite, Sites.showroomSite};
 
 Future<Map<String, Object?>> _probePlatform(
   String platform,

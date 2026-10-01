@@ -32,7 +32,7 @@
 | 猫耳FM | ✅(热度) | ✅ | ✅ | ✅ | 真数据 | ✅ | ❌(契约未验证) | 完整参照实现 |
 | CHZZK | ✅ 迭代1 透出 | ✅ | ✅ 迭代1 透出 | ✅ | 伪目录(仅popular) | ✅(仅频道卡) | ❌ | 已修 |
 | niconico | ✅ 迭代1 透出(累计观看口径) | 🚫 recent 行无分类 | ✅ 迭代1 透出 | ✅ 迭代1 | 硬编码7 tab | ✅ | ❌ | 已修 |
-| SHOWROOM | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(本地快照过滤) | ❌ | 无缺口 |
+| SHOWROOM | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(本地快照过滤) | ✅ 迭代4 WS(SUB/MSG) | 弹幕已全链路验收 |
 | Bigo | ✅ | ⚠️ 硬编码站名(列表API无分类键) | ✅ | ⚠️ | 硬编码单 | ✅(ID+本地过滤) | ❌ | 结构性 |
 | FC2 | ✅ | ✅ | ✅ | ✅ | 硬编码6官方 | ✅(快照内) | ❌ | 无缺口 |
 | Steam | ✅ | ✅(游戏名) | ✅ | ✅ | 硬编码单 | ✅(单页本地) | ❌ | 无缺口 |
@@ -80,6 +80,24 @@
 - [x] 审计表刷新为修复后状态;剩余缺口全部标注结构性依据
 - [x] 结论:观看人数/分类徽标的可修缺口已全部落地;其余为平台不公开数据(探针/接口无字段/无公开目录),维持"不虚构"原则
 - 后续可选(不阻塞,另行立项):Bigo/京东/酷狗 area 站名→详情 API 分类富化(需逐房请求,成本高);弹幕接入沿第四节上轮清单推进
+
+### 迭代 4(2026-10-02)✅ 弹幕专项一:SHOWROOM 全链路落地
+
+- [x] 网络可达性普查(2026-10-02,本机):
+  - `kr-ss*.chat.naver.net`(CHZZK)→ TLS 握手被 RST,**curl 直连/经代理同样失败**,平台级网络不可达;REST 侧 dart 无 ALPN 也被黑洞,`RawSecureSocket+ALPN` 可通(探针 `tool/probes/chzzk_chat_probe.dart` 已存档,拿到过 `chatChannelId`,待境外网络跑 WS 帧实测后接入)
+  - `chat.missevan.com` → 连接重置(不可达)
+  - `a.h.livestream.nicovideo.jp` → 000(不可达)
+  - `realtime.twitcasting.tv` / `online.showroom-live.com` / `chat.picarto.tv` / `chat.pandalive.co.kr` / `cc.163.com` → **可达**
+  - AcFun:目录/访客登录可达,但弹幕 token 入口(`www.acfun.cn/rest/pc-direct/*` JS 挑战、kuaishouzt getToken 空)无法取到 IM 凭据,protobuf IM 协议无从实测,暂缓
+- [x] SHOWROOM 弹幕协议探针实测打通:`live_info` 提供 `bcsvr_host/port/key` → `wss://online.showroom-live.com/` 发 `SUB\t<key>` → 收 `MSG\t<key>\t{json}`(`t:1` 评论 ac/cm 字段,t:2 礼物)
+- [x] `ShowroomDanmaku` 实现(`lib/core/danmaku/showroom_danmaku.dart`):复用 `WebScoketUtils`(wss 主+ws:port 备失败转移、有界重连),`parseFrame` 纯函数可单测;`showroom_api.commentServer()` 解析并校验 bcsvr 主机白名单,`room()` 单请求同时供状态+弹幕参数
+- [x] 单测 5 用例(实测捕获帧 fixture)全过;改动文件 analyze 零问题
+- [x] **全链路验收**:`danmaku_connection_matrix_probe_test` 扩展 showroom 平台,PURELIVE_DANMAKU_PROBE=1 实测 `result: passed`(readyCount=1, chatCount=1, 零重连零断开)
+
+### 迭代 5(2026-10-02,进行中)
+
+- [ ] 第二平台弹幕:TwitCasting(可达)协议探针 → 实现;Picarto/PandaTV 同理
+- [ ] CHZZK 弹幕:待境外网络跑 `chzzk_chat_probe.dart` 帧实测后按 SHOWROOM 模式接入
 
 ## 四、上轮审计:解析字段缺口(2026-10-01 上一轮,保留)
 

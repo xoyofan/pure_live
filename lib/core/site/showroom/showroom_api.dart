@@ -137,11 +137,23 @@ class ShowroomProfile {
   );
 }
 
+class ShowroomCommentServer {
+  const ShowroomCommentServer({required this.host, required this.port, required this.key});
+
+  final String host;
+  final int port;
+  final String key;
+}
+
 class ShowroomRoom {
-  ShowroomRoom(this.profile, Iterable<ShowroomStream> streams) : streams = List.unmodifiable(streams);
+  ShowroomRoom(this.profile, Iterable<ShowroomStream> streams, {this.commentServer})
+    : streams = List.unmodifiable(streams);
 
   final ShowroomProfile profile;
   final List<ShowroomStream> streams;
+
+  /// Live comment server endpoint; null when the room is not broadcasting.
+  final ShowroomCommentServer? commentServer;
 }
 
 /// Public SHOWROOM web contracts. The directory is a complete snapshot rather
@@ -305,6 +317,27 @@ class ShowroomApi {
     return status == 2;
   }
 
+  /// Live comment server endpoint parsed from the room's live_info payload.
+  /// Null when the room is not broadcasting; anything that is not a
+  /// showroom-operated comment host is a schema failure so the danmaku
+  /// transport cannot be pointed at an arbitrary host.
+  Future<ShowroomCommentServer?> commentServer(int roomId, {CancelToken? cancel}) async {
+    if (roomId <= 0) throw const ShowroomException(ShowroomFailure.identity);
+    final data = _object(await _get('/api/live/live_info', {'room_id': '$roomId'}, cancel));
+    final actualId = _positiveInt(data['room_id']);
+    if (actualId != roomId) throw const ShowroomException(ShowroomFailure.identity);
+    final status = _nonNegativeInt(data['live_status']);
+    if (status > 2) throw const ShowroomException(ShowroomFailure.schema);
+    if (status != 2) return null;
+    final host = _text(data['bcsvr_host']);
+    final port = _nonNegativeInt(data['bcsvr_port']);
+    final key = _text(data['bcsvr_key']);
+    if (host.isEmpty || key.isEmpty || port <= 0 || port > 65535 || !host.endsWith('.showroom-live.com')) {
+      throw const ShowroomException(ShowroomFailure.schema);
+    }
+    return ShowroomCommentServer(host: host, port: port, key: key);
+  }
+
   Future<List<ShowroomStream>> streams(int roomId, {CancelToken? cancel}) async {
     if (roomId <= 0) throw const ShowroomException(ShowroomFailure.identity);
     final data = _object(await _get('/api/live/streaming_url', {'room_id': '$roomId', 'abr_available': '1'}, cancel));
@@ -332,12 +365,18 @@ class ShowroomApi {
 
   Future<ShowroomRoom> room(String reference, {required bool playback, CancelToken? cancel}) async {
     final roomId = await resolveRoomId(reference, cancel: cancel);
-    final results = await Future.wait<Object>([profile(roomId, cancel: cancel), liveStatus(roomId, cancel: cancel)]);
-    final profileResult = (results[0] as ShowroomProfile).withLiveStatus(results[1] as bool);
-    if (!playback || !profileResult.isLive) return ShowroomRoom(profileResult, const []);
+    // live_info doubles as the live-status probe and carries the comment
+    // server identity, so one request serves both consumers.
+    final results = await Future.wait<Object?>([
+      profile(roomId, cancel: cancel),
+      commentServer(roomId, cancel: cancel),
+    ]);
+    final comments = results[1] as ShowroomCommentServer?;
+    final profileResult = (results[0] as ShowroomProfile).withLiveStatus(comments != null);
+    if (!playback || comments == null) return ShowroomRoom(profileResult, const [], commentServer: comments);
     final media = await streams(roomId, cancel: cancel);
     if (media.isEmpty) throw const ShowroomException(ShowroomFailure.mediaUnavailable);
-    return ShowroomRoom(profileResult, media);
+    return ShowroomRoom(profileResult, media, commentServer: comments);
   }
 
   static ShowroomLive _live(Map<String, dynamic> data) {
