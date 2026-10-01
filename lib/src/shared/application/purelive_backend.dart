@@ -1,5 +1,3 @@
-library;
-
 /// Pure Live 解析桥:把 `lib/core` 的 LiveSite 实现包装成 live_parser
 /// 的 [SiteRegistration],供 zishu UI 经统一契约消费。
 ///
@@ -7,23 +5,25 @@ library;
 /// huya/douyu),`--dart-define=PURE_LIVE_PARSER=true` 启用。
 ///
 /// 设计要点:
-/// * 站点实例经 `Sites.supportSites`(lib/core/sites.dart)单源获取,
-///   cookie 注入沿用 `ParserConfig`(app 侧 binding 已接线);
-/// * 播放地址**不**在 resolveRoom 预取 —— 直播地址短时效,流地址由
-///   播放内核经 [PureLiveStreamSource] 在取流时解析(见 zishu 播放内核
-///   的 stream-source 约定);因此 [PureLiveRoomResolver] 返回的
-///   streams 为空、availableQualities 为实际档位。
+/// * 站点实例经四家站点类直接单例获取(不经过 lib/core/sites.dart —— 它会
+///   拖入全部 30+ 站点,其中未转换的站点仍带旧 UI/插件依赖链);
+/// * cookie 注入沿用 `ParserConfig`(app 侧 binding 已接线);
+/// * resolveRoom 返回真实 streams(选中档位全部线路)+ availableQualities;
+///   播放请求头对齐 pure_live PlaybackHeaderResolver 的四家分支。
+library;
+
 import 'dart:async';
 
 import 'package:live_parser/live_parser.dart' hide LiveSite;
 import 'package:pure_live/core/interface/live_site.dart';
+import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/site/bilibili/bilibili_site.dart';
 import 'package:pure_live/core/site/douyin/douyin_site.dart';
 import 'package:pure_live/core/site/douyu/douyu_site.dart';
+import 'package:pure_live/core/site/douyu/douyu_utils.dart';
 import 'package:pure_live/core/site/huya/huya_site.dart';
 import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_message.dart';
-import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/common/models/live_room.dart';
 import 'package:pure_live/model/live_play_quality.dart';
 
@@ -35,28 +35,68 @@ const Map<String, String> kPureLiveSiteMap = {
   'douyu': 'douyu',
 };
 
-/** 只实例化已 sidecar 化的四家 —— 不经过 lib/core/sites.dart(它会
- * 拖入全部 30+ 站点,其中未转换的站点仍带旧 UI/插件依赖链)。 */
-LiveSite? _siteOf(String liveParserSite) {
-  switch (liveParserSite) {
-    case 'bilibili':
-      return BiliBiliSite();
-    case 'douyin':
-      return DouyinSite();
-    case 'huya':
-      return HuyaSite();
-    case 'douyu':
-      return DouyuSite();
-  }
-  return null;
-}
-
 const Map<String, String> kPureLiveSiteNames = {
   'bilibili': 'BiliBili',
   'douyin': '抖音',
   'huya': '虎牙',
   'douyu': '斗鱼',
 };
+
+const String _desktopUserAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+    'AppleWebKit/537.36 (KHTML, like Gecko) '
+    'Chrome/140.0.0.0 Safari/537.36';
+
+/// 站点实例单例表:保留 huya UA 刷新、douyu 签名缓存、douyin cookie 等
+/// 站点内进程级状态(每次新建会丢缓存导致重复签名请求)。
+final Map<String, LiveSite> _pureLiveSiteInstances = {};
+
+LiveSite _siteInstanceOf(String liveParserSite) {
+  return _pureLiveSiteInstances.putIfAbsent(liveParserSite, () {
+    switch (liveParserSite) {
+      case 'bilibili':
+        return BiliBiliSite();
+      case 'douyin':
+        return DouyinSite();
+      case 'huya':
+        return HuyaSite();
+      case 'douyu':
+        return DouyuSite();
+    }
+    throw StateError('pure_live backend: 未支持的站点 "$liveParserSite"');
+  });
+}
+
+/// 播放请求头(对齐 pure_live PlaybackHeaderResolver 四家分支,匿名口径)。
+Map<String, String> _playbackHeaders(String site, String roomId) {
+  switch (site) {
+    case 'douyu':
+      return DouyuUtils.playbackHeaders(roomId);
+    case 'huya':
+      return {
+        'user-agent': HuyaSite.playUserAgent ?? HuyaSite.nativePlayUserAgent,
+        'origin': 'https://www.huya.com',
+        'referer': roomId.isEmpty
+            ? 'https://www.huya.com/'
+            : 'https://www.huya.com/$roomId',
+      };
+    case 'bilibili':
+      return {
+        'user-agent': BiliBiliSite.kDefaultUserAgent,
+        'origin': 'https://live.bilibili.com',
+        'referer': roomId.isEmpty
+            ? 'https://live.bilibili.com/'
+            : 'https://live.bilibili.com/$roomId',
+      };
+    case 'douyin':
+      return {
+        'user-agent': _desktopUserAgent,
+        'origin': 'https://live.douyin.com',
+        'referer': 'https://live.douyin.com/',
+      };
+  }
+  return const {};
+}
 
 RoomState _stateOf(LiveRoom room) {
   switch (room.liveStatus) {
@@ -69,26 +109,8 @@ RoomState _stateOf(LiveRoom room) {
   }
 }
 
-/// 把 pure_live LiveRoom 映射为 live_parser RoomPayload。
-///
-/// streams 恒为空(取流时再签,见库文档注释);画质档位单独查询。
+/// 把 pure_live LiveRoom 映射为 live_parser RoomPayload(不含流)。
 Future<RoomPayload> _roomToPayload(LiveRoom room, String site) async {
-  final coreSite = _siteOf(site)!;
-
-  // 档位:只在开播时取,失败按无档位处理(UI 回退只读信息)。
-  var qualities = const <QualityOption>[];
-  if (room.liveStatus == LiveStatus.live) {
-    try {
-      final q = await coreSite.getPlayQualites(detail: room);
-      qualities = [
-        for (final item in q)
-          QualityOption(name: item.quality, rate: 0),
-      ];
-    } catch (_) {
-      qualities = const <QualityOption>[];
-    }
-  }
-
   return RoomPayload(
     site: site,
     roomId: room.roomId ?? '',
@@ -101,13 +123,15 @@ Future<RoomPayload> _roomToPayload(LiveRoom room, String site) async {
     cid: '',
     roomState: _stateOf(room),
     streams: const <StreamQuality>[],
-    availableQualities: qualities,
+    availableQualities: const <QualityOption>[],
     source: 'purelive/$site',
     fetchedAt: DateTime.now(),
   );
 }
 
 /// 房间解析器:resolve/refresh/recovery 共用同一个 LiveSite 调用。
+/// resolve 在开播时顺带解析默认档位(或 preferredQuality 命中档)的
+/// 全部线路,供 zishu 播放内核直接起播;线路切换经 preferredQuality 重解析。
 class PureLiveRoomResolver
     implements RoomResolver, RoomSummaryRefresher, RoomRecoveryResolver {
   PureLiveRoomResolver(this.site);
@@ -116,10 +140,76 @@ class PureLiveRoomResolver
 
   @override
   Future<RoomPayload> resolveRoom(RoomRequest request) async {
-    final coreSite = _siteOf(site)!;
-    final detail =
-        await coreSite.getRoomDetail(platform: site, roomId: request.roomIdOrUrl);
-    return _roomToPayload(detail, site);
+    final coreSite = _siteInstanceOf(site);
+    final detail = await coreSite.getRoomDetail(
+      platform: site,
+      roomId: request.roomIdOrUrl,
+    );
+
+    // 离线/未开播:无流可给,只返回元信息。
+    if (detail.liveStatus != LiveStatus.live) {
+      return _roomToPayload(detail, site);
+    }
+
+    // 画质档位。
+    final qualities = await coreSite.getPlayQualites(detail: detail);
+    if (qualities.isEmpty) {
+      return _roomToPayload(detail, site);
+    }
+
+    // 选档:preferredQuality 名称/ID 匹配,否则默认第一档(最高)。
+    var chosen = qualities.first;
+    if (request.preferredQuality != null &&
+        request.preferredQuality!.isNotEmpty) {
+      for (final q in qualities) {
+        if (q.quality == request.preferredQuality ||
+            '${q.selectionId}' == request.preferredQuality) {
+          chosen = q;
+          break;
+        }
+      }
+    }
+
+    // 取流:该档位下全部线路。
+    final urls = await coreSite.getPlayUrls(detail: detail, quality: chosen);
+    final headers = _playbackHeaders(site, request.roomIdOrUrl);
+    final chosenIndex = qualities.indexOf(chosen);
+
+    final payload = await _roomToPayload(detail, site);
+    return RoomPayload(
+      site: payload.site,
+      roomId: payload.roomId,
+      sourceUrl: payload.sourceUrl,
+      anchorName: payload.anchorName,
+      title: payload.title,
+      cover: payload.cover,
+      avatar: payload.avatar,
+      category: payload.category,
+      cid: payload.cid,
+      roomState: payload.roomState,
+      streams: [
+        StreamQuality(
+          name: chosen.quality,
+          rate: (qualities.length - chosenIndex) * 100,
+          lines: [
+            for (var i = 0; i < urls.length; i++)
+              StreamLine(
+                name: '线路${i + 1}',
+                format: urls[i].toLowerCase().endsWith('.m3u8')
+                    ? 'hls'
+                    : 'flv',
+                url: urls[i],
+                headers: headers,
+              ),
+          ],
+        ),
+      ],
+      availableQualities: [
+        for (final q in qualities) QualityOption(name: q.quality, rate: 0),
+      ],
+      source: payload.source,
+      fetchedAt: payload.fetchedAt,
+    );
   }
 
   @override
@@ -127,66 +217,14 @@ class PureLiveRoomResolver
 
   @override
   Future<RoomRecord> refreshRoomSummary(RoomRequest request) async {
-    final payload = await resolveRoom(request);
-    return RoomRecord.fromPayload(payload);
+    final coreSite = _siteInstanceOf(site);
+    final detail = await coreSite.getRoomDetail(
+      platform: site,
+      roomId: request.roomIdOrUrl,
+    );
+    return RoomRecord.fromPayload(await _roomToPayload(detail, site));
   }
 }
-
-/// 播放地址解析:在 UI 选择画质后取流。
-class PureLiveStreamSource {
-  PureLiveStreamSource(this.site);
-
-  final String site;
-
-  Future<List<StreamLine>> linesFor(String roomId, String quality) async {
-    final coreSite = _siteOf(site)!;
-    final room = await coreSite.getRoomDetail(platform: site, roomId: roomId);
-    final qualities = await coreSite.getPlayQualites(detail: room);
-    LivePlayQuality? chosen;
-    for (final item in qualities) {
-      if (item.quality == quality) {
-        chosen = item;
-        break;
-      }
-    }
-    chosen ??= qualities.isEmpty ? null : qualities.first;
-    if (chosen == null) {
-      throw StateError('pure_live backend: $site/$roomId 无可用画质');
-    }
-    final urls = await coreSite.getPlayUrls(detail: room, quality: chosen);
-    return [
-      for (var i = 0; i < urls.length; i++)
-        StreamLine(
-          name: '线路${i + 1}',
-          format: urls[i].toLowerCase().endsWith('.m3u8') ? 'hls' : 'flv',
-          url: urls[i],
-          headers: const <String, String>{},
-        ),
-    ];
-  }
-}
-
-/// 组装一个 pure_live 后端的站点注册项(browse/search/danmaku 暂不挂,
-/// 后续任务按同模式增补 —— capabilities 如实声明,不占位伪装)。
-SiteRegistration buildPureLiveRegistration(String liveParserSite) {
-  if (_siteOf(liveParserSite) == null) {
-    throw StateError('pure_live backend: 未支持的站点 "$liveParserSite"');
-  }
-  return SiteRegistration(
-    id: liveParserSite,
-    name: kPureLiveSiteNames[liveParserSite] ?? liveParserSite,
-    capabilities: const SiteCapabilities(
-      browse: true,
-      multiQuality: true,
-      multiLine: true,
-    ),
-    resolver: PureLiveRoomResolver(liveParserSite),
-    browse: PureLiveBrowseRepository(liveParserSite),
-    search: PureLiveSearchRepository(liveParserSite),
-    danmaku: PureLiveDanmakuConnector(liveParserSite),
-  );
-}
-
 
 /// ── 栏目浏览:分类索引 + 分类房间/推荐流 ──
 ///
@@ -199,32 +237,7 @@ class PureLiveBrowseRepository implements BrowseRepository {
 
   final String site;
 
-  LiveSite get _coreSite => _siteOf(site)!;
-
-  LiveRoom _summaryToRoom(RoomSummary summary) {
-    return LiveRoom(
-      roomId: summary.roomId,
-      platform: site,
-      title: summary.title,
-      nick: summary.anchorName,
-      cover: summary.cover,
-      avatar: summary.avatar,
-      area: summary.category,
-      liveStatus: _summaryStateToLiveStatus(summary.roomState),
-      status: summary.roomState == RoomState.live,
-    );
-  }
-
-  LiveStatus _summaryStateToLiveStatus(RoomState state) {
-    switch (state) {
-      case RoomState.live:
-        return LiveStatus.live;
-      case RoomState.replay:
-        return LiveStatus.replay;
-      default:
-        return LiveStatus.offline;
-    }
-  }
+  LiveSite get _coreSite => _siteInstanceOf(site);
 
   @override
   Future<CategoryResult> fetchCategories(String site) async {
@@ -236,7 +249,11 @@ class PureLiveBrowseRepository implements BrowseRepository {
           name: category.name,
           items: [
             for (final area in category.children)
-              CategoryItem(cid: area.areaId ?? '', name: area.areaName ?? '', pic: area.areaPic ?? ''),
+              CategoryItem(
+                cid: area.areaId ?? '',
+                name: area.areaName ?? '',
+                pic: area.areaPic ?? '',
+              ),
           ],
         ),
     ];
@@ -245,10 +262,11 @@ class PureLiveBrowseRepository implements BrowseRepository {
 
   @override
   Future<RoomListResult> fetchRooms(RoomListRequest request) async {
-    final coreSite = _coreSite;
+    final coreSite = _siteInstanceOf(site);
+    final cid = request.cid ?? '';
     final summaries = <RoomSummary>[];
 
-    if ((request.cid ?? '').isEmpty) {
+    if (cid.isEmpty) {
       // 推荐流。
       final rooms = await coreSite.getRecommendRooms(
         page: request.page,
@@ -266,18 +284,15 @@ class PureLiveBrowseRepository implements BrowseRepository {
             online: room.watching ?? '',
             cover: room.cover ?? '',
             avatar: room.avatar ?? '',
-            roomState:
-                room.liveStatus == LiveStatus.live ? RoomState.live : RoomState.offline,
+            roomState: room.liveStatus == LiveStatus.live
+                ? RoomState.live
+                : RoomState.offline,
           ),
         );
       }
     } else {
       // 分类房间:cid 即 LiveArea.areaId。
-      final area = LiveArea(
-        platform: site,
-        areaId: request.cid,
-        areaName: request.cid,
-      );
+      final area = LiveArea(platform: site, areaId: cid, areaName: cid);
       final rooms = await coreSite.getCategoryRooms(
         area,
         page: request.page,
@@ -295,8 +310,9 @@ class PureLiveBrowseRepository implements BrowseRepository {
             online: room.watching ?? '',
             cover: room.cover ?? '',
             avatar: room.avatar ?? '',
-            roomState:
-                room.liveStatus == LiveStatus.live ? RoomState.live : RoomState.offline,
+            roomState: room.liveStatus == LiveStatus.live
+                ? RoomState.live
+                : RoomState.offline,
           ),
         );
       }
@@ -320,7 +336,7 @@ class PureLiveSearchRepository implements SearchRepository {
 
   @override
   Future<SearchResult> search(SearchRequest request) async {
-    final coreSite = _siteOf(site)!;
+    final coreSite = _siteInstanceOf(site);
     final rooms = await coreSite.searchRooms(
       request.query,
       page: 1,
@@ -365,27 +381,22 @@ class PureLiveDanmakuConnector implements DanmakuConnector {
 class _PureLiveDanmakuSession implements DanmakuSession {
   _PureLiveDanmakuSession({required this.site, required this.roomId});
 
+  /// 由连接器在注册后调用(私有构造外的唯一启动入口)。
+  void start() => _start();
+
+
   final String site;
   final String roomId;
+
+  LiveDanmaku? _danmaku;
 
   final StreamController<DanmakuMessage> _messages =
       StreamController<DanmakuMessage>.broadcast();
   final StreamController<DanmakuSessionState> _states =
       StreamController<DanmakuSessionState>.broadcast();
 
-  LiveDanmaku? _danmaku;
-  static const Map<String, int> _messageColors = {
-    '白色': 0xFFFFFFFF,
-    '红色': 0xFFFF5D5D,
-    '蓝色': 0xFF66CCFF,
-  };
-
-  void start() async {
-    final coreSite = _siteOf(site)!;
-    if (coreSite == null) {
-      _states.add(DanmakuSessionState.disconnected);
-      return;
-    }
+  Future<void> _start() async {
+    final coreSite = _siteInstanceOf(site);
     try {
       final room = await coreSite.getRoomDetail(
         platform: site,
@@ -399,14 +410,11 @@ class _PureLiveDanmakuSession implements DanmakuSession {
             DanmakuMessage(
               type: DanmakuMessageType.chat,
               roomId: roomId,
-              color: _messageColors['白色'] ?? 0xFFFFFFFF,
               userName: message.userName,
               userId: message.userId,
               text: message.message,
             ),
           );
-        } else if (message.type == LiveMessageType.online) {
-          // 观众数走 states 之外的 UI 通道,此处不转译。
         }
       };
       danmaku.onReady = () {
@@ -421,7 +429,7 @@ class _PureLiveDanmakuSession implements DanmakuSession {
       _danmaku = danmaku;
       _states.add(DanmakuSessionState.connecting);
       await danmaku.start(args);
-    } catch (e) {
+    } catch (_) {
       _states.add(DanmakuSessionState.disconnected);
     }
   }
@@ -434,12 +442,34 @@ class _PureLiveDanmakuSession implements DanmakuSession {
 
   @override
   Future<void> close() async {
-    // 停止底层连接并清理回调;会话表条目随实例一并释放。
     _danmaku?.onMessage = null;
     _danmaku?.onReconnect = null;
     _danmaku?.onClose = null;
     _danmaku?.onReady = null;
     await _danmaku?.stop();
+    _danmaku = null;
   }
 }
 
+/// 组装一个 pure_live 后端的站点注册项(browse/search/danmaku 全挂,
+/// capabilities 如实声明)。由宿主 buildRegistryWithPureLive 按 id 覆盖。
+SiteRegistration buildPureLiveRegistration(String liveParserSite) {
+  if (_siteInstanceOf(liveParserSite) == null) {
+    throw StateError('pure_live backend: 未支持的站点 "$liveParserSite"');
+  }
+  return SiteRegistration(
+    id: liveParserSite,
+    name: kPureLiveSiteNames[liveParserSite] ?? liveParserSite,
+    capabilities: const SiteCapabilities(
+      browse: true,
+      roomSearch: true,
+      danmaku: true,
+      multiQuality: true,
+      multiLine: true,
+    ),
+    resolver: PureLiveRoomResolver(liveParserSite),
+    browse: PureLiveBrowseRepository(liveParserSite),
+    search: PureLiveSearchRepository(liveParserSite),
+    danmaku: PureLiveDanmakuConnector(liveParserSite),
+  );
+}
