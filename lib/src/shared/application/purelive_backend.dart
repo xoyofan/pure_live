@@ -5,8 +5,7 @@
 /// huya/douyu),`--dart-define=PURE_LIVE_PARSER=true` 启用。
 ///
 /// 设计要点:
-/// * 站点实例经四家站点类直接单例获取(不经过 lib/core/sites.dart —— 它会
-///   拖入全部 30+ 站点,其中未转换的站点仍带旧 UI/插件依赖链);
+/// * 站点实例经 `Sites.supportSites` 全量表查找(全平台支持);
 /// * cookie 注入沿用 `ParserConfig`(app 侧 binding 已接线);
 /// * resolveRoom 返回真实 streams(选中档位全部线路)+ availableQualities;
 ///   播放请求头对齐 pure_live PlaybackHeaderResolver 的四家分支。
@@ -16,6 +15,7 @@ import 'dart:async';
 
 import 'package:live_parser/live_parser.dart' hide LiveSite;
 import 'package:pure_live/core/interface/live_site.dart';
+import 'package:pure_live/core/sites.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/site/bilibili/bilibili_site.dart';
 import 'package:pure_live/core/site/douyin/douyin_site.dart';
@@ -53,15 +53,8 @@ final Map<String, LiveSite> _pureLiveSiteInstances = {};
 
 LiveSite _siteInstanceOf(String liveParserSite) {
   return _pureLiveSiteInstances.putIfAbsent(liveParserSite, () {
-    switch (liveParserSite) {
-      case 'bilibili':
-        return BiliBiliSite();
-      case 'douyin':
-        return DouyinSite();
-      case 'huya':
-        return HuyaSite();
-      case 'douyu':
-        return DouyuSite();
+    for (final site in Sites.supportSites) {
+      if (site.id == liveParserSite) return site.liveSite;
     }
     throw StateError('pure_live backend: 未支持的站点 "$liveParserSite"');
   });
@@ -69,33 +62,18 @@ LiveSite _siteInstanceOf(String liveParserSite) {
 
 /// 播放请求头(对齐 pure_live PlaybackHeaderResolver 四家分支,匿名口径)。
 Map<String, String> _playbackHeaders(String site, String roomId) {
+  // 对齐 pure_live PlaybackHeaderResolver(匿名口径)。
   switch (site) {
     case 'douyu':
-      return DouyuUtils.playbackHeaders(roomId);
+      return {'origin': 'https://www.douyu.com', 'referer': 'https://www.douyu.com/$roomId', 'user-agent': _desktopUserAgent};
     case 'huya':
-      return {
-        'user-agent': HuyaSite.playUserAgent ?? HuyaSite.nativePlayUserAgent,
-        'origin': 'https://www.huya.com',
-        'referer': roomId.isEmpty
-            ? 'https://www.huya.com/'
-            : 'https://www.huya.com/$roomId',
-      };
+      return {'user-agent': _desktopUserAgent, 'origin': 'https://www.huya.com', 'referer': roomId.isEmpty ? 'https://www.huya.com/' : 'https://www.huya.com/$roomId'};
     case 'bilibili':
-      return {
-        'user-agent': BiliBiliSite.kDefaultUserAgent,
-        'origin': 'https://live.bilibili.com',
-        'referer': roomId.isEmpty
-            ? 'https://live.bilibili.com/'
-            : 'https://live.bilibili.com/$roomId',
-      };
+      return {'user-agent': _desktopUserAgent, 'origin': 'https://live.bilibili.com', 'referer': roomId.isEmpty ? 'https://live.bilibili.com/' : 'https://live.bilibili.com/$roomId'};
     case 'douyin':
-      return {
-        'user-agent': _desktopUserAgent,
-        'origin': 'https://live.douyin.com',
-        'referer': 'https://live.douyin.com/',
-      };
+      return {'user-agent': _desktopUserAgent, 'origin': 'https://live.douyin.com', 'referer': 'https://live.douyin.com/'};
   }
-  return const {};
+  return {'user-agent': _desktopUserAgent};
 }
 
 RoomState _stateOf(LiveRoom room) {
