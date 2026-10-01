@@ -6,6 +6,7 @@ import 'package:pure_live/core/common/request_scope.dart';
 import 'package:pure_live/core/interface/live_search.dart';
 
 import 'package:pure_live/common/index.dart';
+import 'package:pure_live/model/live_anchor_item.dart';
 import 'package:pure_live/modules/search/search_capability.dart';
 import 'package:pure_live/modules/search/search_ranking.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -83,6 +84,11 @@ class SearchController extends GetxController {
     _hasMoreByPlatform.clear();
     _stagnantPagesByPlatform.clear();
     results.clear();
+    // 主播档新增字段随切站一并清空(只加能力:房间档行为不变);空词下
+    // direct 本就为 null(仅 onQueryChanged 写入),无需额外处理。
+    _anchorSeen.clear();
+    _anchorHasMoreByPlatform.clear();
+    anchors.clear();
     loading.v = false;
     loadingMore.v = false;
     pendingSiteCount.v = 0;
@@ -216,13 +222,29 @@ class SearchController extends GetxController {
     _hasMoreByPlatform.clear();
     _stagnantPagesByPlatform.clear();
     results.clear();
+    // 主播档状态同步清空(两档互斥渲染,新搜不留另一档残留;真源 setType
+    // 「结果列表随之整体切换,不残留另一档行」同口径)。
+    anchors.clear();
+    _anchorSeen.clear();
+    _anchorHasMoreByPlatform.clear();
 
-    await _searchPage(keyword: keyword, page: 1, generation: generation, append: false);
+    // 档位分发:主播档走 searchAnchors 并行管线,房间档保持既有管线不动。
+    if (searchType.v == SearchType.anchors) {
+      await _anchorSearchPage(keyword: keyword, page: 1, generation: generation, append: false);
+    } else {
+      await _searchPage(keyword: keyword, page: 1, generation: generation, append: false);
+    }
   }
 
   Future<void> loadMore() async {
     if (!_active || loading.v || loadingMore.v || !hasMore.v || _activeKeyword.isEmpty) return;
     final generation = _searchGeneration;
+    // 主播档分页:page/pageSize 与房间档同口径(每站单页,翻页追加)。
+    if (searchType.v == SearchType.anchors) {
+      loadingMore.v = true;
+      await _anchorSearchPage(keyword: _activeKeyword, page: _currentPage + 1, generation: generation, append: true);
+      return;
+    }
     loadingMore.v = true;
     await _searchPage(keyword: _activeKeyword, page: _currentPage + 1, generation: generation, append: true);
   }
@@ -435,6 +457,283 @@ class SearchController extends GetxController {
     if (!_active) return;
     sortMode.v = value;
     _applyFiltersAndSort();
+  }
+
+  // ============================================================
+  // 主播档(锚点搜索)与直达识别 —— zishu 搜索弹窗新增能力(只加不改):
+  // searchType 默认 rooms,搜索页(kSearch 路由)不触碰这些字段,
+  // 既有 doSearch / loadMore / selectPlatform 对房间档的行为完全不变。
+  // ============================================================
+
+  /// searchAnchors 有真实实现的站点(2026-10-01 逐站核对 lib/core/site/*):
+  /// - 独立主播搜索 API:bilibili(:786)/ douyu(:619)/ huya(:930)/ yy(:749);
+  /// - 由各自 searchRooms 派生:cc(:380)/ acfun(:113);
+  /// - douyin(:886)覆盖但直接抛「暂不支持」;kuaishou(:580)/ twitch(:936)/
+  ///   iptv(:356)覆盖但恒返回空 —— 均按不支持计(数据诚实,不空挂主播档)。
+  /// interface 默认实现(live_site.dart:218)返回空表,即未覆盖站一律不支持。
+  static const Set<String> anchorSearchSites = {
+    Sites.bilibiliSite,
+    Sites.douyuSite,
+    Sites.huyaSite,
+    Sites.yySite,
+    Sites.ccSite,
+    Sites.acfunSite,
+  };
+
+  /// 主播档每页条数:与房间档 searchRoomsWithCancellation 的 pageSize:20 同口径。
+  static const int _kAnchorPageSize = 20;
+
+  /// 直达识别正则,逐字照真源 zishu search_provider.dart:18/21:
+  /// `^\d+$` 纯数字 → 房间号;`douyu\.com/(\d+)` 同时命中
+  /// www.douyu.com/{id} 与 live.douyu.com/{id} 两种直播间链接。
+  static final RegExp _roomIdPattern = RegExp(r'^\d+$');
+  static final RegExp _douyuLinkPattern = RegExp(r'douyu\.com/(\d+)');
+
+  /// 直达识别(真源 search_provider.dart:236-249 同构)。真源以原始输入解析,
+  /// 此处先 trim(回车场景更宽容;对 `^\d+$` 是严格放宽,不引入新语义)。
+  static DirectTarget? resolveSearchDirect(String input) {
+    final keyword = input.trim();
+    if (keyword.isEmpty) return null;
+    if (_roomIdPattern.hasMatch(keyword)) {
+      return DirectTarget(kind: DirectKind.room, roomId: keyword);
+    }
+    final match = _douyuLinkPattern.firstMatch(keyword);
+    if (match != null) {
+      return DirectTarget(kind: DirectKind.link, roomId: match.group(1)!, url: keyword);
+    }
+    return null;
+  }
+
+  /// 当前档位(默认 rooms:搜索页无档位 UI,既有语义不变)。
+  final searchType = SearchType.rooms.obs;
+
+  /// 主播档命中(带平台归属;LiveAnchorItem 无 platform 字段,全平台聚合时
+  /// 无法反查,真源 SearchHitItem 同口径)。
+  final anchors = <SearchAnchorHit>[].obs;
+
+  /// 直达项:输入实时解析(见 [onQueryChanged]),与搜索动作解耦。
+  final direct = Rxn<DirectTarget>();
+
+  /// 主播档去重(platform:roomId)与各站翻页余量,生命周期同房间档各 Map。
+  final Set<String> _anchorSeen = {};
+  final Map<String, bool> _anchorHasMoreByPlatform = {};
+
+  /// 当前选中项是否可用主播档(index 0 = 全平台:任一站可用即可)。
+  bool supportsAnchorSearchAt(int platformIndex) {
+    bool capable(Site site) => anchorSearchSites.contains(site.id.toLowerCase());
+    if (platformIndex == 0) return sites.any(capable);
+    if (platformIndex < 0 || platformIndex > sites.length) return false;
+    return capable(sites[platformIndex - 1]);
+  }
+
+  /// 房间档结果是否对应当前输入(Enter「进首个结果」防陈旧结果误导航)。
+  bool get hasFreshRoomResults =>
+      searched.v &&
+      searchType.v == SearchType.rooms &&
+      _activeKeyword == searchController.text.trim() &&
+      results.isNotEmpty;
+
+  /// 主播档结果是否对应当前输入(同上,主播档口径)。
+  bool get hasFreshAnchorResults =>
+      searched.v &&
+      searchType.v == SearchType.anchors &&
+      _activeKeyword == searchController.text.trim() &&
+      anchors.isNotEmpty;
+
+  /// 输入实时变化入口(真源 setQuery 的直达解析部分):只解析直达项,
+  /// 不触发搜索 —— 本仓搜索仍由回车/按钮驱动,为既有语义。
+  void onQueryChanged(String text) {
+    if (!_active) return;
+    direct.value = resolveSearchDirect(text);
+  }
+
+  /// 清空输入并回到未搜索空态(真源 setQuery('') 空词立即回空态同口径,
+  /// 供输入行清空钮使用)。
+  void clearDraft() {
+    if (!_active) return;
+    _invalidateSearch();
+    searchController.clear();
+    direct.value = null;
+    _activeKeyword = '';
+    _currentPage = 0;
+    _rawResults.clear();
+    _hasMoreByPlatform.clear();
+    _stagnantPagesByPlatform.clear();
+    _anchorSeen.clear();
+    _anchorHasMoreByPlatform.clear();
+    results.clear();
+    anchors.clear();
+    loading.v = false;
+    loadingMore.v = false;
+    pendingSiteCount.v = 0;
+    hasMore.v = false;
+    searched.v = false;
+    errorMessage.v = '';
+  }
+
+  /// 切换档位(真源 SearchController.setType 语义):现有关键词按新档重查;
+  /// 未搜索/空词时清两档结果回空态 —— 但**保留已输入草稿与直达解析**
+  /// (真源切档不清输入,清输入是独立动作,见 clearDraft)。
+  void setType(SearchType value) {
+    if (!_active || value == searchType.v) return;
+    _invalidateSearch();
+    searchType.value = value;
+    if (searched.v && searchController.text.trim().isNotEmpty) {
+      doSearch();
+      return;
+    }
+    _activeKeyword = '';
+    _currentPage = 0;
+    _rawResults.clear();
+    _hasMoreByPlatform.clear();
+    _stagnantPagesByPlatform.clear();
+    _anchorSeen.clear();
+    _anchorHasMoreByPlatform.clear();
+    results.clear();
+    anchors.clear();
+    loading.v = false;
+    loadingMore.v = false;
+    pendingSiteCount.v = 0;
+    hasMore.v = false;
+    searched.v = false;
+    errorMessage.v = '';
+  }
+
+  /// 主播档单页:并行打各已实现站的 searchAnchors(page/pageSize 同房间档),
+  /// 结果按站点完成顺序追加(交错拼接),分站失败隔离进 errorMessage ——
+  /// 全部照既有房间档 _searchPage 管线口径。
+  Future<void> _anchorSearchPage({
+    required String keyword,
+    required int page,
+    required int generation,
+    required bool append,
+  }) async {
+    final selectedSites = index.v == 0 ? sites : (index.v <= sites.length ? [sites[index.v - 1]] : <Site>[]);
+    if (!append) {
+      for (final site in selectedSites) {
+        _anchorHasMoreByPlatform[site.id] = anchorSearchSites.contains(site.id.toLowerCase());
+      }
+    }
+    final anchorSites = selectedSites
+        .where(
+          (site) =>
+              anchorSearchSites.contains(site.id.toLowerCase()) &&
+              (!append || (_anchorHasMoreByPlatform[site.id] ?? true)),
+        )
+        .toList();
+
+    if (anchorSites.isEmpty) {
+      if (!_isCurrent(generation)) return;
+      // 单选了不支持主播档的站:UI 层按能力位隐藏主播档,这里是切站竞态兜底;
+      // 文案无 i18n key(记录),语义对齐真源 search_view.dart:198。
+      if (selectedSites.length == 1 && !anchorSearchSites.contains(selectedSites.single.id.toLowerCase())) {
+        errorMessage.v = '「${selectedSites.single.name}」暂不支持主播搜索';
+      }
+      hasMore.v = false;
+      loading.v = false;
+      loadingMore.v = false;
+      pendingSiteCount.v = 0;
+      return;
+    }
+
+    pendingSiteCount.v = anchorSites.length;
+    final failures = <String>[];
+    var completed = 0;
+    final cancel = _searchCancel!;
+    final batchStream = _anchorSitesBounded(anchorSites, keyword, page, cancel);
+
+    // 与房间档一致:站点完成即渲染,不等最慢的请求。
+    await for (final batch in batchStream) {
+      if (!_isCurrent(generation)) continue;
+      for (final anchor in batch.anchors) {
+        // 站内按 roomId 去重(翻页边界常有一条重叠,照房间档去重口径)。
+        if (_anchorSeen.add('${batch.site.id}:${anchor.roomId}')) {
+          anchors.add(SearchAnchorHit(site: batch.site, anchor: anchor));
+        }
+      }
+      if (batch.failed) failures.add(batch.site.name);
+      // 翻页余量:满页才认为可能有下一页(数据诚实,不虚标「加载更多」)。
+      _anchorHasMoreByPlatform[batch.site.id] = !batch.failed && batch.anchors.length >= _kAnchorPageSize;
+      completed++;
+      pendingSiteCount.v = anchorSites.length - completed;
+      if (anchors.isNotEmpty || completed == anchorSites.length) {
+        loading.v = false;
+      }
+    }
+
+    if (!_isCurrent(generation)) return;
+    _currentPage = page;
+    hasMore.v = anchorSites.any((site) => _anchorHasMoreByPlatform[site.id] ?? false);
+    if (failures.isNotEmpty) {
+      errorMessage.v = i18n('search_partial_failure', args: {'sites': failures.join('、')});
+    } else {
+      errorMessage.v = '';
+    }
+    loading.v = false;
+    loadingMore.v = false;
+    pendingSiteCount.v = 0;
+  }
+
+  /// 有界并发站点流:与房间档 _searchSitesBounded 同构(并发上限共用
+  /// maxConcurrentNativeSearchSites),单站调用换成 searchAnchors。
+  Stream<_SiteAnchorBatch> _anchorSitesBounded(
+    List<Site> anchorSites,
+    String keyword,
+    int page,
+    CancelToken cancel,
+  ) async* {
+    final active = <int, Future<_SiteAnchorBatch>>{};
+    var next = 0;
+
+    void fillSlots() {
+      while (!cancel.isCancelled && active.length < maxConcurrentNativeSearchSites && next < anchorSites.length) {
+        final slot = next++;
+        active[slot] = _searchAnchorSite(anchorSites[slot], keyword, page, cancel);
+      }
+    }
+
+    fillSlots();
+    while (active.isNotEmpty) {
+      final completed = await Future.any(
+        active.entries.map((entry) => entry.value.then((batch) => (slot: entry.key, batch: batch))),
+      );
+      active.remove(completed.slot);
+      yield completed.batch;
+      // 已废弃代次的查询只排水已发出请求,不再排队后续站点。
+      fillSlots();
+    }
+  }
+
+  /// 单站主播搜索:searchAnchors 无 LiveCancellableSearch 取消契约,照房间档
+  /// legacy 口径用 transport.whenCancel 竞速 + 同一 requestTimeout 兜底。
+  Future<_SiteAnchorBatch> _searchAnchorSite(Site site, String keyword, int page, CancelToken cancel) async {
+    try {
+      final anchors = await withRequestCancellation(cancel, (transport) async {
+        if (transport.isCancelled) throw transport.cancelError!;
+        var expired = false;
+        final timer = Timer(requestTimeout, () {
+          expired = true;
+          transport.cancel();
+        });
+        try {
+          final result = await Future.any<List<LiveAnchorItem>>([
+            site.liveSite.searchAnchors(keyword, page: page, pageSize: _kAnchorPageSize),
+            transport.whenCancel.then<List<LiveAnchorItem>>((_) => throw transport.cancelError!),
+          ]);
+          if (transport.isCancelled) throw transport.cancelError!;
+          return result;
+        } catch (_) {
+          if (expired && !cancel.isCancelled) throw TimeoutException('Anchor search deadline', requestTimeout);
+          rethrow;
+        } finally {
+          timer.cancel();
+        }
+      });
+      return _SiteAnchorBatch(site: site, anchors: anchors);
+    } catch (error) {
+      if (!cancel.isCancelled) debugPrint('Anchor search failed for ${site.id}: $error');
+      return _SiteAnchorBatch(site: site, anchors: const [], failed: true);
+    }
   }
 
   String get capabilityText {
@@ -651,4 +950,42 @@ class _SiteSearchBatch {
   final Site site;
   final List<LiveRoom> rooms;
   final bool failed;
+}
+
+class _SiteAnchorBatch {
+  const _SiteAnchorBatch({required this.site, required this.anchors, this.failed = false});
+
+  final Site site;
+  final List<LiveAnchorItem> anchors;
+  final bool failed;
+}
+
+/// 搜索档位:主播 / 房间(真源 zishu search_provider.dart `SearchType` 同构,
+/// 对齐 web SearchDialog 的 activeTab)。搜索页(kSearch 路由)无档位 UI,
+/// 恒为 rooms;档位只由 zishu 搜索弹窗经 [SearchController.setType] 驱动。
+enum SearchType { anchors, rooms }
+
+/// 直达项类型(真源 DirectKind 同构):room = 纯数字房间号;link = douyu 链接。
+enum DirectKind { room, link }
+
+/// 直达目标:纯数字房间号,或 douyu.com 链接解析出的房间(真源 DirectTarget
+/// 同构)。[url] 为 link 直达时的原始输入,供结果 tile 副行展示。
+class DirectTarget {
+  const DirectTarget({required this.kind, required this.roomId, this.url});
+
+  final DirectKind kind;
+
+  /// 直达房间号。
+  final String roomId;
+
+  final String? url;
+}
+
+/// 主播档命中项:携带平台归属(LiveAnchorItem 无 platform 字段,全平台聚合时
+/// 无法反查;真源 SearchHitItem 同口径)。UI 用 [site] 拼角标/进房参数。
+class SearchAnchorHit {
+  const SearchAnchorHit({required this.site, required this.anchor});
+
+  final Site site;
+  final LiveAnchorItem anchor;
 }
