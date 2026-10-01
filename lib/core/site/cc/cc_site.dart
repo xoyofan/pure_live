@@ -366,7 +366,7 @@ class CCSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResol
         status: item['status'] == 1,
         liveStatus: item['status'] != null && item['status'] == 1 ? LiveStatus.live : LiveStatus.offline,
         avatar: item["portrait"].toString(),
-        watching: item["follower_num"].toString(),
+        // 搜索接口无观看数字段,粉丝数不得冒充观看数徽标;followers 保留原口径。
         followers: item["follower_num"].toString(),
         audienceMetricType: AudienceMetricType.followers,
         platform: Sites.ccSite,

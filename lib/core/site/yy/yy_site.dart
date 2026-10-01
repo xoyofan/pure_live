@@ -551,6 +551,8 @@ class YYSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResol
 
   @override
   Future<List<LiveRoom>> getRecommendRooms({int page = 1, int pageSize = 30}) async {
+    // 首页推荐先预热 biz→分类名映射,冷启动不再显示 biz 代码;失败回退原值。
+    final areaNames = await _bizAreaNamesSafe();
     final resultText = await HttpClient.instance.getJson(
       'https://www.yy.com/more/page.action',
       queryParameters: {'page': page, 'pageSize': pageSize, 'biz': 'other', 'subBiz': 'idx', 'moduleId': '-1'},
@@ -565,7 +567,7 @@ class YYSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResol
     for (final item in data) {
       final users = item['users']?.toString() ?? '';
       final biz = item['biz']?.toString() ?? '';
-      final area = bizAreaNameMap[biz] ?? biz;
+      final area = areaNames[biz] ?? biz;
       items.add(
         LiveRoom(
           roomId: item['sid']?.toString() ?? '',
@@ -593,6 +595,16 @@ class YYSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResol
   /// ============================================================
 
   final Map<String, String> bizAreaNameMap = {};
+
+  /// biz→分类名映射预热;分类页失败时回退当前映射,推荐/搜索流不中断。
+  Future<Map<String, String>> _bizAreaNamesSafe() async {
+    try {
+      return await getBizAreaNameMap();
+    } catch (e) {
+      CoreLog.error(e);
+      return bizAreaNameMap;
+    }
+  }
 
   Future<Map<String, String>> getBizAreaNameMap() async {
     if (bizAreaNameMap.isNotEmpty) {
@@ -701,6 +713,7 @@ class YYSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResol
 
   @override
   Future<List<LiveRoom>> searchRooms(String keyword, {int page = 1, int pageSize = 30}) async {
+    final areaNames = await _bizAreaNamesSafe();
     final resultText = await HttpClient.instance.getJson(
       'https://www.yy.com/apiSearch/doSearch.json',
       queryParameters: {'q': keyword, 't': '120', 'n': page},
@@ -729,7 +742,7 @@ class YYSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResol
           popularity: users,
           audienceMetricType: AudienceMetricType.popularity,
           avatar: validImgUrl(item['headurl']?.toString() ?? ''),
-          area: bizAreaNameMap[item['biz']?.toString() ?? ''] ?? item['biz']?.toString() ?? '',
+          area: areaNames[item['biz']?.toString() ?? ''] ?? item['biz']?.toString() ?? '',
           liveStatus: isLive ? LiveStatus.live : LiveStatus.offline,
           status: isLive,
           platform: Sites.yySite,
