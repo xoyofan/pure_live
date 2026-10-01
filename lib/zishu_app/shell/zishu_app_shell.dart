@@ -20,6 +20,7 @@ import 'package:pure_live/zishu_app/features/follow/zishu_follow_view.dart';
 import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
 import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 import 'package:pure_live/zishu_app/shell/category_warmup.dart';
+import 'package:pure_live/zishu_app/shell/flyouts/zishu_category_flyout.dart';
 import 'package:pure_live/zishu_app/shell/flyouts/zishu_my_category_flyout.dart';
 import 'package:pure_live/zishu_app/shell/zishu_app_nav_shortcuts.dart';
 import 'package:pure_live/zishu_app/shell/zishu_shell_flyout_machine.dart';
@@ -744,12 +745,64 @@ class _CategoryRow extends StatelessWidget {
   }
 }
 
+/// 侧栏分类 chip(顶栏 hover 浮层 `_CategoryChip` 的侧栏等价件:该组件
+/// 是 `zishu_category_flyout.dart` 私有件无法复用,且侧栏内原本只有
+/// [_CategoryRow] 行组件,故按同规格在侧栏内复刻)—— 小字号
+/// bodySecondary、hover 文字转 accent(金底走 InkWell hoverColor,取
+/// `AppDirectoryDrawer.activeChipAlpha`),focus/splash/pressed 态全部从
+/// [AppStateLayer] tokens;点击交调用方(仍经壳层 onOpenCategory 收口)。
+/// 宽度由外层 ConstrainedBox 限最大宽,超长文字 ellipsis。
+class _SidebarCategoryChip extends StatefulWidget {
+  const _SidebarCategoryChip({required this.label, required this.onTap});
+
+  /// 展示名(调用方统一走 displayCategoryName,chip 内不再映射)。
+  final String label;
+
+  final VoidCallback onTap;
+
+  @override
+  State<_SidebarCategoryChip> createState() => _SidebarCategoryChipState();
+}
+
+class _SidebarCategoryChipState extends State<_SidebarCategoryChip> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: InkWell(
+        onTap: widget.onTap,
+        hoverColor: tokens.accent.withValues(alpha: AppDirectoryDrawer.activeChipAlpha),
+        focusColor: AppStateLayer.focusOf(tokens.accent),
+        splashColor: AppStateLayer.splashOf(tokens.accent),
+        highlightColor: AppStateLayer.pressedOf(tokens.accent),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 0.64, vertical: 1.28),
+          child: Text(
+            widget.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: AppFontSize.bodySecondary,
+              color: _hovering ? tokens.accent : tokens.textPrimary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 侧栏「热门分类」:当前选中站点 `AreasListController.categories` 经
 /// [buildCategorySections] 构建分组树(与顶栏 hover 浮层**共用**同一套
 /// 一级分区构建,见 `lib/zishu/domain/category_sections.dart`)—— 多组
-/// 逐组「组标题行 + 该组全部子分类行」纵向排列(整列由侧栏外层
-/// ListView 滚动),单组平铺无组标题;**不设条数上限**。控制器未注册
-/// 或目录为空时回落硬编码表(老口径,保证任何时刻侧栏不空)。
+/// 逐组「组标题行 + 该组全部子分类 chips 横向平铺」(chip 限最大宽、
+/// Wrap 放不下自动换行,整列由侧栏外层 ListView 滚动),单组平铺无组
+/// 标题;**不设条数上限**。控制器未注册或目录为空时回落硬编码表
+/// (老口径,保证任何时刻侧栏不空,兜底表同为横向平铺)。
 ///
 /// 目录懒加载:控制器是 lazyPut(fenix),首次 find 才实例化且分类要
 /// `loadData()` 才有 —— 挂一帧后补跑一次(loadData 幂等,不重拉)。
@@ -808,13 +861,50 @@ class _SidebarHotCategoriesState extends State<_SidebarHotCategories> {
   }
 
   Widget _fallbackList() {
-    return Column(
-      children: [for (final category in widget.fallback) _CategoryRow(name: category, onTap: widget.onFallbackTap)],
+    // 兜底名表与真实目录同形态:横向平铺 chips(仅数据源不同,老口径
+    // 的兜底数据不变)。
+    return Wrap(
+      spacing: AppDirectoryDrawer.catGapCross,
+      runSpacing: AppDirectoryDrawer.catGapMain,
+      children: [
+        for (final category in widget.fallback)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: ZishuPlatformCategoryFlyout.columnWidth),
+            child: _SidebarCategoryChip(label: category, onTap: widget.onFallbackTap),
+          ),
+      ],
     );
   }
 
   /// 空名条目不展示(老口径的空名过滤保留,目录脏数据防御)。
   bool _visibleArea(LiveArea area) => (area.areaName ?? '').trim().isNotEmpty;
+
+  /// 叶子分类横向平铺(用户口径 2026-10-01:侧栏最下级分类与顶部 hover
+  /// 浮层同形态)。每条 chip 限最大宽 [ZishuPlatformCategoryFlyout.columnWidth]
+  /// (67.2,即浮层一列宽 4.2rem —— 浮层「一列一 chip」的列宽就是 chip
+  /// 可视宽,直接对齐该口径;侧栏可用宽 220 - 外层 ListView 左右
+  /// AppSpacing.sm×2 = 204,限宽 67.2 每行容 2~3 条,放不下由 Wrap 自动
+  /// 换第二行),文字超长 ellipsis;横向 [AppDirectoryDrawer.catGapCross]
+  /// (3.52)/纵向 [AppDirectoryDrawer.catGapMain](2.56)取目录抽屉分类
+  /// 网格既有紧凑档(≈用户口径的 4px/2-4px 级)。点击仍经
+  /// [onOpenCategory] 统一收口,行为不变。
+  Widget _categoryWrap(Site site, List<LiveArea> areas) {
+    return Wrap(
+      spacing: AppDirectoryDrawer.catGapCross,
+      runSpacing: AppDirectoryDrawer.catGapMain,
+      children: [
+        for (final area in areas)
+          if (_visibleArea(area))
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: ZishuPlatformCategoryFlyout.columnWidth),
+              child: _SidebarCategoryChip(
+                label: displayCategoryName(site.id, area.areaName, area.areaId),
+                onTap: () => widget.onOpenCategory(site, area),
+              ),
+            ),
+      ],
+    );
+  }
 
   /// 组标题行:样式对齐浮层列标题(bodySecondary + w700 + textSecondary),
   /// 行高略小于 [_CategoryRow](上下 3 vs 5),贴侧栏既有留白节奏。
@@ -842,35 +932,24 @@ class _SidebarHotCategoriesState extends State<_SidebarHotCategories> {
     return Obx(() {
       // 与顶栏 hover 浮层同一套一级分区构建(过滤排序 + 空组滤除):
       // douyin 复合 id 排序、douyu/huya 滤非游戏组后按平台序,条目全量
-      // 展示,不再取前 15;行名与浮层 chip 同走 displayCategoryName。
+      // 展示,不再取前 15;chip 名与浮层 chip 同走 displayCategoryName。
       final sections = buildCategorySections(site.id, controller.categories);
       if (sections.isEmpty) return _fallbackList();
       if (sections.length == 1) {
-        // 单大组平台(twitch/soop/快手等):平铺无组标题。
-        return Column(
-          children: [
-            for (final area in sections.first.items)
-              if (_visibleArea(area))
-                _CategoryRow(
-                  name: displayCategoryName(site.id, area.areaName, area.areaId),
-                  onTap: () => widget.onOpenCategory(site, area),
-                ),
-          ],
-        );
+        // 单大组平台(twitch/soop/快手等):平铺无组标题(横向 Wrap
+        // 自动换行,与浮层单组 hot-track 同为平铺形态)。
+        return _categoryWrap(site, sections.first.items);
       }
-      // 多组:组标题行 + 该组全部子分类行,逐组纵向排列(外层侧栏
-      // ListView 统一滚动,不自建滚动容器)。
+      // 多组:组标题行 + 该组全部子分类 chips 横向平铺,逐组纵向排列
+      // (外层侧栏 ListView 统一滚动,不自建滚动容器;左对齐避免 Wrap
+      // 在 Column 默认 center 下偏离组标题)。
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (var i = 0; i < sections.length; i++) ...[
             if (i > 0) const SizedBox(height: AppSpacing.sm),
             _groupTitle(context, site.id, sections[i].name),
-            for (final area in sections[i].items)
-              if (_visibleArea(area))
-                _CategoryRow(
-                  name: displayCategoryName(site.id, area.areaName, area.areaId),
-                  onTap: () => widget.onOpenCategory(site, area),
-                ),
+            _categoryWrap(site, sections[i].items),
           ],
         ],
       );

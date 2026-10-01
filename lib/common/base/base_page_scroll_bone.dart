@@ -109,7 +109,19 @@ abstract class BasePageScrollAndStateBone<T> extends BaseController {
     await refreshData();
   }
 
-  bool get usesDesktopPagination => _lastIsDesktop ?? Get.width > 680 && !PlatformUtils.isMobile;
+  bool get usesDesktopPagination =>
+      !infiniteScrollMode.value && (_lastIsDesktop ?? Get.width > 680 && !PlatformUtils.isMobile);
+
+  /// 视图层申明的无限滚动模式(`BasePageView.desktopInfiniteScroll` 置位):
+  /// true 时本控制器即使运行在桌面宽屏也按移动端**追加**口径工作 ——
+  /// `loadMoreData` 走 currentPage++/loadData() 增量、`_performLoad` 旁路
+  /// 桌面页片缓存与 assignAll 替换/回顶。默认 false,旧页面行为不变。
+  /// 注意 [finishRefreshControllers] 的空操作守卫用原始桌面判定,与此开关
+  /// 无关(桌面无挂载的 EasyRefresh,finish 必须跳过)。
+  final RxBool infiniteScrollMode = false.obs;
+
+  /// 原始桌面判定(仅用于 EasyRefresh finish 守卫等管道性分支)。
+  bool get _isDesktopLayout => _lastIsDesktop ?? Get.width > 680 && !PlatformUtils.isMobile;
 
   void _scrollListener() {
     _syncScrollFlags();
@@ -162,7 +174,9 @@ abstract class BasePageScrollAndStateBone<T> extends BaseController {
   }
 
   void finishRefreshControllers(IndicatorResult result) {
-    if (usesDesktopPagination) return;
+    // 守卫用原始桌面判定而非 usesDesktopPagination:无限滚动覆写只切数据
+    // 语义,桌面布局下依然没有挂载 EasyRefresh,finish 必须跳过。
+    if (_isDesktopLayout) return;
     easyRefreshController.finishRefresh(
       result == IndicatorResult.fail ? IndicatorResult.fail : IndicatorResult.success,
     );

@@ -133,9 +133,11 @@ class _ZishuFollowBodyState extends State<_ZishuFollowBody> {
       enableRefresh: true,
       enableLoadMore: true,
       preserveContentWhenEmpty: true,
-      showScrollToTopBtn: SettingsService.to.page.showScrollToTopBtn.v,
-      showPageSizeSelector: SettingsService.to.page.showPageSizeSelector.v,
-      pageSizeOptions: SettingsService.to.page.pageSizeOptions,
+      // 用户口径:同 browse,不挂页码 footer 与右侧悬浮上下按钮。
+      showScrollToTopBtn: false,
+      desktopInfiniteScroll: true,
+      showPageSizeSelector: false,
+      pageSizeOptions: const [],
       emptyBuilder: (context) => ZishuFollowEmptyState(controller: controller),
       contentBuilder: (context, list, scrollController) {
         return ZishuFollowRoomList(

@@ -218,9 +218,11 @@ class _SiteAreasPaneState extends State<_SiteAreasPane> {
             enableLoadMore: true,
             // 空分类快照不得拆掉外层 TabBarView 页(对齐 AreaGridView 裁决)。
             preserveContentWhenEmpty: true,
-            showScrollToTopBtn: SettingsService.to.page.showScrollToTopBtn.v,
-            showPageSizeSelector: SettingsService.to.page.showPageSizeSelector.v,
-            pageSizeOptions: SettingsService.to.page.pageSizeOptions,
+            // 用户口径:同 browse,不挂页码 footer 与右侧悬浮上下按钮。
+            showScrollToTopBtn: false,
+            desktopInfiniteScroll: true,
+            showPageSizeSelector: false,
+            pageSizeOptions: const [],
             emptyBuilder: (context) => zishu.EmptyView(
               icon: Icons.apps_rounded,
               message: i18n('empty_areas_title'),
@@ -286,9 +288,11 @@ class _SiteAreasPaneState extends State<_SiteAreasPane> {
             controller: controller,
             enableRefresh: true,
             enableLoadMore: true,
-            showScrollToTopBtn: SettingsService.to.page.showScrollToTopBtn.v,
-            showPageSizeSelector: SettingsService.to.page.showPageSizeSelector.v,
-            pageSizeOptions: SettingsService.to.page.pageSizeOptions,
+            // 用户口径:同 browse,不挂页码 footer 与右侧悬浮上下按钮。
+            showScrollToTopBtn: false,
+            desktopInfiniteScroll: true,
+            showPageSizeSelector: false,
+            pageSizeOptions: const [],
             emptyBuilder: (context) => zishu.EmptyView(
               icon: Icons.live_tv_rounded,
               message: i18n('empty_live_title'),

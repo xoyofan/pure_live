@@ -5,6 +5,37 @@ import 'package:pure_live/common/index.dart';
 extension BasePageViewContentExtension<C extends BasePageScrollAndStateBone<T>, T> on BasePageView<C, T> {
   Widget buildActualContent(BuildContext context, bool isDesktop) {
     if (isDesktop) {
+      if (desktopInfiniteScroll) {
+        // 无限滚动形态(用户口径:无页码条,滚动到底追加):控制器切移动端
+        // 追加口径(infiniteScrollMode),近底部 400px 触发增量;右方向键
+        // 同口径(追加而非翻页替换)。
+        controller.infiniteScrollMode.value = true;
+        return CallbackShortcuts(
+          bindings: <ShortcutActivator, VoidCallback>{
+            const SingleActivator(LogicalKeyboardKey.arrowRight): () {
+              if (controller.canLoadMore.value && !controller.loadding.value && enableLoadMore) {
+                controller.loadMoreData();
+              }
+            },
+          },
+          child: Focus(
+            autofocus: true,
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (notification) {
+                if (notification.depth != 0) return false;
+                if (notification.metrics.extentAfter < 400 &&
+                    enableLoadMore &&
+                    controller.canLoadMore.value &&
+                    !controller.loadding.value) {
+                  controller.loadMoreData();
+                }
+                return false;
+              },
+              child: contentBuilder(context, controller.list, controller.scrollController),
+            ),
+          ),
+        );
+      }
       return CallbackShortcuts(
         bindings: <ShortcutActivator, VoidCallback>{
           const SingleActivator(LogicalKeyboardKey.arrowLeft): () {

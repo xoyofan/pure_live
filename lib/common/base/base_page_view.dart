@@ -25,6 +25,13 @@ class BasePageView<C extends BasePageScrollAndStateBone<T>, T> extends Stateless
   final bool? showScrollToTopBtn;
   final bool showPageSizeSelector;
   final List<int> pageSizeOptions;
+
+  /// 桌面宽屏也走无限滚动(用户口径:无页码条/无悬浮按钮,滚动到底追加):
+  /// true 时桌面分支不渲染 DesktopPaginationBar,改为滚动近底部触发
+  /// controller.loadMoreData() 增量追加(控制器语义经
+  /// BasePageScrollAndStateBone.infiniteScrollMode 切到移动端追加口径)。
+  /// 默认 false,旧页面桌面分页行为不变。
+  final bool desktopInfiniteScroll;
   final double? customMobileBottomPadding;
   final double? customDesktopBottomPadding;
 
@@ -43,6 +50,7 @@ class BasePageView<C extends BasePageScrollAndStateBone<T>, T> extends Stateless
     this.showScrollToTopBtn,
     this.showPageSizeSelector = false,
     this.pageSizeOptions = const [],
+    this.desktopInfiniteScroll = false,
     this.customMobileBottomPadding,
     this.customDesktopBottomPadding,
     this.notLoginBuilder,

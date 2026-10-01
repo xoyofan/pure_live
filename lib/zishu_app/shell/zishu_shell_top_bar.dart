@@ -247,7 +247,10 @@ class _TopNavIcon extends StatelessWidget {
   }
 }
 
-/// 顶栏平台 tab:32×32 悬停 pill 内放平台图标;hover ≥300ms 弹分类浮层
+/// 顶栏平台 tab:扁平图标直排导航行内,无背景块与背景 padding;命中区
+/// 纵向撑满顶栏内容高(顶栏高 44、无纵向内边距)、横向收窄保持紧凑,
+/// 图标与其他顶栏工具图标同级。选中态用 accent 下划线短横标记(对齐
+/// zishu 顶栏选中语义),不再用背景色块区分。hover ≥300ms 弹分类浮层
 /// (延迟由调用方态机持有,这里只回传触发点中心 x 与移出事件)。
 class _PlatformTab extends StatelessWidget {
   final Site site;
@@ -271,6 +274,7 @@ class _PlatformTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     return Padding(
+      // 与相邻平台图标仅留 2px 间隔(2-4px 级紧凑排布)。
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Builder(
         builder: (hoverContext) {
@@ -294,16 +298,29 @@ class _PlatformTab extends StatelessWidget {
               focusColor: Theme.of(context).focusColor,
               child: Tooltip(
                 message: site.name,
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: selected ? tokens.surfaceRaised : Colors.transparent,
-                    borderRadius: AppRadius.allMd,
-                    border: Border.all(color: selected ? tokens.accent : Colors.transparent, width: 1),
+                child: SizedBox(
+                  // 命中区横向收窄(~28),纵向撑满顶栏内容高:顶栏
+                  // Container(height: topNavHeight)无纵向内边距,取满约束
+                  // 即为全部内容高,不另抄 44。
+                  width: 28,
+                  height: double.infinity,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      PlatformIcon(id: site.id, size: 20),
+                      // 选中态指示:accent 下划线短横(宽 16 高 2,胶囊圆头,
+                      // 贴图标底部);未选中占位透明,避免选中切换时布局跳动。
+                      const SizedBox(height: 2),
+                      Container(
+                        width: 16,
+                        height: 2,
+                        decoration: BoxDecoration(
+                          color: selected ? tokens.accent : Colors.transparent,
+                          borderRadius: AppRadius.allPill,
+                        ),
+                      ),
+                    ],
                   ),
-                  padding: const EdgeInsets.all(4),
-                  child: PlatformIcon(id: site.id, size: 22),
                 ),
               ),
             ),

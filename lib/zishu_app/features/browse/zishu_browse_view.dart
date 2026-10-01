@@ -108,9 +108,12 @@ class _ZishuBrowseViewState extends State<ZishuBrowseView> {
   Widget _buildRealContent(BasePageScrollAndStateBone<LiveRoom> controller) {
     return BasePageView<BasePageScrollAndStateBone<LiveRoom>, LiveRoom>(
       controller: controller,
-      showScrollToTopBtn: SettingsService.to.page.showScrollToTopBtn.v,
-      pageSizeOptions: SettingsService.to.page.pageSizeOptions,
-      showPageSizeSelector: SettingsService.to.page.showPageSizeSelector.v,
+      // 用户口径:改为下滑滚动加载,页码 footer 与右侧悬浮上下按钮一律
+      // 不挂(设置页开关不再影响 zishu 列表页)。
+      showScrollToTopBtn: false,
+      desktopInfiniteScroll: true,
+      showPageSizeSelector: false,
+      pageSizeOptions: const [],
       emptyBuilder: (context) => zishu.EmptyView(
         icon: Icons.live_tv_rounded,
         message: i18n('empty_live_title'),

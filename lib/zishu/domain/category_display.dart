@@ -248,7 +248,15 @@ CrossCategoryEntry? findCrossCategory(String? site, String? categoryName, Object
   final siteId = (site ?? '').toString().trim();
   final cidText = (cid ?? '').toString().trim();
   final byCid = cidText.isNotEmpty && siteId.isNotEmpty ? matchCrossCategoryByCid(siteId, cidText) : null;
-  final byName = matchCrossCategoryByName(categoryName);
+  // soop 名称桥接:原生名是韩文,cross 表别名不含韩文;先经静态表把韩文
+  // 原生名归一成中文显示名再匹配,收藏 key 才能与其它平台同归一个
+  // 跨平台分类(「收藏任一平台 → 全平台已收藏」口径)。查不到保持原名。
+  var nameForMatch = categoryName;
+  if (siteId == 'soop') {
+    final bridged = soopZhNameFromNative(categoryName);
+    if (bridged != null && bridged.isNotEmpty) nameForMatch = bridged;
+  }
+  final byName = matchCrossCategoryByName(nameForMatch);
   final rawName = _norm(categoryName);
 
   if (siteId == 'douyin') {
@@ -290,14 +298,17 @@ String displayCategoryName(String? site, String? categoryName, [Object? cid]) {
   // 若仍走名称映射,「体育」会被登记为「户外」的别名而互相抢占:
   // 侧栏出现两个「户外」、「体育」整项消失。
   if (siteId == 'all') return raw;
-  // soop:分类号反查 zh_CN 进程表(解析层分类预热时填充),覆盖 cross 表
-  // 之外的冷门分类;表未就绪/未命中再走跨平台表与原名。
+  // soop:分类号反查 zh_CN 进程表(解析层分类预热时填充,静态表兜底),覆盖
+  // cross 表之外的冷门分类;无分类号的路径(收藏快照/我的分类面板只存原生
+  // 名)按韩文原生名反查静态表;再未命中走跨平台表与原名。
   if (siteId == 'soop') {
     final cateNo = (cid ?? '').toString().trim();
+    String? zh;
     if (cateNo.isNotEmpty) {
-      final zh = soopZhCategoryName(cateNo);
-      if (zh != null && zh.isNotEmpty) return zh;
+      zh = soopZhCategoryName(cateNo);
     }
+    zh ??= soopZhNameFromNative(raw);
+    if (zh != null && zh.isNotEmpty) return zh;
   }
   final entry = findCrossCategory(site, raw, cid);
   if (entry?.name != null && entry!.name.isNotEmpty) return entry.name;
