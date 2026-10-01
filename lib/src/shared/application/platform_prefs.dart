@@ -34,6 +34,8 @@ class PlatformEntry {
 }
 
 /// 平台偏好状态:可见平台 id 的有序列表(不在列表里 = 隐藏)。
+///
+/// id 一律是 **zishu 契约 id**([_catalogId] 归一后),与品牌目录/路由一致。
 class PlatformPrefs {
   const PlatformPrefs({required this.visibleIds});
 
@@ -42,32 +44,46 @@ class PlatformPrefs {
 
   /// 默认态:全部可见,按 pure_live `_supportedSites` 目录序。
   static final PlatformPrefs defaults = PlatformPrefs(
-    visibleIds: [for (final site in Sites.supportSites) site.id],
+    visibleIds: [
+      for (final site in Sites.supportSites) _catalogId(site.id),
+    ],
   );
 
-  /// 目录内的全量 id(校验存量/入参用)。
+  /// 目录内的全量契约 id(校验存量/入参用)。
   static final Set<String> allIds = Sites.supportSites
-      .map((site) => site.id)
+      .map((site) => _catalogId(site.id))
       .toSet();
 
   bool isVisible(String id) => visibleIds.contains(id);
 }
 
+/// pure_live 站点 id → zishu 契约 id 别名。品牌目录(platform_brands)与
+/// 路由守卫(`/:site` 的 supportsBrowse)都只按契约 id 寻址;小红书在
+/// pure_live 侧是 `xiaohongshu`(lib/core/common/site_ids.dart:24),zishu
+/// 侧是 `xhs` —— 投影时必须归一,否则入口点上去被守卫弹回 /all 成死入口;
+/// 存量偏好里已写入的旧 id 由 [_sanitize] 走同一映射迁移。
+const Map<String, String> _kCatalogIdAlias = {'xiaohongshu': 'xhs'};
+
+/// 取站点在 zishu 契约下的 id(无别名时原样返回)。
+String _catalogId(String siteId) => _kCatalogIdAlias[siteId] ?? siteId;
+
 /// 全量平台目录(`_supportedSites` 顺序投影),设置「平台」分区的行来源。
 final platformCatalogProvider = Provider<List<PlatformEntry>>((ref) {
   return [
     for (final site in Sites.supportSites)
-      PlatformEntry(id: site.id, name: _siteName(site), logo: site.logo),
+      PlatformEntry(
+        id: _catalogId(site.id),
+        name: _siteName(site),
+        logo: site.logo,
+      ),
   ];
 });
 
 /// 显示名:优先取 zishu 平台色表的中文条目(真源,含未上 pure_live 名的
 /// 各站);pure_live 侧的 `site.name` 走 easy_localization,而 zishu 入口
 /// 未初始化它(i18n 键会原样返回),只在色表未收录时兜底,再退 id。
-/// `xiaohongshu` 对齐色表既有条目 id(`xhs`)。
 String _siteName(Site site) {
-  final catalogId = site.id == 'xiaohongshu' ? 'xhs' : site.id;
-  final branded = PlatformBrandCatalog.byId(catalogId)?.name;
+  final branded = PlatformBrandCatalog.byId(_catalogId(site.id))?.name;
   if (branded != null) return branded;
   // 未初始化 easy_localization 时 i18n 键会原样返回,此时退 id 而非裸键。
   final name = site.name;
@@ -127,7 +143,9 @@ class PlatformPrefsController extends Notifier<PlatformPrefs> {
 
   /// 目录序插入位置:第一个目录位次比 [id] 靠后的可见项之前,没有则末尾。
   int _catalogInsertIndex(List<String> ids, String id) {
-    final catalogIds = Sites.supportSites.map((site) => site.id).toList();
+    final catalogIds = [
+      for (final site in Sites.supportSites) _catalogId(site.id),
+    ];
     final target = catalogIds.indexOf(id);
     for (var i = 0; i < ids.length; i++) {
       if (catalogIds.indexOf(ids[i]) > target) return i;
@@ -135,13 +153,17 @@ class PlatformPrefsController extends Notifier<PlatformPrefs> {
     return ids.length;
   }
 
-  /// 只保留有效 id 并按首次出现去重。
+  /// 归一化(契约 id 别名迁移)+ 只保留有效 id + 按首次出现去重。
   List<String> _sanitize(Iterable<String> ids) {
     final seen = <String>{};
-    return [
-      for (final id in ids)
-        if (PlatformPrefs.allIds.contains(id) && seen.add(id)) id,
-    ];
+    final result = <String>[];
+    for (final rawId in ids) {
+      final id = _catalogId(rawId);
+      if (PlatformPrefs.allIds.contains(id) && seen.add(id)) {
+        result.add(id);
+      }
+    }
+    return result;
   }
 
   /// 先改内存态(UI 即时生效),再落盘;写盘失败不影响本次会话。
@@ -165,7 +187,7 @@ final platformPrefsProvider =
       PlatformPrefsController.new,
     );
 
-/// 当前**可见**平台(按用户次序):顶栏平台 tab / 侧栏平台块的唯一数据源。
+/// 当前**可见**平台(按用户次序):设置「平台」分区开关/排序的直接投影。
 final visiblePlatformsProvider = Provider<List<PlatformEntry>>((ref) {
   final catalog = ref.watch(platformCatalogProvider);
   final visibleIds = ref.watch(platformPrefsProvider).visibleIds;
@@ -175,3 +197,10 @@ final visiblePlatformsProvider = Provider<List<PlatformEntry>>((ref) {
       if (byId[id] != null) byId[id]!,
   ];
 });
+
+/// 导航入口清单:「全平台」固定首位 + 用户可见平台。顶栏平台 tab、手机
+/// 平台条与侧栏平台块**共用**这一个 provider,设置里的隐藏/排序三处同步。
+final navigationPlatformsProvider = Provider<List<PlatformEntry>>((ref) => [
+  const PlatformEntry(id: 'all', name: '全平台', logo: ''),
+  ...ref.watch(visiblePlatformsProvider),
+]);

@@ -4,17 +4,19 @@ part of '../app_shell.dart';
 /// 的两条方向分支(源码真源,不按截图目测):
 ///
 /// - **竖屏**:`nav-platform-strip__item` 为 `flex: 1 1 15%` 折行宫格 ——
-///   12 项平分两行、隐藏平台文字、图标 1.75rem、箭头列 1.8rem、不滚动;
+///   每行 6 项、隐藏平台文字、图标 1.75rem、箭头列 1.8rem、不滚动;
 /// - **横屏**:高度稀缺,`flex-wrap: nowrap` 改**单行横向滚动**,图标 1.5rem、
 ///   箭头列 1.7rem,条高 `--nav-platform-strip-height`(= safe-top + 3.25rem)。
 ///
 /// 每格 = 品牌图标入口(锚点 `platform-tab-{site}`)+ 独立分类箭头,各自语义
-/// 动作分离;平台清单来自 `PlatformBrandCatalog.navigationPlatforms`。
+/// 动作分离;平台清单与顶栏/侧栏同源([navigationPlatformsProvider],
+/// 设置「平台」分区的隐藏/排序同步生效;竖屏宫格行数随清单长度自适应,
+/// 单行几何(44px 行高 + 上下 2px)不变)。
 ///
 /// 箭头锚点有两套:`platform-strip-cat-{site}` 是新契约(打开分类面板),
 /// 外层 `KeyedSubtree` 保留旧锚点 `platform-category-{site}` 供既有响应式
 /// 用例继续断言存在性 —— 一个控件两个名字是刻意的过渡期兼容,勿删。
-class _PlatformStrip extends StatelessWidget {
+class _PlatformStrip extends ConsumerWidget {
   const _PlatformStrip({required this.currentSite});
 
   final String currentSite;
@@ -32,24 +34,22 @@ class _PlatformStrip extends StatelessWidget {
   /// 宫格单行高度(图标 + 上下内边距)。
   static const double _kRowHeight = 44;
 
-  /// 竖屏宫格内容高度(单行高 × 2 + 行距)。
-  static const double _kGridHeight = _kRowHeight * 2 + 8;
-
   /// 横屏单行条高:web `--nav-platform-strip-height: safe-top + 3.25rem`。
   static const double _kStripHeight = 52;
 
-  /// 竖屏每行平台数:12 项 → 6 × 2(web `flex: 1 1 15%` 在 375px 下的实际落位)。
+  /// 竖屏每行平台数:web `flex: 1 1 15%` 在 375px 下的实际落位(6 × N 行)。
   static const int _kColumns = 6;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final safeTop = MediaQuery.paddingOf(context).top;
     // 形态按方向切换,与 web 的 `[data-platform=phone][data-orientation]` 分支同源:
     // 竖屏折行宫格(标签隐藏、宽度平分),横屏 `flex-wrap: nowrap` 单行横向滚动
     // —— 横屏高度稀缺,单行才能把平台压进 52px。
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
-    final platforms = PlatformBrandCatalog.navigationPlatforms;
+    final platforms = ref.watch(navigationPlatformsProvider);
+    final rowCount = (platforms.length / _kColumns).ceil();
     return Container(
       padding: EdgeInsets.only(top: safeTop),
       decoration: BoxDecoration(
@@ -64,10 +64,10 @@ class _PlatformStrip extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 4.8),
                 child: Row(
                   children: [
-                    for (final brand in platforms)
+                    for (final entry in platforms)
                       _StripItem(
-                        brand: brand,
-                        selected: brand.id == currentSite,
+                        entry: entry,
+                        selected: entry.id == currentSite,
                         landscape: true,
                       ),
                   ],
@@ -75,14 +75,12 @@ class _PlatformStrip extends StatelessWidget {
               ),
             )
           : SizedBox(
-              height: _kGridHeight,
+              // 行数随可见平台数自适应(单行 = 44px 行高 + 上下各 2px),
+              // 2 行时与 web 固定高度(44 × 2 + 8)完全一致。
+              height: (_kRowHeight + 4) * rowCount,
               child: Column(
                 children: [
-                  for (
-                    int r = 0;
-                    r < (platforms.length / _kColumns).ceil();
-                    r++
-                  )
+                  for (int r = 0; r < rowCount; r++)
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 2),
@@ -92,7 +90,7 @@ class _PlatformStrip extends StatelessWidget {
                               if (r * _kColumns + c < platforms.length)
                                 Expanded(
                                   child: _StripItem(
-                                    brand: platforms[r * _kColumns + c],
+                                    entry: platforms[r * _kColumns + c],
                                     selected:
                                         platforms[r * _kColumns + c].id ==
                                         currentSite,
@@ -116,14 +114,18 @@ class _PlatformStrip extends StatelessWidget {
 /// 分类只能在面板里选。
 class _StripItem extends StatelessWidget {
   const _StripItem({
-    required this.brand,
+    required this.entry,
     required this.selected,
     this.landscape = false,
   });
 
-  final PlatformBrand brand;
+  final PlatformEntry entry;
   final bool selected;
   final bool landscape;
+
+  /// 选中描边/底色的品牌色:色表未收录的站退 accent。
+  Color _brandColor(ZishuTokens tokens) =>
+      PlatformBrandCatalog.byId(entry.id)?.color ?? tokens.accent;
 
   @override
   Widget build(BuildContext context) {
@@ -139,10 +141,12 @@ class _StripItem extends StatelessWidget {
       child: DecoratedBox(
         // web:item 有 1px 边框 + 圆角,选中项边框转品牌色。
         decoration: BoxDecoration(
-          border: Border.all(color: selected ? brand.color : tokens.border),
+          border: Border.all(
+            color: selected ? _brandColor(tokens) : tokens.border,
+          ),
           borderRadius: AppRadius.allSm,
           color: selected
-              ? brand.color.withValues(alpha: 0.12)
+              ? _brandColor(tokens).withValues(alpha: 0.12)
               : Colors.transparent,
         ),
         child: Row(
@@ -150,11 +154,11 @@ class _StripItem extends StatelessWidget {
           children: [
             Flexible(
               child: Tooltip(
-                message: brand.name,
+                message: entry.name,
                 child: InkWell(
                   // 测试锚点:平台入口(既有契约,勿改)。
-                  key: Key('platform-tab-${brand.id}'),
-                  onTap: () => context.go(_platformRoute(brand.id)),
+                  key: Key('platform-tab-${entry.id}'),
+                  onTap: () => context.go(_platformRoute(entry.id)),
                   hoverColor: tokens.surfaceRaised,
                   focusColor: AppStateLayer.focusOf(tokens.accent),
                   splashColor: AppStateLayer.splashOf(context.tokens.accent),
@@ -166,7 +170,7 @@ class _StripItem extends StatelessWidget {
                       horizontal: 4.8,
                       vertical: 6,
                     ),
-                    child: PlatformIcon(id: brand.id, size: iconSize),
+                    child: _PlatformTabLogo(entry: entry, size: iconSize),
                   ),
                 ),
               ),
@@ -175,13 +179,13 @@ class _StripItem extends StatelessWidget {
             // 旧锚点 `platform-category-{id}`:既有响应式用例仍按它断言入口
             // 可达,故用 KeyedSubtree 继续提供(点击落到下面的 InkWell)。
             KeyedSubtree(
-              key: Key('platform-category-${brand.id}'),
+              key: Key('platform-category-${entry.id}'),
               child: Tooltip(
-                message: '${brand.name}分类',
+                message: '${entry.name}分类',
                 child: InkWell(
                   // 测试锚点:▼ 打开该平台分类面板。
-                  key: Key('platform-strip-cat-${brand.id}'),
-                  onTap: () => _openCategorySheet(context, brand.id),
+                  key: Key('platform-strip-cat-${entry.id}'),
+                  onTap: () => _openCategorySheet(context, entry.id),
                   hoverColor: tokens.surfaceRaised,
                   focusColor: AppStateLayer.focusOf(tokens.accent),
                   splashColor: AppStateLayer.splashOf(context.tokens.accent),
@@ -217,9 +221,9 @@ Future<void> _openCategorySheet(BuildContext context, String site) {
   );
 }
 
-/// 桌面顶栏平台 tab:固定「全平台」入口 + 用户可见的 pure_live 各站
-/// (设置对话框「平台」分区可隐藏/排序,经 [visiblePlatformsProvider] 同步;
-/// 顶栏/侧栏/路由守卫共用同一份列表)。站点图标改用 pure_live 素材
+/// 桌面顶栏平台 tab:「全平台」+ 用户可见的 pure_live 各站
+/// (设置对话框「平台」分区可隐藏/排序,经 [navigationPlatformsProvider]
+/// 与手机平台条、侧栏同步)。站点图标改用 pure_live 素材
 /// ([PlatformEntry.logo],`assets/images/*.png`):既有 platform-icons 目录
 /// 只覆盖 9 站,全量目录下其余站不再落文字字形兜底。
 class _PlatformTabs extends ConsumerWidget {
@@ -237,19 +241,13 @@ class _PlatformTabs extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final platforms = ref.watch(visiblePlatformsProvider);
+    final platforms = ref.watch(navigationPlatformsProvider);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _PlatformTab(
-            entry: const PlatformEntry(id: 'all', name: '全平台', logo: ''),
-            selected: currentSite == 'all',
-            onHover: onHover,
-            onHoverEnd: onHoverEnd,
-          ),
           for (final entry in platforms)
             _PlatformTab(
               entry: entry,

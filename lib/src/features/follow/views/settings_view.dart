@@ -5,6 +5,7 @@
 /// (Web 端后续接入),本轮只移除设置页上的录入 UI。
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -13,8 +14,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/app_shell.dart';
 import '../../../shared/application/auth_provider.dart';
+import '../../../shared/application/platform_prefs.dart';
 import '../../../shared/presentation/design_tokens.dart';
 import '../../../shared/presentation/platform_brands.dart';
+import '../../../shared/presentation/widgets/platform_icon.dart';
 import '../../../shared/presentation/zishu_tokens.dart';
 import '../application/settings_provider.dart';
 import '../widgets/follow_common.dart';
@@ -80,6 +83,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   ),
                 ],
               ),
+              _PlatformSettingsGroup(),
               _SettingsGroup(
                 title: '播放',
                 children: [
@@ -276,6 +280,200 @@ class _SettingsGroup extends StatelessWidget {
     );
   }
 }
+
+/// 「平台」分区:横向平铺 chip,按住拖拽排序,chip 上的眼睛开关控制可见。
+/// 可见平台按用户拖拽次序展示(顶栏/侧栏/首页同步),隐藏平台垫后灰化。
+class _PlatformSettingsGroup extends ConsumerStatefulWidget {
+  const _PlatformSettingsGroup();
+
+  @override
+  ConsumerState<_PlatformSettingsGroup> createState() =>
+      _PlatformSettingsGroupState();
+}
+
+class _PlatformSettingsGroupState
+    extends ConsumerState<_PlatformSettingsGroup> {
+  /// 当前拖拽中的平台 id(null = 没有拖拽)。
+  String? _draggingId;
+
+  @override
+  Widget build(BuildContext context) {
+    final catalog = ref.watch(platformCatalogProvider);
+    final visible = ref.watch(visiblePlatformsProvider);
+    final visibleIds = {for (final entry in visible) entry.id};
+    final hidden = [
+      for (final entry in catalog)
+        if (!visibleIds.contains(entry.id)) entry,
+    ];
+
+    void reorder(String draggedId, String targetId) {
+      if (draggedId == targetId) return;
+      final ids = [for (final entry in visible) entry.id];
+      final from = ids.indexOf(draggedId);
+      final to = ids.indexOf(targetId);
+      if (from < 0 || to < 0) return;
+      ids.removeAt(from);
+      ids.insert(to, draggedId);
+      unawaited(ref.read(platformPrefsProvider.notifier).reorder(ids));
+    }
+
+    return _SettingsGroup(
+      title: '平台',
+      children: [
+        Text(
+          '按住图标拖拽排序;点眼睛切换可见。关闭的平台从顶栏与侧栏隐藏。',
+          style: context.textSecondary,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        // ── 可见平台:横向平铺,按住拖拽排序 ──
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            for (final entry in visible)
+              _PlatformDragChip(
+                key: ValueKey('platform-chip-${entry.id}'),
+                entry: entry,
+                visible: true,
+                isDragging: _draggingId == entry.id,
+                onDragStart: () => setState(() => _draggingId = entry.id),
+                onDragEnd: () => setState(() => _draggingId = null),
+                onAccept: (dragged) => reorder(dragged, entry.id),
+                onToggle: () => ref
+                    .read(platformPrefsProvider.notifier)
+                    .setVisibility(entry.id, false),
+              ),
+          ],
+        ),
+        // ── 隐藏平台 ──
+        if (hidden.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          Text('已隐藏', style: context.textSecondary),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              for (final entry in hidden)
+                _PlatformDragChip(
+                  key: ValueKey('platform-hidden-${entry.id}'),
+                  entry: entry,
+                  visible: false,
+                  isDragging: false,
+                  onToggle: () => ref
+                      .read(platformPrefsProvider.notifier)
+                      .setVisibility(entry.id, true),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// 单个平台 chip:图标 + 名称 + 眼睛开关,按住拖拽排序。
+class _PlatformDragChip extends StatelessWidget {
+  const _PlatformDragChip({
+    super.key,
+    required this.entry,
+    required this.visible,
+    this.isDragging = false,
+    this.onDragStart,
+    this.onDragEnd,
+    this.onAccept,
+    this.onToggle,
+  });
+
+  final PlatformEntry entry;
+  final bool visible;
+  final bool isDragging;
+  final VoidCallback? onDragStart;
+  final VoidCallback? onDragEnd;
+  final ValueChanged<String>? onAccept;
+  final VoidCallback? onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => details.data != entry.id,
+      onAcceptWithDetails: (details) => onAccept?.call(details.data),
+      builder: (context, candidate, rejected) {
+        return LongPressDraggable<String>(
+          data: entry.id,
+          onDragStarted: onDragStart,
+          onDragEnd: (_) => onDragEnd?.call(),
+          feedback: _chipContent(tokens, dragging: true),
+          childWhenDragging: Opacity(opacity: 0.35, child: _chipContent(tokens)),
+          child: Opacity(
+            opacity: isDragging ? 0.35 : 1,
+            child: _chipContent(tokens),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _chipContent(ZishuTokens tokens, {bool dragging = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: visible ? tokens.accent : tokens.border,
+        ),
+        borderRadius: AppRadius.allSm,
+        color: visible
+            ? tokens.accent.withValues(alpha: 0.12)
+            : tokens.surfaceRaised,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _PlatformRowLogo(entry: entry, size: 18),
+          const SizedBox(width: 6),
+          Text(
+            entry.name,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: visible ? FontWeight.w600 : FontWeight.w400,
+              color: visible ? tokens.textPrimary : tokens.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onToggle,
+            child: Icon(
+              visible ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+              size: 16,
+              color: visible ? tokens.accent : tokens.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 平台行 logo:与顶栏/侧栏同口径(pure_live 素材直读,缺失退 [PlatformIcon])。
+class _PlatformRowLogo extends StatelessWidget {
+  const _PlatformRowLogo({required this.entry, required this.size});
+
+  final PlatformEntry entry;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      entry.logo,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (_, _, _) => PlatformIcon(id: entry.id, size: size),
+    );
+  }
+}
+
 
 /// 账号状态行:移动端没有顶栏头像时提供登录/退出入口。
 class _AccountSettingRow extends ConsumerWidget {

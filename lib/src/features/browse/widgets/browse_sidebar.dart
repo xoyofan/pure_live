@@ -158,7 +158,7 @@ class _RailContent extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       children: [
-        for (final entry in visibleSidebarPlatforms(ref))
+        for (final entry in ref.watch(navigationPlatformsProvider))
           _PlatformTab(
             entry: entry,
             selected: entry.id == site,
@@ -227,8 +227,8 @@ class _ToggleRail extends StatelessWidget {
 
 /// 平台 tab 网格(`__platform-tabs`):Wrap 流式排布 + 底部分隔线。
 ///
-/// 清单与顶栏 tab 同源:「全平台」固定首位 + 用户可见平台
-/// ([visiblePlatformsProvider],设置「平台」分区隐藏/排序后同步生效)。
+/// 清单与顶栏/手机平台条同源([navigationPlatformsProvider]:
+/// 「全平台」固定首位 + 用户可见平台,设置「平台」分区隐藏/排序后同步生效)。
 class _PlatformTabs extends ConsumerWidget {
   const _PlatformTabs({required this.site, required this.tokens});
 
@@ -249,7 +249,7 @@ class _PlatformTabs extends ConsumerWidget {
         spacing: AppDirectoryDrawer.platformGap,
         runSpacing: AppDirectoryDrawer.platformGap,
         children: [
-          for (final entry in visibleSidebarPlatforms(ref))
+          for (final entry in ref.watch(navigationPlatformsProvider))
             _PlatformTab(
               entry: entry,
               selected: entry.id == site,
@@ -261,12 +261,6 @@ class _PlatformTabs extends ConsumerWidget {
     );
   }
 }
-
-/// 侧栏平台清单:「全平台」固定首位,其余按用户可见次序。
-List<PlatformEntry> visibleSidebarPlatforms(WidgetRef ref) => [
-  const PlatformEntry(id: 'all', name: '全平台', logo: ''),
-  ...ref.watch(visiblePlatformsProvider),
-];
 
 /// 单个平台入口:图标型 FilterChip,承载 [home-platform-chip-{id}] 锚点。
 ///

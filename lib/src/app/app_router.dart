@@ -16,6 +16,7 @@ import '../features/play/application/play_provider.dart';
 import '../features/play/application/play_screen_provider.dart';
 import '../features/play/views/play_view.dart';
 import '../shared/application/auth_provider.dart';
+import '../shared/application/platform_prefs.dart';
 import '../shared/presentation/design_tokens.dart';
 import '../shared/presentation/platform_brands.dart';
 import '../shared/presentation/zishu_tokens.dart';
@@ -241,7 +242,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/:site/category',
         redirect: (_, state) =>
-            PlatformBrandCatalog.supportsBrowse(state.pathParameters['site']!)
+            _siteBrowsable(ref, state.pathParameters['site']!)
             ? null
             : '/all',
         pageBuilder: (_, state) {
@@ -257,7 +258,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/:site/category/:cid',
         redirect: (_, state) =>
-            PlatformBrandCatalog.supportsBrowse(state.pathParameters['site']!)
+            _siteBrowsable(ref, state.pathParameters['site']!)
             ? null
             : '/all',
         pageBuilder: (_, state) {
@@ -273,7 +274,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/:site',
         redirect: (_, state) =>
-            PlatformBrandCatalog.supportsBrowse(state.pathParameters['site']!)
+            _siteBrowsable(ref, state.pathParameters['site']!)
             ? null
             : '/all',
         pageBuilder: (_, state) {
@@ -307,6 +308,17 @@ Page<dynamic> _shellPage(
     child: AppShell(site: site, child: child),
   ),
 );
+
+/// 平台首页/分类是否可达:支持栏目浏览 且 未被用户隐藏
+/// (设置「平台」分区)。隐藏平台只拦浏览入口,播放页/主播页深链不拦
+/// (在播关注、历史记录不受偏好影响)。
+bool _siteBrowsable(Ref ref, String site) =>
+    PlatformBrandCatalog.supportsBrowse(site) && !_siteHidden(ref, site);
+
+/// 平台是否被用户隐藏(`all` 恒可见)。读当前内存态即可:redirect 每次
+/// 导航都执行,启动恢复(SharedPreferencesAsync)完成后即取到最新偏好。
+bool _siteHidden(Ref ref, String site) =>
+    site != 'all' && !ref.read(platformPrefsProvider).isVisible(site);
 
 /// 播放页宿主:壳层 + 播放页。
 ///
