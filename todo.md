@@ -1,6 +1,8 @@
 # TODO 迭代台账
 
-> 当前焦点(2026-10-01 启动,多轮迭代):**首页房间卡的观看人数与分类展示按平台补齐**。
+> 当前焦点(2026-10-01 启动,2026-10-02 转入弹幕专项,多轮迭代):
+> 第一焦点**首页房间卡的观看人数与分类展示按平台补齐**已完成(迭代1-3);
+> 第二焦点**弹幕接入**(第四节清单 ❌ 未接入平台)进行中,SHOWROOM 已全链路落地(迭代4)。
 > 数据链路:UI 房间卡(`lib/src/features/browse/widgets/room_card.dart` 渲染 `audience`/`category` 徽标)
 > ← `RoomSummary.online/category` ← `lib/src/shared/application/purelive_backend.dart`(裸映射 `room.watching`/`room.area`)
 > ← 各平台 LiveSite(`lib/core/site/*`,经 `Sites.supportSites` 全量注册覆盖)。
@@ -94,10 +96,15 @@
 - [x] 单测 5 用例(实测捕获帧 fixture)全过;改动文件 analyze 零问题
 - [x] **全链路验收**:`danmaku_connection_matrix_probe_test` 扩展 showroom 平台,PURELIVE_DANMAKU_PROBE=1 实测 `result: passed`(readyCount=1, chatCount=1, 零重连零断开)
 
-### 迭代 5(2026-10-02,进行中)
+### 迭代 5(2026-10-02)✅ 弹幕专项二:第二平台探针摸底
 
-- [ ] 第二平台弹幕:TwitCasting(可达)协议探针 → 实现;Picarto/PandaTV 同理
-- [ ] CHZZK 弹幕:待境外网络跑 `chzzk_chat_probe.dart` 帧实测后按 SHOWROOM 模式接入
+- [x] TwitCasting 探针(2026-10-02 实测):目录/分类接口可达并拿到 live movieId;但
+  - `wss://realtime.twitcasting.tv/pages/<id>?comment=true` → 404(路径/握手格式不对)
+  - `frontendapi.twitcasting.tv/movies/<id>/comments` GET/POST → 405 Method Not Allowed(需登录态)
+  - 频道 live 页 / movie 页 → 0 字节/404(匿名反爬),无法从播放器 JS 逆向 WS 协议
+  - **结论:协议未确证,按"不盲写"原则暂缓**;需登录态抓包或境外环境逆向播放器 JS 后再接
+- [x] PandaTV / Picarto:聊天主机可达但协议无公开文档,列为后续探针候选(优先级低于 TwitCasting/CHZZK)
+- [x] CHZZK 弹幕:探针脚本已存档(`tool/probes/chzzk_chat_probe.dart`,REST+ALPN 已验证可拿 chatChannelId),待境外网络跑 WS 帧实测后按 SHOWROOM 模式接入
 
 ## 四、上轮审计:解析字段缺口(2026-10-01 上一轮,保留)
 
