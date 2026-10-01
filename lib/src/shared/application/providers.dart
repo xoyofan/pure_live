@@ -8,6 +8,7 @@ import '../../features/user/application/platform_credentials_provider.dart';
 import 'browse_source.dart';
 import 'fixture_sources.dart';
 import 'package:live_parser/live_parser.dart' show buildSiteRegistry;
+import 'package:pure_live/core/sites.dart';
 import 'parser_sources.dart';
 import 'purelive_backend.dart';
 import 'package:live_parser/live_parser.dart' show SiteRegistry;
@@ -27,7 +28,7 @@ const bool usePureLiveBackend = bool.fromEnvironment(
 );
 
 /// 带覆盖的 registry 构建:PURE_LIVE_PARSER 时在标准 registry 上重注册
-/// purelive 后端的四家。
+/// purelive 后端的全部平台(Sites.supportSites 每一个, 排除 all)。
 SiteRegistry buildRegistryWithPureLive({
   String douyinCookie = '',
   String xhsCookie = '',
@@ -39,8 +40,9 @@ SiteRegistry buildRegistryWithPureLive({
     bilibiliCookie: bilibiliCookie,
   );
   if (usePureLiveBackend) {
-    for (final site in const ['bilibili', 'douyin', 'huya', 'douyu']) {
-      registry.register(buildPureLiveRegistration(site));
+    for (final site in Sites.supportSites) {
+      if (site.id == Sites.allSite) continue;
+      registry.register(buildPureLiveRegistration(site.id));
     }
   }
   return registry;
