@@ -43,11 +43,16 @@ class PopularLocalReactiveController extends LocalReactivePageController<LiveRoo
   }
 
   @override
-  Future<void> loadData() => loadExternalSnapshot();
+  Future<void> loadData({int? limit}) => loadExternalSnapshot();
 
   Future<List<LiveRoom>> getLocalRawData() async {
     if (isClosed) return [];
-    final rooms = await site.liveSite.getRecommendRooms(page: 1, pageSize: pageSize.value);
+    // 首屏容量(真源 88b4512):首页快照拉取取「分页口径与容量较大者」。
+    final firstScreenLimit = lastFirstScreenLimit;
+    final requestSize = firstScreenLimit != null && firstScreenLimit > pageSize.value
+        ? firstScreenLimit
+        : pageSize.value;
+    final rooms = await site.liveSite.getRecommendRooms(page: 1, pageSize: requestSize);
     if (isClosed) return [];
     return site.id == Sites.iptvSite ? rooms : _rankForCurrentSettings(rooms);
   }
@@ -72,7 +77,12 @@ class PopularServerAllController extends ServerAllPageController<LiveRoom> {
   @override
   Future<List<LiveRoom>> fetchAllServerData() async {
     if (isClosed) return [];
-    final rooms = await site.liveSite.getRecommendRooms(page: currentPage, pageSize: pageSize.value);
+    // 首屏容量(真源 88b4512):仅第 1 页生效,取「分页口径与容量较大者」。
+    final firstScreenLimit = lastFirstScreenLimit;
+    final requestSize = currentPage == 1 && firstScreenLimit != null && firstScreenLimit > pageSize.value
+        ? firstScreenLimit
+        : pageSize.value;
+    final rooms = await site.liveSite.getRecommendRooms(page: currentPage, pageSize: requestSize);
     if (isClosed) return [];
     return _rankForCurrentSettings(rooms);
   }
@@ -86,7 +96,15 @@ class PopularServerFixedController extends ServerFixedPageController<LiveRoom> {
   @override
   Future<List<LiveRoom>> fetchFixedNetworkData(int bigPage, int fixedSize) async {
     if (isClosed) return [];
-    final rooms = await site.liveSite.getRecommendRooms(page: bigPage, pageSize: fixedSize);
+    // 首屏容量(真源 88b4512):仅客户端第 1 页的首个大页生效(容量大于
+    // fixed 窗时按容量请求,首页 refresh 同容量;容量小于 fixed 窗维持原
+    // 请求量,防首屏不足一窗把 canLoadMore 判假)。douyin feed 侧再把
+    // 该值夹取 1..60 落到 custom_count。
+    final firstScreenLimit = lastFirstScreenLimit;
+    final requestSize = bigPage == 1 && currentPage == 1 && firstScreenLimit != null && firstScreenLimit > fixedSize
+        ? firstScreenLimit
+        : fixedSize;
+    final rooms = await site.liveSite.getRecommendRooms(page: bigPage, pageSize: requestSize);
     if (isClosed) return [];
     return _rankForCurrentSettings(rooms);
   }

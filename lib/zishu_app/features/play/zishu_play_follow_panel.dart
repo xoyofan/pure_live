@@ -19,11 +19,14 @@
 //   真源收进 PlaySidePanelPrefs(followGrid/followSite),本仓库最小等价物
 //   就是文件级可变量,仅进程内,不持久化。
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:pure_live/common/index.dart';
+import 'package:pure_live/core/site/douyin/douyin_follow_import.dart';
+import 'package:pure_live/core/site/douyin/douyin_site.dart';
 import 'package:pure_live/plugins/cache_manager.dart';
 import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
@@ -32,6 +35,7 @@ import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/browse/zishu_room_card.dart';
 import 'package:pure_live/zishu_app/features/follow/zishu_follow_filters.dart';
 import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
 
 /// 会话级视图档记忆:true = 封面网格,false = 紧凑列表(默认,真源用户口径)。
 bool _sideFollowGrid = false;
@@ -55,6 +59,9 @@ class _ZishuPlayFollowPanelState extends State<ZishuPlayFollowPanel> {
   String get _siteId => _sideFollowSiteId;
   set _siteId(String value) => setState(() => _sideFollowSiteId = value);
 
+  /// 组合同步进行中(按钮转圈防重入,真源 _syncing 同款)。
+  bool _syncing = false;
+
   /// 平台筛选候选表:全平台 + 有关注条目的平台。与「我的关注」页
   /// (`FavoriteController.availableFavoriteSites`)同源同算:
   /// favorite_controller.dart:69 `favoriteSitesForRooms` 的逐字复刻 ——
@@ -77,6 +84,71 @@ class _ZishuPlayFollowPanelState extends State<ZishuPlayFollowPanel> {
         .toList(growable: false);
     final superFollow = SuperFollowController.to;
     return [...visible.where(superFollow.isSuper), ...visible.where((room) => !superFollow.isSuper(room))];
+  }
+
+  /// 抖音关注导入能力位(站点注册表探测;未实现时按钮不出现)。
+  DouyinFollowImporter? get _followImporter {
+    // DouyinFollowImporter 与 LiveSite 无子类型关系,is 提升不生效;
+    // 用具体类 DouyinSite 判定(其实现了 DouyinFollowImporter)。
+    final site = Sites.of(Sites.douyinSite).liveSite;
+    return site is DouyinSite ? site : null;
+  }
+
+  /// 组合同步(真源 2c8d208 侧栏入口,04e8a4b「双线并行」语义;与
+  /// 「我的关注」页同一业务口径):导入抖音关注(合并重复)+ 全量刷新
+  /// 关注状态。侧栏密度不放进度弹窗,按钮自身转圈 + 舞台反馈结果。
+  Future<void> _syncDouyin() async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    try {
+      final added = await _runCombinedSync();
+      ZishuStageHint.show(
+        i18n(added == 0 ? 'follow_sync_done_none' : 'follow_sync_done_new', args: {'count': '$added'}),
+      );
+    } catch (_) {
+      ZishuStageHint.show(i18n('follow_sync_failed'));
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
+  /// 组合同步业务流(返回本次新增条数)。
+  ///
+  /// 双线并行(真源 04e8a4b):导入(分页拉关注列表)与全量状态刷新同时
+  /// 启动,各自完成即落库显示 —— 刷新线走 [FavoriteController.debounceRefresh]
+  /// (全量、内部有锁/合并/失败冷却保护;控制器未注册时跳过,导入照常);
+  /// 导入线拉取后经 [DouyinFollowImport.mergeImportedRooms] 与收藏合并去重。
+  ///
+  /// 简化点:真源汇合后用「单次批量快照」(_refreshDouyinBatch)回填新条目
+  /// 在播状态;本仓无批量快照端口,改为「导入合并有新增时再补一轮全量
+  /// 刷新」—— 竞速期刷新快照不含导入中的新条目,补一轮才能点亮它们的
+  /// 在播状态(多花逐房间请求,不新增解析面)。
+  Future<int> _runCombinedSync() async {
+    final importer = _followImporter;
+    if (importer == null) {
+      throw StateError('抖音站点不支持关注导入');
+    }
+
+    // 刷新线:全量关注状态刷新,与导入并行(先显示语义)。
+    if (Get.isRegistered<FavoriteController>()) {
+      Get.find<FavoriteController>().debounceRefresh();
+    }
+
+    // 导入线:分页拉取 + 合并进收藏(同 key 去重、元信息以导入源为准)。
+    final imported = await importer.importFollowing();
+    var added = 0;
+    await SettingsService.to.fav.mutateRoomsDurably((current) {
+      final (merged, count) = DouyinFollowImport.mergeImportedRooms(current, imported);
+      added = count;
+      return merged;
+    });
+
+    // 汇合补轮:有新增才补,回填新条目在播状态(真源 _refreshDouyinBatch
+    // 的全量刷新替代,见方法头简化点)。
+    if (added > 0 && Get.isRegistered<FavoriteController>()) {
+      Get.find<FavoriteController>().debounceRefresh();
+    }
+    return added;
   }
 
   @override
@@ -109,9 +181,10 @@ class _ZishuPlayFollowPanelState extends State<ZishuPlayFollowPanel> {
   /// 工具行(对齐真源 follow_panel.dart:105-174):左侧视图切换钮
   /// (列表态显网格入口 / 网格态显列表入口,点击即切),右侧平台筛选
   /// chips 复用「我的关注」页的 [ZishuFollowPlatformFilter](真源两处
-  /// 同为 FollowPlatformFilter,放不下自动换行)。
+  /// 同为 FollowPlatformFilter,放不下自动换行),行尾挂组合同步入口。
   Widget _buildToolbar(BuildContext context, List<Site> sites) {
     final tokens = context.tokens;
+    final importer = _followImporter;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -145,6 +218,26 @@ class _ZishuPlayFollowPanelState extends State<ZishuPlayFollowPanel> {
             ),
           ),
         ),
+        // 组合同步入口(真源 2c8d208 侧栏口径):平台筛选选中抖音时显示,
+        // 点击 = 导入抖音关注(合并重复)+ 刷新全部关注状态;无登录 cookie
+        // 置灰(tooltip 提示),同步中转圈防重入。
+        if (_siteId == Sites.douyinSite && importer != null)
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.xs),
+            child: _syncing
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : IconButton(
+                    key: const Key('play-side-follow-sync'),
+                    tooltip: importer.hasFollowImportCookie
+                        ? i18n('follow_sync_douyin_tooltip')
+                        : i18n('follow_sync_need_cookie'),
+                    onPressed: importer.hasFollowImportCookie ? _syncDouyin : null,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+                    focusColor: AppStateLayer.focusOf(tokens.accent),
+                    icon: Icon(Icons.refresh_rounded, size: 18, color: tokens.textSecondary),
+                  ),
+          ),
       ],
     );
   }

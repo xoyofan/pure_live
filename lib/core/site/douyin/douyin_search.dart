@@ -111,10 +111,7 @@ class DouyinSearch {
   static bool _isCaptchaBody(String text) {
     final trimmed = text.trim();
 
-    return trimmed.isEmpty ||
-        trimmed.startsWith('<!DOCTYPE') ||
-        trimmed.startsWith('<html') ||
-        trimmed.contains('验证码');
+    return trimmed.isEmpty || trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html') || trimmed.contains('验证码');
   }
 
   /// 从 cookie 串里取指定字段值（对齐 zishu live_parser search.dart::_cookiePart）。

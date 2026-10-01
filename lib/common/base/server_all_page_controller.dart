@@ -57,7 +57,8 @@ abstract class ServerAllPageController<T> extends BasePageScrollAndStateBone<T> 
   }
 
   @override
-  Future<void> loadData() async {
+  Future<void> loadData({int? limit}) async {
+    noteFirstScreenLimit(limit);
     final active = _activeLoad;
     if (active != null) return active;
     if (isClosed) return;

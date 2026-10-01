@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:pure_live/common/index.dart';
+import 'package:pure_live/core/site/douyin/douyin_follow_import.dart';
+import 'package:pure_live/core/site/douyin/douyin_site.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu_app/features/follow/zishu_follow_empty_state.dart';
@@ -42,6 +46,9 @@ class _ZishuFollowBody extends StatefulWidget {
 class _ZishuFollowBodyState extends State<_ZishuFollowBody> {
   ZishuFollowDensity _density = ZishuFollowDensity.card;
 
+  /// 组合同步进行中(按钮转圈防重入,真源 _importing 同款)。
+  bool _syncing = false;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -54,8 +61,17 @@ class _ZishuFollowBodyState extends State<_ZishuFollowBody> {
     );
   }
 
+  /// 平台筛选是否正选中抖音(真源 `_siteFilter == 'douyin'` 同条件;本仓
+  /// 候选表来自 availableFavoriteSites,含 douyin 关注时才有该 chip)。
+  bool _isDouyinFilterActive(FavoriteController controller) {
+    final sites = controller.availableFavoriteSites;
+    final index = controller.tabSiteIndex.value;
+    return index >= 0 && index < sites.length && sites[index].id == Sites.douyinSite;
+  }
+
   /// 标题 + 刷新行(对齐 zishu follow_view 头部:标题 headline 档,
-  /// 刷新中显示 16px 进度圈替代按钮)。
+  /// 刷新中显示 16px 进度圈替代按钮;真源 2c8d208:抖音筛选下替换为
+  /// 「导入抖音关注」组合同步刷新按钮 follow-sync-douyin)。
   Widget _buildHeader(BuildContext context) {
     final controller = widget.controller;
     return Padding(
@@ -65,6 +81,21 @@ class _ZishuFollowBodyState extends State<_ZishuFollowBody> {
           Text(i18n('favorites_title'), style: context.textTitle.copyWith(fontSize: AppFontSize.headline)),
           const Spacer(),
           Obx(() {
+            if (_isDouyinFilterActive(controller)) {
+              if (_syncing) {
+                return const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2));
+              }
+              // DouyinFollowImporter 与 LiveSite 无子类型关系,is 提升不生效,
+              // 用具体类 DouyinSite 转换(douyinSite 恒为 DouyinSite)。
+              final importer = Sites.of(Sites.douyinSite).liveSite as DouyinSite;
+              final hasCookie = importer.hasFollowImportCookie;
+              return IconButton(
+                key: const Key('follow-sync-douyin'),
+                tooltip: hasCookie ? i18n('follow_sync_douyin_tooltip') : i18n('follow_sync_need_cookie'),
+                onPressed: hasCookie ? _syncFollows : null,
+                icon: Icon(Icons.refresh_rounded, size: 20, color: context.tokens.textSecondary),
+              );
+            }
             if (controller.loadding.value) {
               return const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2));
             }
@@ -77,6 +108,87 @@ class _ZishuFollowBodyState extends State<_ZishuFollowBody> {
         ],
       ),
     );
+  }
+
+  /// 组合同步(真源 2c8d208 关注页入口,04e8a4b「双线并行」语义):
+  /// 导入抖音关注(与已有条目合并重复)+ 全量刷新关注状态。保留进度
+  /// 弹窗:导入分页耗时可见(真源同款「正在同步关注数据」弹窗)。
+  Future<void> _syncFollows() async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    final progress = ValueNotifier(const DouyinFollowImportProgress(page: 1, imported: 0));
+    unawaited(_showSyncDialog(progress));
+    try {
+      final added = await _runCombinedSync(progress);
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ToastUtil.show(i18n(added == 0 ? 'follow_sync_done_none' : 'follow_sync_done_new', args: {'count': '$added'}));
+    } catch (_) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      if (mounted) ToastUtil.show(i18n('follow_sync_failed'));
+    } finally {
+      progress.dispose();
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
+  /// 进度弹窗(真源同款:线性进度条 + 分页文案,不可点外关闭)。
+  Future<void> _showSyncDialog(ValueNotifier<DouyinFollowImportProgress> progress) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ValueListenableBuilder<DouyinFollowImportProgress>(
+        valueListenable: progress,
+        builder: (context, value, _) => AlertDialog(
+          title: Text(i18n('follow_sync_running')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const LinearProgressIndicator(),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                i18n(
+                  'follow_sync_progress',
+                  args: {'page': '${value.page}', 'count': '${value.imported}', 'total': '${value.total}'},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 组合同步业务流(返回本次新增条数)。
+  ///
+  /// 双线并行(真源 04e8a4b):导入(分页拉关注列表)与全量状态刷新同时
+  /// 启动,各自完成即落库显示 —— 刷新线走 [FavoriteController.debounceRefresh]
+  /// (全量、内部有锁/合并/失败冷却保护,与导入互不覆盖);导入线拉取后
+  /// 经 [DouyinFollowImport.mergeImportedRooms] 与收藏合并去重。
+  ///
+  /// 简化点:真源汇合后用「单次批量快照」(_refreshDouyinBatch)回填新条目
+  /// 在播状态;本仓无批量快照端口,改为「导入合并有新增时再补一轮全量
+  /// 刷新」—— 竞速期刷新快照不含导入中的新条目,补一轮才能点亮它们的
+  /// 在播状态(多花逐房间请求,不新增解析面)。
+  Future<int> _runCombinedSync(ValueNotifier<DouyinFollowImportProgress> progress) async {
+    final importer = Sites.of(Sites.douyinSite).liveSite as DouyinSite;
+
+    // 刷新线:全量关注状态刷新,与导入并行(先显示语义)。
+    widget.controller.debounceRefresh();
+
+    // 导入线:分页拉取 + 合并进收藏(同 key 去重、元信息以导入源为准)。
+    final imported = await importer.importFollowing(onProgress: (value) => progress.value = value);
+    var added = 0;
+    await SettingsService.to.fav.mutateRoomsDurably((current) {
+      final (merged, count) = DouyinFollowImport.mergeImportedRooms(current, imported);
+      added = count;
+      return merged;
+    });
+
+    // 汇合补轮:有新增才补,回填新条目在播状态(真源 _refreshDouyinBatch
+    // 的全量刷新替代,见方法头简化点)。
+    if (added > 0) widget.controller.debounceRefresh();
+    return added;
   }
 
   /// 筛选行:状态三段 + 平台 chips + 视图两档,Wrap 自适应换行。

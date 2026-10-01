@@ -23,7 +23,14 @@ import 'package:pure_live/zishu/presentation/widgets/compact_switch.dart';
 import 'package:pure_live/zishu/presentation/widgets/platform_icon.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 
+import 'zishu_credentials_dialog.dart';
 import 'zishu_settings_rows.dart';
+
+/// 「平台凭证」入口行文案(缺失 i18n key,中文常量兜底,先例见
+/// `zishu_settings_view.dart` 顶部常量;建议补 `platform_credentials` /
+/// `platform_credentials_desc`)。真源锚点 5990d1c:凭证收编为弹框。
+const String _kCredentialsTitle = '平台凭证';
+const String _kCredentialsDesc = '凭证仅存本机，集中编辑各平台登录态 Cookie';
 
 /// 平台顺序与可见:紧凑横排 Wrap + 拖拽排序 + 可见迷你开关。
 class ZishuPlatformOrderContent extends StatelessWidget {
@@ -188,6 +195,14 @@ class ZishuPlatformDisplayContent extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+        // 平台凭证:真源 5990d1c 把凭证收编为弹框(低频配置不占路由页),
+        // 旧账号页(第三方授权)原样保留,两个入口并存。
+        ZishuSettingLine(
+          title: _kCredentialsTitle,
+          desc: _kCredentialsDesc,
+          trailing: zishuLineChevron(context),
+          onTap: () => showZishuCredentialsDialog(context),
         ),
         ZishuSettingLine(
           title: i18n('third_party_auth'),

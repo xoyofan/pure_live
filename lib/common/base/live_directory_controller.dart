@@ -83,7 +83,10 @@ class LiveDirectoryController extends BasePageScrollAndStateBone<LiveRoom> {
   }
 
   @override
-  Future<void> loadData() => _pendingRepage ?? _activeLoad ?? _startLoad(_refreshBuffer != null ? 1 : currentPage);
+  Future<void> loadData({int? limit}) {
+    noteFirstScreenLimit(limit);
+    return _pendingRepage ?? _activeLoad ?? _startLoad(_refreshBuffer != null ? 1 : currentPage);
+  }
 
   @override
   Future<void> loadMoreData() async {
@@ -148,7 +151,12 @@ class LiveDirectoryController extends BasePageScrollAndStateBone<LiveRoom> {
       return;
     }
     final targetSize = pageSize.value;
-    final targetEnd = targetPage * targetSize;
+    // 首屏(第 1 页)容量下限:容量大于分页口径时第一屏多拉原生页补足
+    // (真源 88b4512「列数×行数」);刷新(_startLoad(1))沿用同容量。
+    final firstScreenLimit = lastFirstScreenLimit;
+    final targetEnd = targetPage == 1 && firstScreenLimit != null && firstScreenLimit > targetSize
+        ? firstScreenLimit
+        : targetPage * targetSize;
     final targetStart = usesDesktopPagination ? (targetPage - 1) * targetSize : 0;
     final token = CancelToken();
     _cancel = token;

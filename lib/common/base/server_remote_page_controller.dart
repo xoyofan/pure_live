@@ -256,7 +256,8 @@ abstract class ServerRemotePageController<T> extends BasePageScrollAndStateBone<
   }
 
   @override
-  Future<void> loadData() async {
+  Future<void> loadData({int? limit}) async {
+    noteFirstScreenLimit(limit);
     final active = _activeLoad;
 
     if (active != null) {
@@ -350,7 +351,13 @@ abstract class ServerRemotePageController<T> extends BasePageScrollAndStateBone<
 
       final seen = replaceMobileSnapshot ? <T>{} : <T>{...list};
 
-      final int sizeToFetch = pageSize.value;
+      // 首屏(第 1 页)容量下限(真源 88b4512):容量大于分页口径时本轮
+      // 补齐到容量(去重循环按 neededCount 逐请求补);刷新(reset 到第 1
+      // 页)沿用同容量。
+      final firstScreenLimit = lastFirstScreenLimit;
+      final int sizeToFetch = currentPage == 1 && firstScreenLimit != null && firstScreenLimit > pageSize.value
+          ? firstScreenLimit
+          : pageSize.value;
 
       var requestCount = 0;
       var noProgressCount = 0;

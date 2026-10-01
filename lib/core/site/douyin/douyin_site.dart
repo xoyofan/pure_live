@@ -17,13 +17,14 @@ import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/core/common/convert_helper.dart';
 import 'package:pure_live/core/danmaku/douyin_danmaku.dart';
 import 'package:pure_live/core/site/douyin/douyin_audience.dart';
+import 'package:pure_live/core/site/douyin/douyin_follow_import.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/site/douyin/douyin_search.dart';
 import 'package:pure_live/core/utils/douyin/douyin_utils.dart';
 import 'package:pure_live/core/utils/douyin/douyin_request_params.dart';
 import 'package:pure_live/core/utils/live_quality_label.dart';
 
-class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
+class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver, DouyinFollowImporter {
   @override
   String id = SiteIds.douyinSite;
 
@@ -115,6 +116,20 @@ class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
     }
     return {};
   }
+
+  /// 「导入抖音关注」登录 cookie:只认账号页配置(ParserConfig →
+  /// cookieManager.douyinCookie),不做 ttwid 匿名兜底 —— 静态 `cookie`
+  /// 可能已被 getRequestHeaders 写入匿名 ttwid,不能当登录态;关注列表
+  /// 接口只认登录态(真源经 platformCredentialsProvider 注入同语义)。
+  @override
+  bool get hasFollowImportCookie => _followImportCookie().isNotEmpty;
+
+  @override
+  Future<List<LiveRoom>> importFollowing({void Function(DouyinFollowImportProgress progress)? onProgress}) {
+    return DouyinFollowImport.fetchFollowing(cookie: _followImportCookie(), onProgress: onProgress);
+  }
+
+  String _followImportCookie() => (ParserConfig.instance?.persistentCookieFor(SiteIds.douyinSite) ?? '').trim();
 
   String extractCategoryDataJson(String source) {
     final startPattern = r'{\"pathname\":\"/\",\"categoryData\":';
@@ -250,6 +265,13 @@ class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
           "need_map": "1",
           "is_draw": "1",
           "inner_from_drawer": "0",
+          // 真源 47b2938:feed 条数尊重调用方 limit,不再吃服务端默认 50。
+          // 首页(page==1)的 pageSize 即调用方下发的容量 limit(首页按
+          // 「可用宽度→列数×行数」估算,契约默认 30),夹取 1..60 防异常
+          // 容量值打到上游;加载更多页我方 fixed 窗机制按切片口径请求
+          // (真源恒 '8' 的前提是其解析层有 seenRoomIds+load_more 契约,
+          // 我方没有,恒 '8' 会把 canLoadMore 判假冻结加载更多)。
+          "custom_count": '${pageSize.clamp(1, 60)}',
           "enter_source": "web_homepage_hot_web_live_card",
           "source_key": "web_homepage_hot_web_live_card",
         },

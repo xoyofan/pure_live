@@ -151,7 +151,8 @@ abstract class LocalReactivePageController<T> extends BasePageScrollAndStateBone
   }
 
   @override
-  Future<void> loadData() async {
+  Future<void> loadData({int? limit}) async {
+    noteFirstScreenLimit(limit);
     if (isClosed) return;
     _processDataDistribution();
   }

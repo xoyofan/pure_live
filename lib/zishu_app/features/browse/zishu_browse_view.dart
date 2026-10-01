@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
@@ -24,6 +26,27 @@ class ZishuBrowseView extends StatefulWidget {
 
   @override
   State<ZishuBrowseView> createState() => _ZishuBrowseViewState();
+}
+
+/// browse 单平台页首屏容量:列数 × 首屏行数(真源 88b4512
+/// `_HomeViewState._firstScreenCapacity` 同款公式)。三个因子与房间网格
+/// 同源,否则请求量与实际能放下的卡片数不匹配:
+/// - 列数:`AppRoomGrid.columnsFor(视口宽)` —— 列数刻意跟视口断点走,
+///   左栏收窄只影响卡片实际宽,不影响列数;
+/// - 卡宽:内容区真实约束([gridArea],外壳已扣左栏与分隔线,即真源
+///   `_gridAreaWidth`「窗口宽-220-1」的产物,收起态还更准)扣网格
+///   padding 后按列均分(再扣列间距);
+/// - 卡高:`卡宽×9/16 + roomGridMetaBudget(58)`,行数 = 可用高(扣纵向
+///   padding)÷ 卡高,向上取整。
+int zishuBrowseFirstScreenCapacity(BuildContext context, BoxConstraints gridArea) {
+  final viewportWidth = MediaQuery.sizeOf(context).width;
+  final columns = AppRoomGrid.columnsFor(viewportWidth);
+  final availableWidth = gridArea.maxWidth - AppSpacing.lg * 2;
+  final cardWidth = (availableWidth - AppSpacing.gridCrossAxisSpacing * (columns - 1)) / columns;
+  final cardHeight = cardWidth * 9 / 16 + metaHeightFor(roomGridMetaBudget, context);
+  final availableHeight = math.max(0.0, gridArea.maxHeight - AppSpacing.lg * 2);
+  final rows = math.max(1, (availableHeight / cardHeight).ceil());
+  return columns * rows;
 }
 
 class _ZishuBrowseViewState extends State<ZishuBrowseView> {
@@ -64,6 +87,18 @@ class _ZishuBrowseViewState extends State<ZishuBrowseView> {
 
   @override
   Widget build(BuildContext context) {
+    // 首屏容量随真实布局上报(真源 88b4512:刷新条数按可用宽度估算):
+    // 本视图约束即网格内容区,骨架/过渡帧/真数据任何分支下容量都先算好,
+    // PopularController 的首屏与跨平台预热 loadData 读它作为本次 limit。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        PopularController.browseFirstScreenCapacity = zishuBrowseFirstScreenCapacity(context, constraints);
+        return _buildBody(context);
+      },
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
     final siteId = widget.siteId;
     if (!Get.isRegistered<BasePageScrollAndStateBone<LiveRoom>>(tag: siteId)) {
       // 分页控制器由 PopularController.initControllers 懒注册;站点表

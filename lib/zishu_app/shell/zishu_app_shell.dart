@@ -15,6 +15,7 @@ import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/platform_icon.dart';
 import 'package:pure_live/zishu_app/features/areas/zishu_areas_view.dart';
 import 'package:pure_live/zishu_app/features/record/zishu_recorder_view.dart';
+import 'package:pure_live/zishu_app/features/browse/zishu_all_home_view.dart';
 import 'package:pure_live/zishu_app/features/browse/zishu_browse_view.dart';
 import 'package:pure_live/zishu_app/features/follow/zishu_follow_view.dart';
 import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
@@ -86,6 +87,11 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
   bool _bound = false;
   bool _collapsed = false;
   int _siteIndex = 0;
+
+  /// 「全平台」选中态:真源默认首页即 `/all`(全平台交错混排网格),
+  /// 我方同口径默认选中;点平台 tab 落到单站热门,点「全平台」入口
+  /// (顶栏 tab/nav-home)回混排网格。
+  bool _allSelected = true;
   AreasController? _areas;
   VoidCallback? _areasTabListener;
   bool _areasBound = false;
@@ -191,6 +197,14 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
   void _refreshCurrentPage() {
     final index = widget.index;
     if (index == HomeMenu.popular.index) {
+      // 全平台页:整页重拉(按上次首屏容量);控制器未注册(未进过全平台
+      // 页)时静默,同「未注册即静默」口径。
+      if (_allSelected) {
+        if (Get.isRegistered<ZishuAllPlatformController>()) {
+          unawaited(Get.find<ZishuAllPlatformController>().refreshAll());
+        }
+        return;
+      }
       _bindPopular();
       final popular = _popular;
       if (popular != null) unawaited(popular.refreshCurrentData());
@@ -271,6 +285,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
     if (widget.index != HomeMenu.popular.index) {
       _navigateToMenu(HomeMenu.popular.index);
     }
+    if (mounted && _allSelected) setState(() => _allSelected = false);
     _bindPopular();
     final controller = _popular;
     if (controller != null) {
@@ -288,7 +303,24 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
     }
   }
 
+  /// 回全平台页(顶栏「全平台」tab / nav-home 共用入口;真源 nav-home
+  /// `context.go('/all')` 同语义):落到热门菜单并清掉平台选中态。
+  void _selectAll() {
+    if (widget.index != HomeMenu.popular.index) {
+      _navigateToMenu(HomeMenu.popular.index);
+    }
+    if (mounted && !_allSelected) setState(() => _allSelected = true);
+  }
+
   List<Site> get _sites => _popular?.sites ?? const <Site>[];
+
+  /// 平台选中态展示值:全平台页无平台选中(顶栏 tab/侧栏色块全部不亮,
+  /// 真源 `/all` 的 currentSite == 'all' 同语义);侧栏热门分类的站点
+  /// 上下文([_currentSite])不受影响,维持既有目录。
+  String? get _displaySiteId {
+    if (widget.index == HomeMenu.popular.index && _allSelected) return null;
+    return _currentSiteId;
+  }
 
   /// 当前站点 id 按激活页取源:分区页跟 AreasController,其余跟热门页。
   String? get _currentSiteId {
@@ -306,6 +338,10 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
   /// 接收外壳待打开分类(initialCategory + 代数 token)与分类入口回调,
   /// 实现外壳内两级分类详情。
   Widget _contentForMenu(int menuIndex, String? currentSiteId) {
+    if (menuIndex == HomeMenu.popular.index && _allSelected) {
+      // 全平台页:各可见平台交错混排网格(zishu_all_home_view)。
+      return const ZishuAllHomeView();
+    }
     if (menuIndex == HomeMenu.popular.index && currentSiteId != null) {
       return ZishuBrowseView(siteId: currentSiteId);
     }
@@ -378,9 +414,11 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
                           ZishuShellTopBar(
                             index: widget.index,
                             sites: visibleSites,
-                            currentSiteId: _currentSiteId,
+                            currentSiteId: _displaySiteId,
                             // 平台 tab 选中口径:仅热门页随站点高亮(分区/关注页不亮)。
                             platformTabsActive: widget.index == HomeMenu.popular.index,
+                            allSelected: widget.index == HomeMenu.popular.index && _allSelected,
+                            onSelectAll: _selectAll,
                             onSelectMenu: _navigateToMenu,
                             onSelectSite: _selectSiteId,
                             onPlatformHoverStart: schedulePlatformFlyout,
@@ -404,7 +442,7 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
                                     _BrowseSidebar(
                                       index: widget.index,
                                       sites: visibleSites,
-                                      currentSiteId: _currentSiteId,
+                                      currentSiteId: _displaySiteId,
                                       collapsed: _collapsed,
                                       onSelectSite: _selectSiteId,
                                       onSelectMenu: _navigateToMenu,

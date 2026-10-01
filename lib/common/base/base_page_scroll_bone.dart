@@ -224,7 +224,25 @@ abstract class BasePageScrollAndStateBone<T> extends BaseController {
     }
   }
 
-  Future<void> loadData();
+  /// browse 首屏容量(列数×行数,真源 88b4512):由 PopularController 在
+  /// 首屏/预热 loadData 时传入(ZishuBrowseView 每次布局按当前视口上报)。
+  /// 只作用于**第一屏**网络请求:
+  /// - 各实现把它作为首页请求条数的下限来源(取 max(自身分页口径, limit),
+  ///   容量小于口径时维持原请求量,防首屏不足一窗把 canLoadMore 判假);
+  /// - 记忆在控制器上,refreshData(无参)的首屏刷新沿用同容量(真源:
+  ///   F5/下拉刷新与首屏同容量);
+  /// - null(非 browse 调用方/视图尚未上报)时一切行为与旧版一致。
+  int? _lastFirstScreenLimit;
+
+  /// 最近一次首屏容量;实现类在组装第一页请求时读取。
+  int? get lastFirstScreenLimit => _lastFirstScreenLimit;
+
+  /// 记录首屏容量;仅非 null 值生效(旧调用方传 null 不覆盖)。
+  void noteFirstScreenLimit(int? limit) {
+    if (limit != null) _lastFirstScreenLimit = limit;
+  }
+
+  Future<void> loadData({int? limit});
 
   /// Default retry retains the legacy refresh behavior. Native-cursor pagers
   /// can resume the failed action without restarting already consumed pages.

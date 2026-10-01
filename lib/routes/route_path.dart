@@ -21,6 +21,9 @@ class RoutePath {
   /// 分类房间
   static const kAreaRooms = "/area_rooms";
 
+  /// 跨平台分类(全平台聚合房间页,zishu 真源 `/all/category/:key` 口径)
+  static const kZishuCrossCategory = "/zishu_cross_category";
+
   /// 播放页面
   static const kLivePlay = "/live_play";
 

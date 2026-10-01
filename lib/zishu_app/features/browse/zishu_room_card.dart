@@ -93,6 +93,13 @@ class _Cover extends StatelessWidget {
 
   final LiveRoom room;
 
+  /// soop 分类显示名映射的 cid:解析层把房间流分类号(实测键 `broad_cate_no`,
+  /// 见 SoopSite.parseRoomCateNo)塞进 [LiveRoom.typeName] —— 该字段对房间
+  /// 卡无渲染语义,全仓无读取点。仅 soop 把它作为 cid 传给
+  /// [CoverCategoryBadge] 走 displayCategoryName 反查中文静态表;其他平台
+  /// typeName 有自身语义,且 cross 表会按 cid 匹配,不传,原名直返。
+  String get _categoryCid => room.platform == Sites.soopSite ? (room.typeName ?? '').trim() : '';
+
   @override
   Widget build(BuildContext context) {
     final replay = room.isRecord == true;
@@ -137,6 +144,7 @@ class _Cover extends StatelessWidget {
               corner: CoverCorner.topLeft,
               category: room.area ?? '',
               site: room.platform ?? '',
+              cid: _categoryCid,
             ),
           ),
           if (anchor.isNotEmpty)

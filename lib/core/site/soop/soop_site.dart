@@ -107,6 +107,22 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
     return explicitZero ?? '';
   }
 
+  /// 房间流分类号:接口实测**只有 `broad_cate_no` 键,没有 `category_no`**
+  /// (真源 5c120a2 同构:旧读 `category_no` 恒为空串 → cid→中文反查表永远
+  /// miss → 房间卡片分类一直显示上游韩文),主取 `broad_cate_no`,
+  /// `category_no` 仅作兼容回落。
+  ///
+  /// LiveRoom 模型无分类 cid 字段(模型层不动),借用**全仓无读取点、对房间
+  /// 卡无渲染语义**的 [LiveRoom.typeName] 承载;area 保留上游原名(韩文),
+  /// 由房间卡 soop 分支把 typeName 作为 cid 传给 displayCategoryName 反查
+  /// 中文静态表,未命中回落原名。
+  @visibleForTesting
+  static String parseRoomCateNo(Map<dynamic, dynamic> item) {
+    final primary = item['broad_cate_no']?.toString().trim() ?? '';
+    if (primary.isNotEmpty) return primary;
+    return item['category_no']?.toString().trim() ?? '';
+  }
+
   final Map<String, dynamic> headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2049.0 Safari/537.36',
     'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
@@ -224,6 +240,9 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
         audienceMetricType: AudienceMetricType.onlineViewers,
         avatar: validImgUrl(item["user_profile_img"]),
         area: category.areaName,
+        // 分类号借 typeName 承载(categoryContentsList 项读不到时为空串,
+        // 卡片按原名兜底反查),见 parseRoomCateNo 注释。
+        typeName: parseRoomCateNo(item),
         liveStatus: LiveStatus.live,
         status: true,
         platform: Sites.soopSite,
@@ -335,6 +354,9 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
         audienceMetricType: AudienceMetricType.onlineViewers,
         avatar: getAvatarUrlByRoomId(roomId),
         area: item["category_name"],
+        // 房间流上游只给韩文 category_name;分类号(实测键名 broad_cate_no)
+        // 借 typeName 承载,供房间卡反查中文静态表,见 parseRoomCateNo 注释。
+        typeName: parseRoomCateNo(item),
         liveStatus: LiveStatus.live,
         status: true,
         platform: Sites.soopSite,

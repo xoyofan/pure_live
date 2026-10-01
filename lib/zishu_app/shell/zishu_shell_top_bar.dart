@@ -5,6 +5,10 @@ import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/consts/app_consts.dart';
 import 'package:pure_live/common/utils/windows_multi_instance_launcher.dart';
+// LiveSite 不经 common/index.dart 导出(sites.dart 仅 import 不 export);
+// 「全平台」tab 的占位 Site(_allSite)按 Sites.availableSites(containsAll:
+// true) 同款构造,需要按名引用该类型。
+import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/routes/app_navigation.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
@@ -40,6 +44,11 @@ List<Site> visibleTopBarSites() {
   return visible;
 }
 
+/// 「全平台」tab 的站点对象:与 `Sites.availableSites(containsAll: true)`
+/// 同口径构造(id = [Sites.allSite],名走既有 i18n `site_all`;仅作展示
+/// id 载体,不参与任何请求)。
+Site _allSite() => Site(id: Sites.allSite, name: i18n('site_all'), logo: '', liveSite: LiveSite());
+
 /// 44px 顶栏:surface 底,主导航图标组 | 平台 tab 居中 | 工具区(关注/搜索/设置/账号)。
 ///
 /// 壳层([ZishuAppShell])与播放页([ZishuPlayView])共用一份;本组件只管
@@ -49,6 +58,14 @@ class ZishuShellTopBar extends StatelessWidget {
   final int index;
   final List<Site> sites;
   final String? currentSiteId;
+
+  /// 「全平台」选中态(真源 nav-home 语义:currentSite == 'all' 时激活)。
+  /// 壳层=仅热门页且未选具体平台;播放页不传(默认 false,nav-home 不亮)。
+  final bool allSelected;
+
+  /// 「全平台」入口点击(顶栏平台 tab 前的入口 + nav-home 共用);
+  /// 为 null 时不渲染全平台 tab(播放页顶栏保持既有形态)。
+  final VoidCallback? onSelectAll;
 
   /// 平台 tab 选中口径补充:site.id == currentSiteId 且本值为真才描边选中
   /// (壳层=仅热门页,分区/关注页不亮 tab;播放页=恒真,选中当前房间平台)。
@@ -80,6 +97,8 @@ class ZishuShellTopBar extends StatelessWidget {
     required this.index,
     required this.sites,
     required this.currentSiteId,
+    this.allSelected = false,
+    this.onSelectAll,
     required this.platformTabsActive,
     required this.onSelectMenu,
     required this.onSelectSite,
@@ -104,12 +123,18 @@ class ZishuShellTopBar extends StatelessWidget {
         children: [
           _TopNavBrand(
             index: index,
+            allSelected: allSelected,
+            onSelectAll: onSelectAll,
             onSelectMenu: onSelectMenu,
             onMyCategoryHoverStart: onMyCategoryHoverStart,
             onMyCategoryTap: onMyCategoryTap,
             onMyCategoryHoverEnd: onMyCategoryHoverEnd,
           ),
           const Spacer(),
+          // 「全平台」入口(真源 nav-home 形态,置于平台 tab 首):默认
+          // 首页即全平台交错混排,点击回全平台页;无 hover 分类浮层。
+          if (onSelectAll != null)
+            _PlatformTab(site: _allSite(), selected: allSelected && platformTabsActive, onTap: onSelectAll!),
           for (final site in sites)
             _PlatformTab(
               site: site,
@@ -148,6 +173,13 @@ class ZishuShellTopBar extends StatelessWidget {
 /// 无持久选中态,图标恒为主组未选色 textSecondary。
 class _TopNavBrand extends StatelessWidget {
   final int index;
+
+  /// 「全平台」选中态:热门页且未选具体平台时 nav-home 激活(对齐真源
+  /// nav-home 的 `active: currentSite == 'all'`);播放页恒 false 不亮。
+  final bool allSelected;
+
+  /// 「全平台」入口点击;为 null(播放页)回落既有 onSelectMenu 行为。
+  final VoidCallback? onSelectAll;
   final void Function(int) onSelectMenu;
 
   /// 「我的分类」hover 浮层挂钩:进入回传触发点中心 x(300ms 后开门,
@@ -159,6 +191,8 @@ class _TopNavBrand extends StatelessWidget {
 
   const _TopNavBrand({
     required this.index,
+    required this.allSelected,
+    required this.onSelectAll,
     required this.onSelectMenu,
     required this.onMyCategoryHoverStart,
     required this.onMyCategoryTap,
@@ -186,8 +220,8 @@ class _TopNavBrand extends StatelessWidget {
           key: const Key('nav-home'),
           icon: Remix.home_5_fill,
           tooltip: i18n('popular_title'),
-          color: index == HomeMenu.popular.index ? tokens.textPrimary : tokens.textSecondary,
-          onTap: () => onSelectMenu(HomeMenu.popular.index),
+          color: index == HomeMenu.popular.index && allSelected ? tokens.textPrimary : tokens.textSecondary,
+          onTap: onSelectAll ?? () => onSelectMenu(HomeMenu.popular.index),
         ),
         _TopNavIcon(
           key: const Key('nav-category'),
@@ -258,16 +292,17 @@ class _PlatformTab extends StatelessWidget {
   final VoidCallback onTap;
 
   /// hover 浮层挂钩:进入回传 `(站点 id, 触发点中心 x)`(全局坐标),
-  /// 移出取消开门并交给调用方延迟关门。
-  final void Function(String siteId, double centerX) onHoverStart;
-  final VoidCallback onHoverEnd;
+  /// 移出取消开门并交给调用方延迟关门。null = 无浮层入口
+  /// (「全平台」tab,点击直达、悬停不弹分类)。
+  final void Function(String siteId, double centerX)? onHoverStart;
+  final VoidCallback? onHoverEnd;
 
   const _PlatformTab({
     required this.site,
     required this.selected,
     required this.onTap,
-    required this.onHoverStart,
-    required this.onHoverEnd,
+    this.onHoverStart,
+    this.onHoverEnd,
   });
 
   @override
@@ -289,8 +324,8 @@ class _PlatformTab extends StatelessWidget {
           }
 
           return MouseRegion(
-            onEnter: (_) => onHoverStart(site.id, centerX()),
-            onExit: (_) => onHoverEnd(),
+            onEnter: onHoverStart == null ? null : (_) => onHoverStart!(site.id, centerX()),
+            onExit: onHoverEnd == null ? null : (_) => onHoverEnd!(),
             child: InkResponse(
               onTap: onTap,
               radius: 18,

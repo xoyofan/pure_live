@@ -18,6 +18,7 @@ import 'package:pure_live/modules/history/history_page.dart';
 import 'package:pure_live/modules/auth/user_manage_page.dart';
 import 'package:pure_live/modules/about/version_history.dart';
 import 'package:pure_live/modules/search/search_binding.dart';
+import 'package:pure_live/zishu_app/features/areas/zishu_cross_category_page.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_play_view.dart';
 import 'package:pure_live/modules/search/web_search_page.dart';
 import 'package:pure_live/modules/favorite/favorite_page.dart';
@@ -89,6 +90,10 @@ class AppPages {
       name: RoutePath.kAreaRooms,
       page: _smoothPage(() => AreasRoomPage(site: Get.arguments[0], subCategory: Get.arguments[1])),
       bindings: [AreaRoomsBinding()],
+    ),
+    GetPage(
+      name: RoutePath.kZishuCrossCategory,
+      page: _smoothPage(() => ZishuCrossCategoryPage(crossKey: Get.arguments?.toString() ?? '')),
     ),
     GetPage(
       name: RoutePath.kLivePlay,

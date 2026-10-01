@@ -6,6 +6,12 @@ import 'package:pure_live/common/base/live_directory_controller.dart';
 import 'package:pure_live/core/interface/live_directory.dart';
 
 class PopularController extends GetxController with GetTickerProviderStateMixin {
+  /// browse 首屏容量(列数×行数,真源 88b4512):ZishuBrowseView 每次布局
+  /// 按当前视口(可用宽度 + 单卡片宽高)刷新;首屏与跨平台预热 loadData
+  /// 读它作为本次 limit(真源:单平台页全站生效)。null = 视图尚未上报
+  /// (控制器先于视图装载),loadData 走各自默认分页口径。
+  static int? browseFirstScreenCapacity;
+
   late TabController tabController;
   int index = 0;
   final RxList<Site> sites = <Site>[].obs;
@@ -232,7 +238,7 @@ class PopularController extends GetxController with GetTickerProviderStateMixin 
     final gridController = Get.find<BasePageScrollAndStateBone<LiveRoom>>(tag: siteId);
 
     if (gridController.list.isEmpty) {
-      await gridController.loadData();
+      await gridController.loadData(limit: browseFirstScreenCapacity);
     }
 
     if (_isClosing || generation != _generation) return;
@@ -275,7 +281,7 @@ class PopularController extends GetxController with GetTickerProviderStateMixin 
     final next = Get.find<BasePageScrollAndStateBone<LiveRoom>>(tag: siteId);
 
     if (next.list.isEmpty) {
-      unawaited(next.loadData());
+      unawaited(next.loadData(limit: browseFirstScreenCapacity));
     }
   }
 

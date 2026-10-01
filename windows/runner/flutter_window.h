@@ -52,6 +52,10 @@ class FlutterWindow : public Win32Window {
   bool flutter_controller_destroying_ = false;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       display_mode_channel_;
+  // Channel that forwards Alt+navigation key combos detected at the message
+  // level ("back" / "forward" / "home") to the Dart side.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      nav_syskey_channel_;
   std::wstring last_display_device_;
   int last_display_width_ = 0;
   int last_display_height_ = 0;
