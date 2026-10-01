@@ -22,6 +22,7 @@ import 'package:pure_live/zishu_app/features/search/zishu_search_dialog.dart';
 import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
 import 'package:pure_live/zishu_app/shell/category_warmup.dart';
 import 'package:pure_live/zishu_app/shell/zishu_app_nav_shortcuts.dart';
+import 'package:pure_live/zishu_app/shell/zishu_global_actions.dart';
 import 'package:pure_live/zishu_app/shell/zishu_shell_flyout_machine.dart';
 import 'package:pure_live/zishu_app/shell/zishu_shell_top_bar.dart';
 
@@ -187,11 +188,13 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
     unawaited(openZishuSettingsDialog(context));
   }
 
-  /// F5 浏览器式刷新的壳层落地(对齐真源 refreshPlay > refreshHome 的
-  /// 注册分发):按当前主导航页直发对应控制器刷新,菜单未挂控制器时
-  /// 静默(真源「未注册即静默」同口径)。播放页在 kLivePlay 路由持有
-  /// 焦点时本壳收不到按键,无 refreshPlay 注册点(播放页域外,本轨不碰
-  /// zishu_play_view);录制页 RecorderController 无公开刷新口径,同样静默。
+  /// F5 浏览器式刷新的壳层落地,即 GlobalActions 的 refreshHome 动作
+  /// (对齐真源 refreshPlay > refreshHome 的注册分发:builder 层 F5 在
+  /// refreshPlay 未注册时落到本动作;原壳层内 F5 键处理已随快捷键挂点
+  /// 迁往 builder 层)。按当前主导航页直发对应控制器刷新,菜单未挂控制器
+  /// 时静默(真源「未注册即静默」同口径)。播放页注册了 refreshPlay 时
+  /// 分发优先走播放页刷新,本动作不被触发;录制页 RecorderController 无
+  /// 公开刷新口径,同样静默。
   void _refreshCurrentPage() {
     final index = widget.index;
     if (index == HomeMenu.popular.index) {
@@ -223,6 +226,17 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
     super.initState();
     _bindPopular();
     _bindAreas();
+    // 全局动作注册(真源架构:路由内组件注册,builder 层快捷键分发;
+    // 注销随 dispose,owner 按本 State 对象身份判定,不误删新实例):
+    // - search:壳层既有 Ctrl+F/K 挂点经 GlobalActions.call 落地到这里;
+    // - refreshHome:F5 无播放页注册(refreshPlay 未激活)时的兜底刷新。
+    GlobalActions.register(GlobalActionNames.search, owner: this, action: _openSearchAction);
+    GlobalActions.register(GlobalActionNames.refreshHome, owner: this, action: _refreshCurrentPage);
+    // 主导航菜单双栈历史的导航出口与初始 index(见
+    // zishu_app_nav_shortcuts.dart 的 ZishuAppNavHistory:builder 层快捷键
+    // 不持有壳层状态,由路由内的本壳层上报/落地)。
+    ZishuAppNavHistory.instance.attachMenuExit(owner: this, exit: _navigateToMenu);
+    ZishuAppNavHistory.instance.reportMenuChanged(widget.index);
     // 分类目录预热:首帧后延迟 2s 启动(不与首屏抢带宽),悬停分类 flyout 秒开。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(const Duration(seconds: 2), CategoryWarmup.schedule);
@@ -234,6 +248,11 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
     super.didUpdateWidget(oldWidget);
     _bindPopular();
     _bindAreas();
+    // 主导航 index 变化上报菜单双栈(自家 back/forward/home 动作由
+    // _selfNavigation 标记消化,不构成历史边)。
+    if (widget.index != oldWidget.index) {
+      ZishuAppNavHistory.instance.reportMenuChanged(widget.index);
+    }
   }
 
   void _bindPopular() {
@@ -254,6 +273,10 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
   @override
   void dispose() {
     disposeFlyoutMachine();
+    // 全局动作/菜单历史出口随壳层注销(owner 校验防误删)。
+    GlobalActions.unregister(GlobalActionNames.search, owner: this);
+    GlobalActions.unregister(GlobalActionNames.refreshHome, owner: this);
+    ZishuAppNavHistory.instance.detachMenuExit(owner: this);
     _shortcutFocusNode.dispose();
     if (_popular != null && _tabListener != null) {
       _popular!.tabController.removeListener(_tabListener!);
@@ -375,133 +398,131 @@ class _ZishuAppShellState extends State<ZishuAppShell> with ZishuShellFlyoutMach
         ),
       );
     }
-    // 全局导航快捷键(Alt+←/→/Home、F5、鼠标侧键 X1/X2,对齐真源
-    // app_nav_shortcuts):包住整棵壳层 —— 内层 CallbackShortcuts 先收
-    // Ctrl+F/K,Alt/F5 沿焦点祖先链冒泡到外层;Listener opaque 让空白区
-    // 也参与命中(侧键是落点无关手势)。挂点先例与 Focus 冒泡语义同
-    // 既有 Ctrl+F/K 挂点。
-    return ZishuAppNavShortcuts(
-      index: widget.index,
-      onNavigateToMenu: _navigateToMenu,
-      onRefreshCurrentPage: _refreshCurrentPage,
-      child: Stack(
-        children: [
-          // Ctrl+F / Ctrl+K 全局搜索:CallbackShortcuts 在焦点气泡阶段收键;
-          // Focus(autofocus) 让壳层在无其他焦点者时兜底持有焦点。壳层覆盖
-          // 整页内容,页内任何控件持有焦点时按键也会沿祖先链回到这里。
-          CallbackShortcuts(
-            bindings: <ShortcutActivator, VoidCallback>{
-              const SingleActivator(LogicalKeyboardKey.keyF, control: true): _openSearchAction,
-              const SingleActivator(LogicalKeyboardKey.keyK, control: true): _openSearchAction,
-            },
-            child: Focus(
-              focusNode: _shortcutFocusNode,
-              autofocus: true,
-              child: Theme(
-                // 交互态收口:外壳根部统一 focus 色(键盘导航可见)。
-                data: Theme.of(context).copyWith(focusColor: AppStateLayer.focusOf(tokens.accent)),
-                child: Scaffold(
-                  backgroundColor: tokens.background,
-                  body: SafeArea(
-                    // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表
-                    // (visibleTopBarSites 内读 Rx,与顶栏/侧栏共用同一份)。
-                    child: Obx(() {
-                      final visibleSites = visibleTopBarSites();
-                      return Column(
-                        children: [
-                          ZishuShellTopBar(
-                            index: widget.index,
-                            sites: visibleSites,
-                            currentSiteId: _displaySiteId,
-                            // 平台 tab 选中口径:仅热门页随站点高亮(分区/关注页不亮)。
-                            platformTabsActive: widget.index == HomeMenu.popular.index,
-                            allSelected: widget.index == HomeMenu.popular.index && _allSelected,
-                            onSelectAll: _selectAll,
-                            onSelectMenu: _navigateToMenu,
-                            onSelectSite: _selectSiteId,
-                            onPlatformHoverStart: schedulePlatformFlyout,
-                            onPlatformHoverEnd: cancelPlatformFlyoutOpen,
-                            onFollowHoverStart: openFollowFlyout,
-                            onFollowHoverEnd: scheduleFlyoutClose,
-                            onMyCategoryHoverStart: scheduleMyCategoryFlyout,
-                            onMyCategoryTap: toggleMyCategoryFlyout,
-                            onMyCategoryHoverEnd: cancelMyCategoryFlyoutOpen,
-                            onOpenSettings: _openSettingsDialog,
-                          ),
-                          const Divider(height: 1, thickness: 1),
-                          Expanded(
-                            // 折叠把手悬浮化:侧栏本体纯宽(220/52),Row 外包
-                            // Stack,把手 Positioned 浮于内容区左缘(z 序高,
-                            // Material+elevation 出投影),不再占布局宽。
-                            child: Stack(
-                              children: [
-                                Row(
-                                  children: [
-                                    _BrowseSidebar(
-                                      index: widget.index,
-                                      sites: visibleSites,
-                                      currentSiteId: _displaySiteId,
-                                      collapsed: _collapsed,
-                                      onSelectSite: _selectSiteId,
-                                      onSelectMenu: _navigateToMenu,
-                                      categorySite: _currentSite,
-                                      onOpenCategory: selectAreaCategory,
-                                    ),
-                                    const VerticalDivider(width: 1, thickness: 1),
-                                    Expanded(child: _contentForMenu(widget.index, _currentSiteId)),
-                                  ],
-                                ),
-                                // 突出折叠把手:贴侧栏右缘悬浮(top:0/bottom:0 +
-                                // Center = 布局垂直中部);宽度动画期间用
-                                // AnimatedPositioned(与侧栏 AnimatedContainer
-                                // 同时长同曲线)同步贴住侧栏当前宽。
-                                AnimatedPositioned(
-                                  duration: _kSidebarWidthAnimDuration,
-                                  curve: AppMotion.curve,
-                                  left: _collapsed ? AppDirectoryDrawer.railWidth : AppDirectoryDrawer.width,
-                                  top: 0,
-                                  bottom: 0,
-                                  child: Center(
-                                    child: Material(
-                                      color: tokens.surface,
+    // 全局导航快捷键(Alt+←/→/Home、F5、鼠标侧键 X1/X2)已迁往
+    // GetMaterialApp.builder 层(ZishuAppNavShortcuts,真源同位;壳层内挂点
+    // 会被 push 路由焦点隔离),本壳层只保留 search/refreshHome 动作注册与
+    // 菜单双栈上报(ZishuAppNavHistory)。
+    return Stack(
+      children: [
+        // Ctrl+F / Ctrl+K 全局搜索:CallbackShortcuts 在焦点气泡阶段收键,
+        // 经 GlobalActions 的 search 注册落地(本壳注册表口径,真源同款:
+        // 收键方触发、注册方落地);Focus(autofocus) 让壳层在无其他焦点者
+        // 时兜底持有焦点。壳层覆盖整页内容,页内任何控件持有焦点时按键也会
+        // 沿祖先链回到这里。
+        CallbackShortcuts(
+          bindings: <ShortcutActivator, VoidCallback>{
+            const SingleActivator(LogicalKeyboardKey.keyF, control: true): () =>
+                GlobalActions.call(GlobalActionNames.search),
+            const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
+                GlobalActions.call(GlobalActionNames.search),
+          },
+          child: Focus(
+            focusNode: _shortcutFocusNode,
+            autofocus: true,
+            child: Theme(
+              // 交互态收口:外壳根部统一 focus 色(键盘导航可见)。
+              data: Theme.of(context).copyWith(focusColor: AppStateLayer.focusOf(tokens.accent)),
+              child: Scaffold(
+                backgroundColor: tokens.background,
+                body: SafeArea(
+                  // Obx 覆盖平台入口区:订阅 savedPlatformIds 与热门页站点表
+                  // (visibleTopBarSites 内读 Rx,与顶栏/侧栏共用同一份)。
+                  child: Obx(() {
+                    final visibleSites = visibleTopBarSites();
+                    return Column(
+                      children: [
+                        ZishuShellTopBar(
+                          index: widget.index,
+                          sites: visibleSites,
+                          currentSiteId: _displaySiteId,
+                          // 平台 tab 选中口径:仅热门页随站点高亮(分区/关注页不亮)。
+                          platformTabsActive: widget.index == HomeMenu.popular.index,
+                          allSelected: widget.index == HomeMenu.popular.index && _allSelected,
+                          onSelectAll: _selectAll,
+                          onSelectMenu: _navigateToMenu,
+                          onSelectSite: _selectSiteId,
+                          onPlatformHoverStart: schedulePlatformFlyout,
+                          onPlatformHoverEnd: cancelPlatformFlyoutOpen,
+                          onFollowHoverStart: openFollowFlyout,
+                          onFollowHoverEnd: scheduleFlyoutClose,
+                          onMyCategoryHoverStart: scheduleMyCategoryFlyout,
+                          onMyCategoryTap: toggleMyCategoryFlyout,
+                          onMyCategoryHoverEnd: cancelMyCategoryFlyoutOpen,
+                          onOpenSettings: _openSettingsDialog,
+                        ),
+                        const Divider(height: 1, thickness: 1),
+                        Expanded(
+                          // 折叠把手悬浮化:侧栏本体纯宽(220/52),Row 外包
+                          // Stack,把手 Positioned 浮于内容区左缘(z 序高,
+                          // Material+elevation 出投影),不再占布局宽。
+                          child: Stack(
+                            children: [
+                              Row(
+                                children: [
+                                  _BrowseSidebar(
+                                    index: widget.index,
+                                    sites: visibleSites,
+                                    currentSiteId: _displaySiteId,
+                                    collapsed: _collapsed,
+                                    onSelectSite: _selectSiteId,
+                                    onSelectMenu: _navigateToMenu,
+                                    categorySite: _currentSite,
+                                    onOpenCategory: selectAreaCategory,
+                                  ),
+                                  const VerticalDivider(width: 1, thickness: 1),
+                                  Expanded(child: _contentForMenu(widget.index, _currentSiteId)),
+                                ],
+                              ),
+                              // 突出折叠把手:贴侧栏右缘悬浮(top:0/bottom:0 +
+                              // Center = 布局垂直中部);宽度动画期间用
+                              // AnimatedPositioned(与侧栏 AnimatedContainer
+                              // 同时长同曲线)同步贴住侧栏当前宽。
+                              AnimatedPositioned(
+                                duration: _kSidebarWidthAnimDuration,
+                                curve: AppMotion.curve,
+                                left: _collapsed ? AppDirectoryDrawer.railWidth : AppDirectoryDrawer.width,
+                                top: 0,
+                                bottom: 0,
+                                child: Center(
+                                  child: Material(
+                                    color: tokens.surface,
+                                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+                                    elevation: 1,
+                                    child: InkWell(
+                                      onTap: () => setState(() => _collapsed = !_collapsed),
                                       borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
-                                      elevation: 1,
-                                      child: InkWell(
-                                        onTap: () => setState(() => _collapsed = !_collapsed),
-                                        borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
-                                        focusColor: Theme.of(context).focusColor,
-                                        child: SizedBox(
-                                          width: AppDirectoryDrawer.toggleWidth,
-                                          height: AppDirectoryDrawer.toggleHeight,
-                                          child: Icon(
-                                            _collapsed ? Remix.arrow_right_s_line : Remix.arrow_left_s_line,
-                                            size: 16,
-                                            color: tokens.textSecondary,
-                                          ),
+                                      focusColor: Theme.of(context).focusColor,
+                                      child: SizedBox(
+                                        width: AppDirectoryDrawer.toggleWidth,
+                                        height: AppDirectoryDrawer.toggleHeight,
+                                        child: Icon(
+                                          _collapsed ? Remix.arrow_right_s_line : Remix.arrow_left_s_line,
+                                          size: 16,
+                                          color: tokens.textSecondary,
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
-                      );
-                    }),
-                  ),
+                        ),
+                      ],
+                    );
+                  }),
                 ),
               ),
             ),
           ),
-          // hover 浮层:Stack 覆盖在外壳最上层(Scaffold 之外)。
-          ...buildFlyoutOverlays(
-            siteById: _siteById,
-            onOpenCategory: selectAreaCategory,
-            onOpenRoom: _openRoomFromFlyout,
-          ),
-        ],
-      ),
+        ),
+        // hover 浮层:Stack 覆盖在外壳最上层(Scaffold 之外)。
+        ...buildFlyoutOverlays(
+          siteById: _siteById,
+          onOpenCategory: selectAreaCategory,
+          onOpenRoom: _openRoomFromFlyout,
+        ),
+      ],
     );
   }
 }

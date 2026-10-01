@@ -63,6 +63,15 @@ class AppNavigator {
       } else {
         manager.cancelRoomSessionReentry();
       }
+      // 播放页内切房只换栈顶(真源 follow_panel.dart:215-222 的
+      // pushReplacement 语义:push 会让旧播放页连同其播放会话压在栈下继续
+      // 存活(泄漏);replace 卸载旧页,下层浏览页保留为返回目标)。已在本
+      // 播放页路由时改走既有等价方法 offAndToRoomDetail(Get.offAndToNamed),
+      // 其内部重复的校验/归一对已处理参数幂等;否则维持现状入栈。
+      if (Get.currentRoute == RoutePath.kLivePlay) {
+        await offAndToRoomDetail(liveRoom: liveRoom);
+        return;
+      }
       await Get.toNamed(RoutePath.kLivePlay, arguments: normalizedRoom, parameters: {"site": platform});
     } catch (error, stackTrace) {
       log('Open live room route failed', name: 'AppNavigator', error: error, stackTrace: stackTrace);

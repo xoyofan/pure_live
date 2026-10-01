@@ -20,6 +20,7 @@ import 'package:pure_live/core/iptv/services/epg_import_manager.dart';
 import 'package:pure_live/common/global/platform/desktop_manager.dart';
 import 'package:pure_live/core/iptv/services/iptv_import_manager.dart';
 import 'package:pure_live/common/services/settings/player_settings_controller.dart';
+import 'package:pure_live/zishu_app/shell/zishu_app_nav_shortcuts.dart';
 
 void main(List<String> args) async {
   // Flutter abbreviates every framework error after the first one. In release
@@ -209,6 +210,12 @@ class _MyAppState extends State<MyApp> with DesktopWindowMixin {
             builder: FlutterSmartDialog.init(
               builder: (context, child) {
                 Widget resultWidget = child ?? const SizedBox.shrink();
+                // 全局导航快捷键(builder 层收键,对齐 zishu 真源
+                // app_nav_shortcuts 的真源架构):快捷键靠焦点祖先生效,
+                // 只有 builder 层是所有路由焦点 Scope 的公共祖先,绑在壳层
+                // /播放页内会被焦点隔离;此处分发,动作由路由内组件经
+                // GlobalActions 注册表落地。child 原样包入,布局不变。
+                resultWidget = ZishuAppNavShortcuts(child: resultWidget);
                 if (PlatformUtils.isDesktopNotMac) {
                   resultWidget = DesktopManager.buildWithTitleBar(resultWidget);
                 } else if (Platform.isAndroid) {

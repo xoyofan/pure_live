@@ -5,6 +5,7 @@ import 'package:pure_live/plugins/event_bus.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/widgets/compact_switch.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
+import 'package:pure_live/zishu_app/features/play/chat_stream_settings.dart';
 import 'package:pure_live/zishu_app/features/play/room_reminder_store.dart';
 import 'package:pure_live/zishu_app/features/play/room_stats_provider.dart';
 import 'package:pure_live/zishu_app/features/play/super_follow_controller.dart';
@@ -32,7 +33,8 @@ int _lastSidePanelTab = 0;
 ///   封面网格 + 平台筛选,只显在播);
 /// - 推荐 → `ZishuPlayRecommendPanel`(真源 _RecommendPanel 适配:2 列
 ///   封面网格 + 骨架 + 滚动加载,热门页分类房间流);
-/// - 设置 → 就地渲染弹幕设置(对齐 zishu settings_panel,非跳转列表)。
+/// - 设置 → 就地渲染侧栏聊天流设置(对齐 zishu settings_panel 的
+///   「聊天弹幕」组,非跳转列表;飘屏细项走播放控制条齿轮 popover)。
 class ZishuPlaySidePanel extends StatelessWidget {
   const ZishuPlaySidePanel({super.key, required this.room, required this.isLive, this.compactHeader = false});
 
@@ -857,63 +859,93 @@ class _SideActionChipState extends State<_SideActionChip> {
   }
 }
 
-/// 设置 tab:就地渲染弹幕设置(对齐 zishu settings_panel 的就地面板,非
-/// 跳转列表)。数据源 `SettingsService.to.danmaku`(Rx 即时态,值经 HiveRx
-/// 自动持久化);末行保留「更多设置」跳既有设置路由。
+/// 设置 tab:侧栏聊天流设置(对齐 zishu side_panel/settings_panel.dart:14-123
+/// 的「聊天弹幕」组:聊天总开关 + 开启时内联渲染透明度/字号/间距/限速+速度,
+/// 控制**侧栏聊天区**;真源「播放」组的线路格式不迁 —— pure_live 线路切换在
+/// 播放控制条,妥协记录见轨道报告)。旧飘屏细项滑杆行(弹幕开关/透明度/
+/// 字号/速度)已删:飘屏细项在播放控制条齿轮 popover 已有。末行保留
+/// 「更多设置」跳既有设置路由。
+///
+/// 数据源 [ChatStreamSettings](Rx 即时态,值经 HiveRx 自动持久化)。
 class _SettingsPanel extends StatelessWidget {
   const _SettingsPanel();
 
   @override
   Widget build(BuildContext context) {
-    final danmaku = SettingsService.to.danmaku;
+    final settings = ChatStreamSettings.to;
     return Obx(() {
+      final chatEnabled = settings.chatEnabled.v;
+      final throttled = settings.chatThrottleOn.v;
       return ListView(
+        key: const Key('play-side-settings-panel'),
         padding: const EdgeInsets.all(AppSpacing.sm),
         children: [
+          // 组标题「聊天弹幕」照抄真源 settings_panel.dart:44;无既有
+          // i18n key,中文常量(见轨道报告)。
           _SettingsGroup(
-            title: i18n('danmaku_settings'),
+            title: '聊天弹幕',
             children: [
-              // 行1:弹幕开关(hideDanmaku,取反 = 显示态)。开关语义对齐
-              // zishu settings_panel「聊天」行(value = 开)与播放器控制条
-              // 同款绑定(zishu_player_controls.dart:689:value: show,
-              // onChanged: hide = !value);控件用全局 CompactSwitch(对齐
-              // 真源 _SettingRow 的开关密度)。
+              // 行1:聊天总开关(真源 :46-54,value = 开)。
               _SettingsRow(
-                label: i18n('danmaku'),
+                label: i18n('chat'),
                 trailing: CompactSwitch(
-                  key: const Key('play-side-setting-danmaku'),
-                  value: !danmaku.hideDanmaku.v,
-                  onChanged: (value) => danmaku.hideDanmaku.v = !value,
+                  key: const Key('play-side-setting-chat'),
+                  value: chatEnabled,
+                  onChanged: (value) => settings.chatEnabled.v = value,
                 ),
               ),
-              // 行2:透明度(0-1,百分比显示,对齐既有弹幕设置页口径)。
-              _SettingsSliderRow(
-                label: i18n('opacity'),
-                value: danmaku.danmakuOpacity.v,
-                min: 0,
-                max: 1,
-                valueText: '${(danmaku.danmakuOpacity.v * 100).toInt()}%',
-                onChanged: (value) => danmaku.danmakuOpacity.v = value,
-              ),
-              // 行3:字号(10-30,步进 1)。
-              _SettingsSliderRow(
-                label: i18n('font_size'),
-                value: danmaku.danmakuFontSize.v,
-                min: 10,
-                max: 30,
-                divisions: 20,
-                valueText: '${danmaku.danmakuFontSize.v.toStringAsFixed(1)} px',
-                onChanged: (value) => danmaku.danmakuFontSize.v = value,
-              ),
-              // 行4:速度(20-400 px/s)。
-              _SettingsSliderRow(
-                label: i18n('settings_danmaku_speed'),
-                value: danmaku.danmakuSpeed.v,
-                min: 20,
-                max: 400,
-                valueText: '${danmaku.danmakuSpeed.v.toInt()} px/s',
-                onChanged: (value) => danmaku.danmakuSpeed.v = value,
-              ),
+              // 聊天开时内联渲染设置(真源 :60-119:透明度 10-100 / 字号
+              // 12-24 / 间距 0-16 / 速度 1-10 秒 + 限速开关),控制侧栏聊天区。
+              if (chatEnabled) ...[
+                _SettingsSliderRow(
+                  key: const Key('play-side-setting-chat-opacity'),
+                  label: i18n('opacity'),
+                  value: settings.opacity.toDouble(),
+                  min: ChatStreamSettings.opacityMin.toDouble(),
+                  max: ChatStreamSettings.opacityMax.toDouble(),
+                  valueText: '${settings.opacity}%',
+                  onChanged: (value) => settings.opacity = value.round(),
+                ),
+                // 行标签「字号」照抄真源 :74;i18n `font_size` 是
+                // 「字体大小」,与真源措辞不一致,故用中文常量。
+                _SettingsSliderRow(
+                  key: const Key('play-side-setting-chat-font-size'),
+                  label: '字号',
+                  value: settings.fontSize.toDouble(),
+                  min: ChatStreamSettings.fontSizeMin.toDouble(),
+                  max: ChatStreamSettings.fontSizeMax.toDouble(),
+                  valueText: '${settings.fontSize}',
+                  onChanged: (value) => settings.fontSize = value.round(),
+                ),
+                _SettingsSliderRow(
+                  key: const Key('play-side-setting-chat-gap'),
+                  label: '间距',
+                  value: settings.lineSpacing.toDouble(),
+                  min: ChatStreamSettings.lineSpacingMin.toDouble(),
+                  max: ChatStreamSettings.lineSpacingMax.toDouble(),
+                  valueText: '${settings.lineSpacing}',
+                  onChanged: (value) => settings.lineSpacing = value.round(),
+                ),
+                // 速度行:leading 限速开关形态照抄真源 :94-118(开关关时
+                // 滑杆禁用、数值文案保留「全量」= 真源 ChatThrottleMode
+                // .unlimited.label)。「每N秒一条」「全量」「速度」均无
+                // 既有 i18n key,中文常量。
+                _SettingsSliderRow(
+                  key: const Key('play-side-setting-chat-speed'),
+                  label: '速度',
+                  value: settings.speed.toDouble(),
+                  min: ChatStreamSettings.speedMin.toDouble(),
+                  max: ChatStreamSettings.speedMax.toDouble(),
+                  enabled: throttled,
+                  valueText: throttled ? '每${settings.speed}秒一条' : '全量',
+                  leading: CompactSwitch(
+                    key: const Key('play-side-setting-chat-throttle'),
+                    value: throttled,
+                    onChanged: (on) => settings.chatThrottleOn.v = on,
+                  ),
+                  onChanged: (value) => settings.speed = value.round(),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -972,7 +1004,8 @@ class _SettingsGroup extends StatelessWidget {
   }
 }
 
-/// 设置行(label + trailing 控件,对齐 zishu _SettingRow)。
+/// 设置行(label + trailing 控件,规格对齐真源 _SettingRow
+/// settings_panel.dart:166-181:label 弹性 + textCaption)。
 class _SettingsRow extends StatelessWidget {
   const _SettingsRow({required this.label, required this.trailing});
 
@@ -983,31 +1016,29 @@ class _SettingsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: context.textBody.copyWith(fontSize: AppFontSize.body),
-          ),
-        ),
+        Expanded(child: Text(label, style: context.textCaption)),
         trailing,
       ],
     );
   }
 }
 
-/// 设置滑杆行(对齐 zishu _SettingSliderRow:label 列约 52、滑杆弹性、
-/// 数值右对齐)。
+/// 设置滑杆行(三列规格逐项对齐真源 _SettingSliderRow
+/// settings_panel.dart:188-253:label 列 52、滑杆弹性、数值列右对齐 72;
+/// 滑杆 trackHeight 3 / thumb 7 / overlay 11 / 不显数值气泡,divisions =
+/// max-min 整档步进)。[leading] 供速度行放限速开关(真源 el-checkbox 位);
+/// [enabled] = false 时滑杆禁用但数值文案保留(真源速度行全量态呈现)。
 class _SettingsSliderRow extends StatelessWidget {
   const _SettingsSliderRow({
+    super.key,
     required this.label,
     required this.value,
     required this.min,
     required this.max,
     required this.valueText,
     required this.onChanged,
-    this.divisions,
+    this.enabled = true,
+    this.leading,
   });
 
   final String label;
@@ -1015,25 +1046,22 @@ class _SettingsSliderRow extends StatelessWidget {
   final double min;
   final double max;
   final String valueText;
-  final ValueChanged<double> onChanged;
 
-  /// null = 连续滑杆(透明度/速度与既有弹幕设置页一致)。
-  final int? divisions;
+  /// null = 禁用(限速关时的速度滑杆)。
+  final ValueChanged<double>? onChanged;
+  final bool enabled;
+
+  /// 滑杆前的附加控件(限速开关)。
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     return Row(
       children: [
-        SizedBox(
-          width: 52,
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: context.textCaption.copyWith(fontSize: AppFontSize.body),
-          ),
-        ),
+        // 对齐真源 label 列 3.25rem ≈ 52(settings_panel.dart:220)。
+        SizedBox(width: 52, child: Text(label, style: context.textCaption)),
+        if (leading != null) ...[leading!, const SizedBox(width: 4)],
         Expanded(
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
@@ -1046,15 +1074,16 @@ class _SettingsSliderRow extends StatelessWidget {
               value: value.clamp(min, max).toDouble(),
               min: min,
               max: max,
-              divisions: divisions,
+              divisions: (max - min).round(),
               activeColor: tokens.accent,
               inactiveColor: tokens.border,
-              onChanged: onChanged,
+              onChanged: enabled ? onChanged : null,
             ),
           ),
         ),
+        // 右对齐数值文案,宽度容纳「每10秒一条」(真源 :242 宽 72)。
         SizedBox(
-          width: 64,
+          width: 72,
           child: Text(valueText, textAlign: TextAlign.right, style: context.textCaption),
         ),
       ],

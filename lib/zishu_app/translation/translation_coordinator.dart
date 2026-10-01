@@ -692,3 +692,18 @@ TranslationCoordinator? _coordinatorSingleton;
 /// 在本仓无 riverpod,收敛为惰性 getter;缓存随进程存活)。
 TranslationCoordinator get titleTranslationCoordinator =>
     _coordinatorSingleton ??= TranslationCoordinator(engines: buildTranslationEngines());
+
+/// 侧栏聊天流「按文本翻译」公开入口(对齐 zishu chat_tab.dart:337-377
+/// `_translateForDisplay` 的显示出口:所有放行路径先过翻译,译文就绪才
+/// 放行;本仓聊天正文保持纯文本,不需要 zishu 的富文本段翻译)。
+///
+/// - 文本无需翻译/已命中缓存时同步返回 [text],零网络开销;
+/// - 否则入协调器批量队列(缓存/在途去重/节流),超 [waitLimit] 未就绪以
+///   原文放行 —— 协调器自身请求超时 6s 且按 300ms 节流,放行口径再卡
+///   2.5s 上限(与 zishu `_kTranslateWaitLimit` 同值):宁可原文,不拖住
+///   整条聊天流;
+/// - Future 永不抛错([TranslationCoordinator.translate] 失败原样返回,
+///   timeout 命中 onTimeout)。
+Future<String> translateChatText(String text, {Duration waitLimit = const Duration(milliseconds: 2500)}) {
+  return titleTranslationCoordinator.translate(text).timeout(waitLimit, onTimeout: () => text);
+}

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/consts/app_consts.dart';
@@ -23,7 +24,9 @@ import 'package:pure_live/zishu_app/features/play/zishu_play_immersive_sheet.dar
 import 'package:pure_live/zishu_app/features/play/zishu_sleep_timer_badge.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_play_keyboard_ext.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
+import 'package:pure_live/zishu_app/translation/translated_text.dart';
 import 'package:pure_live/zishu_app/features/settings/zishu_settings_view.dart';
+import 'package:pure_live/zishu_app/shell/zishu_global_actions.dart';
 import 'package:pure_live/zishu_app/shell/zishu_shell_flyout_machine.dart';
 import 'package:pure_live/zishu_app/shell/zishu_shell_top_bar.dart';
 
@@ -61,6 +64,134 @@ class _ZishuPlayViewState extends State<ZishuPlayView> with ZishuShellFlyoutMach
   /// 沉浸态右缘抽屉开合(3s 自动收起由 sheet 内部管理)。
   bool _immersiveSheetVisible = false;
 
+  /// 沉浸态右缘热区防抖锁(真源 play_view `_onChromeVisibilityChanged`:
+  /// 进入沉浸态后 720ms 内拒绝打开抽屉,防进入瞬间的点击误开)。bool +
+  /// Timer 而非 DateTime 截止(真源同注:测试 FakeAsync 时钟不走真实
+  /// DateTime,锁会永远解不开)。
+  bool _immersiveSideLocked = false;
+  Timer? _immersiveSideLockTimer;
+
+  /// 上一帧沉浸态(抽屉联动只在进/出沉浸态的边沿触发)。
+  bool _lastImmersive = false;
+
+  /// 沉浸态联动 Rx 侦听(controller 在 build 才可用,首个可用 build 懒
+  /// 绑定;随 dispose 释放)。
+  bool _immersiveWatchersBound = false;
+  List<Worker>? _immersiveWorkers;
+
+  /// 沉浸态点击分流层(铺满舞台):取其 RenderBox 宽做右缘 2/3 热区判定
+  /// (真源以舞台 host key 取宽同口径)。
+  final GlobalKey _immersiveTapLayerKey = GlobalKey(debugLabel: 'zishu-immersive-tap-layer');
+
+  /// F5 刷新播放页:与控制条「刷新」同通路(zishu_player_controls.dart 的
+  /// 刷新钮:videoController.refresh);播放器未就位(加载失败占位)时回落
+  /// onInitPlayerState 重解析(同 RoomLoadFailedWidget 的重试通路)。反馈
+  /// 走舞台内浮层,与控制条刷新同文案(key `play_refreshed`)。
+  void _refreshStream(LivePlayController controller) {
+    final videoController = controller.state.value.player.videoController;
+    if (videoController != null) {
+      unawaited(videoController.refresh());
+    } else {
+      unawaited(controller.onInitPlayerState());
+    }
+    ZishuStageHint.show(i18n('play_refreshed'));
+  }
+
+  /// 沉浸态联动 Rx 侦听(懒绑定):screenMode 变化经 state Rx 发布,PiP
+  /// 变化经播放器管理器 Rx,任一触发都同步一次抽屉联动。
+  void _bindImmersiveWatchers(LivePlayController controller) {
+    if (_immersiveWatchersBound) return;
+    _immersiveWatchersBound = true;
+    final manager = GlobalPlayerService.instance.player;
+    _immersiveWorkers = [
+      ever(controller.state, (_) => _syncImmersiveSide(controller)),
+      ever(manager.isInPip, (_) => _syncImmersiveSide(controller)),
+      ever(manager.isPipPreparing, (_) => _syncImmersiveSide(controller)),
+    ];
+  }
+
+  /// 沉浸态切换联动(真源 play_view `_onChromeVisibilityChanged` 的 GetX
+  /// 转写):进入或退出沉浸态都强制关抽屉;控制条随切换唤醒(真源「呈现态
+  /// 切换时同步控制条可见性」同口径 —— 开抽屉落下的 showController 若不
+  /// 唤醒,退出沉浸态后常规态 zishu 控制条会滞留隐藏);进入时上 720ms
+  /// 防抖锁(防进入沉浸态瞬间的点击误开抽屉),退出时清锁。
+  void _syncImmersiveSide(LivePlayController controller) {
+    final manager = GlobalPlayerService.instance.player;
+    final immersive =
+        controller.state.value.ui.screenMode != VideoMode.normal &&
+        !manager.isInPip.value &&
+        !manager.isPipPreparing.value;
+    if (immersive == _lastImmersive) return;
+    _lastImmersive = immersive;
+    if (_immersiveSheetVisible) setState(() => _immersiveSheetVisible = false);
+    _wakeImmersiveControls(controller);
+    if (immersive) {
+      _immersiveSideLocked = true;
+      _immersiveSideLockTimer?.cancel();
+      _immersiveSideLockTimer = Timer(const Duration(milliseconds: 720), () {
+        if (mounted) _immersiveSideLocked = false;
+      });
+    } else {
+      _immersiveSideLocked = false;
+      _immersiveSideLockTimer?.cancel();
+    }
+  }
+
+  /// 打开沉浸抽屉(真源 `_openImmersiveSide`):锁内拒绝;打开即藏控制条,
+  /// 3s 无交互自动收起由 sheet 内部排程(可见即启动、面板内交互重置,口径
+  /// 与真源 scheduleHideImmersiveSide 一致)。
+  void _openImmersiveSide(LivePlayController controller) {
+    if (_immersiveSideLocked) return;
+    if (!_immersiveSheetVisible) setState(() => _immersiveSheetVisible = true);
+    _hideImmersiveControls(controller);
+  }
+
+  /// 关闭沉浸抽屉(真源 `_closeImmersiveSide`):任何途径的关闭(遮罩/
+  /// toggle 把手/3s 超时)在沉浸态下都同时唤醒控制条。
+  void _closeImmersiveSide(LivePlayController controller) {
+    if (!_immersiveSheetVisible) return;
+    setState(() => _immersiveSheetVisible = false);
+    _wakeImmersiveControls(controller);
+  }
+
+  /// 唤醒沉浸态控制条(宿主 video_controller.dart 的 showController 口径):
+  /// 显示并重挂面板自身的自动隐藏计时(enableController 语义)。
+  void _wakeImmersiveControls(LivePlayController controller) {
+    controller.state.value.player.videoController?.enableController();
+  }
+
+  /// 藏沉浸态控制条:先取消面板自动隐藏计时,再直落 showController Rx
+  /// (VideoController 无公开 hide 入口;其内部隐藏路径 video_controller.dart
+  /// 同为直写该 Rx)。
+  void _hideImmersiveControls(LivePlayController controller) {
+    final videoController = controller.state.value.player.videoController;
+    if (videoController == null) return;
+    videoController.stopHideController();
+    videoController.showController.value = false;
+  }
+
+  /// 沉浸态舞台点击分流(真源 `_onImmersiveFrameTapUp`):
+  /// - 抽屉开着 → 关抽屉 + 唤醒控制条;
+  /// - 点击落在右缘热区(x/宽度 ≥ 2/3,真源 PLAY_IMMERSIVE_TAP_ZONE)→ 开抽屉;
+  /// - 其余 → 仅唤醒控制条。
+  ///
+  /// 沉浸态点击不切播放/暂停:底层呈现已被 AbsorbPointer 拦下,其内部全屏
+  /// GestureDetector 的「点画面唤醒/续播」不参与本层点击。
+  void _onImmersiveFrameTapUp(LivePlayController controller, Offset localPosition) {
+    if (_immersiveSheetVisible) {
+      _closeImmersiveSide(controller);
+      return;
+    }
+    final box = _immersiveTapLayerKey.currentContext?.findRenderObject() as RenderBox?;
+    final width = box?.size.width ?? 0;
+    final zone = localPosition.dx / (width <= 0 ? 1 : width);
+    if (zone >= 2 / 3) {
+      _openImmersiveSide(controller);
+    } else {
+      _wakeImmersiveControls(controller);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +204,14 @@ class _ZishuPlayViewState extends State<ZishuPlayView> with ZishuShellFlyoutMach
   @override
   void dispose() {
     disposeFlyoutMachine();
+    // F5 动作随本 State 注销(owner 校验防误删,真源同口径)。
+    GlobalActions.unregister(GlobalActionNames.refreshPlay, owner: this);
+    for (final worker in _immersiveWorkers ?? const <Worker>[]) {
+      worker.dispose();
+    }
+    _immersiveWorkers = null;
+    _immersiveSideLockTimer?.cancel();
+    _immersiveSideLockTimer = null;
     super.dispose();
   }
 
@@ -87,6 +226,11 @@ class _ZishuPlayViewState extends State<ZishuPlayView> with ZishuShellFlyoutMach
       // binding 未就绪(直接热预览等):占位等待,与 ZishuBrowseView 同口径。
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    // 注册 F5 刷新(真源 play_view 同位:build 内注册,builder 层快捷键经
+    // GlobalActions 落地,注销随本 State dispose)。
+    GlobalActions.register(GlobalActionNames.refreshPlay, owner: this, action: () => _refreshStream(controller));
+    // 沉浸态抽屉联动侦听(懒绑定,幂等)。
+    _bindImmersiveWatchers(controller);
     return Obx(() {
       final state = controller.state.value;
       final manager = GlobalPlayerService.instance.player;
@@ -101,12 +245,44 @@ class _ZishuPlayViewState extends State<ZishuPlayView> with ZishuShellFlyoutMach
         // 沉浸态(全屏/网页全屏):既有呈现 + zishu 右缘抽屉侧栏
         // (把手拉出,3s 自动收起;聊天/推荐在沉浸态可达)。
         final room = state.room.detail ?? controller.room;
+        // 抽屉宽手机钳制(真源 play_view.dart:607-613):<768 时面板宽
+        // 不超过视口 88%(web `min(320px, 88vw)`)。
+        final mediaWidth = MediaQuery.sizeOf(context).width;
+        final sheetWidth = mediaWidth < AppBreakpoints.phone
+            ? math.min(AppSpacing.playSidePanelWidthFor(mediaWidth), mediaWidth * 0.88)
+            : AppSpacing.playSidePanelWidthFor(mediaWidth);
         body = Stack(
+          fit: StackFit.expand,
           children: [
-            LivePlayContent(controller: controller, isInPip: false, mode: mode),
+            // 沉浸态点击分流(真源 onPlayFrameClick 沉浸分支):底层既有
+            // 呈现整体收不到指针 —— 其内部全屏 GestureDetector 的「点画面
+            // 唤醒/续播、双击切全屏」在沉浸态让位(真源同口径:沉浸态不
+            // 注册双击),点击语义改由顶层分流层接管。
+            AbsorbPointer(
+              absorbing: true,
+              child: LivePlayContent(controller: controller, isInPip: false, mode: mode),
+            ),
+            // 顶层分流层:抽屉开着时被 sheet 遮罩挡住(Stack 命中序在
+            // sheet 之下),不会误收点击;关着时右缘 2/3 开抽屉、其余唤醒
+            // 控制条;鼠标移动唤醒控制条(真源舞台 onHover → _wakeControls
+            // 同款)。GestureDetector 只注册 tap:拖拽不成 tap,不会误分流。
+            Positioned.fill(
+              child: MouseRegion(
+                onHover: (_) => _wakeImmersiveControls(controller),
+                child: GestureDetector(
+                  key: _immersiveTapLayerKey,
+                  behavior: HitTestBehavior.translucent,
+                  onTapUp: (details) => _onImmersiveFrameTapUp(controller, details.localPosition),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
             ZishuPlayImmersiveSheet(
               visible: _immersiveSheetVisible,
-              onToggle: () => setState(() => _immersiveSheetVisible = !_immersiveSheetVisible),
+              panelWidth: sheetWidth,
+              // 遮罩/把手/3s 超时统一收口为「关闭」(开抽屉只经右缘热区),
+              // 关闭同时唤醒控制条(真源 _closeImmersiveSide 口径)。
+              onToggle: () => _closeImmersiveSide(controller),
               child: ZishuPlaySidePanel(room: room, isLive: state.room.isLiving),
             ),
             // 舞台提示浮层:沉浸态下操作反馈同样落在舞台内(Stack 顶层,
@@ -273,7 +449,23 @@ class _ZishuPlayViewState extends State<ZishuPlayView> with ZishuShellFlyoutMach
             // 关注/超关),替代桌面信息头(对齐 zishu compactHeader: true)。
             compactHeader: stacked,
           );
-          final title = room.title?.trim() ?? '';
+          // 标题(真源 play_view.dart:645 口径「标题 ?? 解析失败/加载中」):
+          // 详情标题优先;解析失败(loadError 已置)→「房间解析失败」;详情
+          // 未到时先回列入参房标题(列表点击即知的现状口径,保留为次级回退),
+          // 再退「加载中…」。
+          final roomState = controller.state.value.room;
+          final detailTitle = roomState.detail?.title?.trim() ?? '';
+          final argTitle = controller.room.title?.trim() ?? '';
+          final String title;
+          if (detailTitle.isNotEmpty) {
+            title = detailTitle;
+          } else if (roomState.loadError != null) {
+            title = '房间解析失败';
+          } else if (argTitle.isNotEmpty) {
+            title = argTitle;
+          } else {
+            title = '加载中…';
+          }
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -283,7 +475,7 @@ class _ZishuPlayViewState extends State<ZishuPlayView> with ZishuShellFlyoutMach
                   children: [
                     _ZishuRoomHeader(
                       room: room,
-                      title: title.isNotEmpty ? title : '直播',
+                      title: title,
                       sidePanelVisible: _sidePanelVisible,
                       onBack: () => Get.back(),
                       onToggleSidePanel: () => setState(() => _sidePanelVisible = !_sidePanelVisible),
@@ -350,7 +542,8 @@ class _ZishuPlayViewState extends State<ZishuPlayView> with ZishuShellFlyoutMach
 
 /// 房间头:对齐 zishu _RoomHeader —— 返回钮(32×32,arrow 18) + 分类徽标
 /// (分类色底 92%/平台色回退 + 平台图标 + 跨平台中文分类名 + 收藏星,
-/// 点击进分类)+ 左对齐标题 + 侧栏开合钮。
+/// 点击进分类)+ 标题(Expanded+Center 居中,TranslatedText 译文到达原位
+/// 替换,真源 play_view.dart:922-935)+ 侧栏开合钮。
 ///
 /// 收藏星对齐 zishu 原版**收藏分类**语义:点击
 /// [MyCategoryController.toggle](room.platform, room.area),已收藏判定
@@ -487,12 +680,17 @@ class _ZishuRoomHeader extends StatelessWidget {
             ),
             const SizedBox(width: AppSpacing.sm),
           ],
+          // 标题 Expanded+Center 居中(真源 play_view.dart:922-935:仅标题,
+          // 分类由左侧徽标承载);TranslatedText 自动中文化 —— 原文先显示,
+          // 译文到达原位替换。
           Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: context.textTitle.copyWith(fontSize: AppFontSize.subtitle),
+            child: Center(
+              child: TranslatedText(
+                text: title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.textTitle.copyWith(fontSize: AppFontSize.subtitle),
+              ),
             ),
           ),
           IconButton(
