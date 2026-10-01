@@ -45,12 +45,13 @@ class KilakilaSite extends LiveSite
     cover: snapshot.cover,
     avatar: snapshot.avatar,
     link: ownerUrl(snapshot.userId),
-    watching: '',
+    // watchNumber 是平台自身的观看数(并发/累计语义未验证),原样透出展示。
+    watching: snapshot.watchNumber != null && snapshot.watchNumber! > 0 ? '${snapshot.watchNumber}' : '',
     audienceMetricType: AudienceMetricType.unknown,
     status: snapshot.isLive ? true : null,
     liveStatus: snapshot.isLive ? LiveStatus.live : LiveStatus.unknown,
-    // watchNumber has no verified concurrent-viewer semantics. Broadcast IDs
-    // and signed media remain ephemeral; favorites/backup retain only the UID.
+    // Broadcast IDs and signed media remain ephemeral; favorites/backup
+    // retain only the UID.
     data: snapshot.media.isEmpty
         ? null
         : [

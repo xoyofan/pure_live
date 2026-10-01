@@ -104,7 +104,11 @@ class NiconicoSite extends LiveSite
   @override
   Future<List<LiveRoom>> getCategoryRooms(LiveArea category, {int page = 1, int pageSize = 30}) async {
     _pageSize(pageSize);
-    return (await getDirectoryPage(page: page, category: category)).rooms;
+    final rooms = (await getDirectoryPage(page: page, category: category)).rooms;
+    final areaName = category.areaName ?? '';
+    if (areaName.isEmpty) return rooms;
+    // recent/search 原始行不带分类名,分类路径用目录上下文补齐首页徽标。
+    return [for (final room in rooms) room.copyWith(area: areaName)];
   }
 
   @override

@@ -17,15 +17,12 @@ import 'package:live_parser/live_parser.dart' hide LiveSite;
 import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/core/sites.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
-import 'package:pure_live/core/site/bilibili/bilibili_site.dart';
 import 'package:pure_live/core/site/douyin/douyin_site.dart';
-import 'package:pure_live/core/site/douyu/douyu_site.dart';
-import 'package:pure_live/core/site/douyu/douyu_utils.dart';
-import 'package:pure_live/core/site/huya/huya_site.dart';
 import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_message.dart';
 import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/model/live_play_quality.dart';
+
+import 'purelive_audience.dart';
 
 /// live_parser 站点 id(契约侧)→ pure_live 站点 id(lib/core 侧)。
 const Map<String, String> kPureLiveSiteMap = {
@@ -35,12 +32,7 @@ const Map<String, String> kPureLiveSiteMap = {
   'douyu': 'douyu',
 };
 
-const Map<String, String> kPureLiveSiteNames = {
-  'bilibili': 'BiliBili',
-  'douyin': '抖音',
-  'huya': '虎牙',
-  'douyu': '斗鱼',
-};
+const Map<String, String> kPureLiveSiteNames = {'bilibili': 'BiliBili', 'douyin': '抖音', 'huya': '虎牙', 'douyu': '斗鱼'};
 
 const String _desktopUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -65,11 +57,23 @@ Map<String, String> _playbackHeaders(String site, String roomId) {
   // 对齐 pure_live PlaybackHeaderResolver(匿名口径)。
   switch (site) {
     case 'douyu':
-      return {'origin': 'https://www.douyu.com', 'referer': 'https://www.douyu.com/$roomId', 'user-agent': _desktopUserAgent};
+      return {
+        'origin': 'https://www.douyu.com',
+        'referer': 'https://www.douyu.com/$roomId',
+        'user-agent': _desktopUserAgent,
+      };
     case 'huya':
-      return {'user-agent': _desktopUserAgent, 'origin': 'https://www.huya.com', 'referer': roomId.isEmpty ? 'https://www.huya.com/' : 'https://www.huya.com/$roomId'};
+      return {
+        'user-agent': _desktopUserAgent,
+        'origin': 'https://www.huya.com',
+        'referer': roomId.isEmpty ? 'https://www.huya.com/' : 'https://www.huya.com/$roomId',
+      };
     case 'bilibili':
-      return {'user-agent': _desktopUserAgent, 'origin': 'https://live.bilibili.com', 'referer': roomId.isEmpty ? 'https://live.bilibili.com/' : 'https://live.bilibili.com/$roomId'};
+      return {
+        'user-agent': _desktopUserAgent,
+        'origin': 'https://live.bilibili.com',
+        'referer': roomId.isEmpty ? 'https://live.bilibili.com/' : 'https://live.bilibili.com/$roomId',
+      };
     case 'douyin':
       return {
         'user-agent': _desktopUserAgent,
@@ -115,8 +119,7 @@ Future<RoomPayload> _roomToPayload(LiveRoom room, String site) async {
 /// 房间解析器:resolve/refresh/recovery 共用同一个 LiveSite 调用。
 /// resolve 在开播时顺带解析默认档位(或 preferredQuality 命中档)的
 /// 全部线路,供 zishu 播放内核直接起播;线路切换经 preferredQuality 重解析。
-class PureLiveRoomResolver
-    implements RoomResolver, RoomSummaryRefresher, RoomRecoveryResolver {
+class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRecoveryResolver {
   PureLiveRoomResolver(this.site);
 
   final String site;
@@ -124,10 +127,7 @@ class PureLiveRoomResolver
   @override
   Future<RoomPayload> resolveRoom(RoomRequest request) async {
     final coreSite = _siteInstanceOf(site);
-    final detail = await coreSite.getRoomDetail(
-      platform: site,
-      roomId: request.roomIdOrUrl,
-    );
+    final detail = await coreSite.getRoomDetail(platform: site, roomId: request.roomIdOrUrl);
 
     // 离线/未开播:无流可给,只返回元信息。
     if (detail.liveStatus != LiveStatus.live) {
@@ -142,11 +142,9 @@ class PureLiveRoomResolver
 
     // 选档:preferredQuality 名称/ID 匹配,否则默认第一档(最高)。
     var chosen = qualities.first;
-    if (request.preferredQuality != null &&
-        request.preferredQuality!.isNotEmpty) {
+    if (request.preferredQuality != null && request.preferredQuality!.isNotEmpty) {
       for (final q in qualities) {
-        if (q.quality == request.preferredQuality ||
-            '${q.selectionId}' == request.preferredQuality) {
+        if (q.quality == request.preferredQuality || '${q.selectionId}' == request.preferredQuality) {
           chosen = q;
           break;
         }
@@ -178,18 +176,14 @@ class PureLiveRoomResolver
             for (var i = 0; i < urls.length; i++)
               StreamLine(
                 name: '线路${i + 1}',
-                format: urls[i].toLowerCase().endsWith('.m3u8')
-                    ? 'hls'
-                    : 'flv',
+                format: urls[i].toLowerCase().endsWith('.m3u8') ? 'hls' : 'flv',
                 url: urls[i],
                 headers: headers,
               ),
           ],
         ),
       ],
-      availableQualities: [
-        for (final q in qualities) QualityOption(name: q.quality, rate: 0),
-      ],
+      availableQualities: [for (final q in qualities) QualityOption(name: q.quality, rate: 0)],
       source: payload.source,
       fetchedAt: payload.fetchedAt,
     );
@@ -201,10 +195,7 @@ class PureLiveRoomResolver
   @override
   Future<RoomRecord> refreshRoomSummary(RoomRequest request) async {
     final coreSite = _siteInstanceOf(site);
-    final detail = await coreSite.getRoomDetail(
-      platform: site,
-      roomId: request.roomIdOrUrl,
-    );
+    final detail = await coreSite.getRoomDetail(platform: site, roomId: request.roomIdOrUrl);
     return RoomRecord.fromPayload(await _roomToPayload(detail, site));
   }
 }
@@ -232,11 +223,7 @@ class PureLiveBrowseRepository implements BrowseRepository {
           name: category.name,
           items: [
             for (final area in category.children)
-              CategoryItem(
-                cid: area.areaId ?? '',
-                name: area.areaName ?? '',
-                pic: area.areaPic ?? '',
-              ),
+              CategoryItem(cid: area.areaId ?? '', name: area.areaName ?? '', pic: area.areaPic ?? ''),
           ],
         ),
     ];
@@ -251,10 +238,7 @@ class PureLiveBrowseRepository implements BrowseRepository {
 
     if (cid.isEmpty) {
       // 推荐流。
-      final rooms = await coreSite.getRecommendRooms(
-        page: request.page,
-        pageSize: request.limit,
-      );
+      final rooms = await coreSite.getRecommendRooms(page: request.page, pageSize: request.limit);
       for (final room in rooms) {
         summaries.add(
           RoomSummary(
@@ -264,23 +248,17 @@ class PureLiveBrowseRepository implements BrowseRepository {
             anchorName: room.nick ?? '',
             cid: room.area ?? '',
             category: room.area ?? '',
-            online: room.watching ?? '',
+            online: audienceDisplayOf(room),
             cover: room.cover ?? '',
             avatar: room.avatar ?? '',
-            roomState: room.liveStatus == LiveStatus.live
-                ? RoomState.live
-                : RoomState.offline,
+            roomState: room.liveStatus == LiveStatus.live ? RoomState.live : RoomState.offline,
           ),
         );
       }
     } else {
       // 分类房间:cid 即 LiveArea.areaId。
       final area = LiveArea(platform: site, areaId: cid, areaName: cid);
-      final rooms = await coreSite.getCategoryRooms(
-        area,
-        page: request.page,
-        pageSize: request.limit,
-      );
+      final rooms = await coreSite.getCategoryRooms(area, page: request.page, pageSize: request.limit);
       for (final room in rooms) {
         summaries.add(
           RoomSummary(
@@ -290,21 +268,17 @@ class PureLiveBrowseRepository implements BrowseRepository {
             anchorName: room.nick ?? '',
             cid: room.area ?? '',
             category: room.area ?? '',
-            online: room.watching ?? '',
+            online: audienceDisplayOf(room),
             cover: room.cover ?? '',
             avatar: room.avatar ?? '',
-            roomState: room.liveStatus == LiveStatus.live
-                ? RoomState.live
-                : RoomState.offline,
+            roomState: room.liveStatus == LiveStatus.live ? RoomState.live : RoomState.offline,
           ),
         );
       }
     }
 
     return RoomListResult(
-      rooms: [
-        for (final summary in summaries) RoomRecord.fromSummary(summary),
-      ],
+      rooms: [for (final summary in summaries) RoomRecord.fromSummary(summary)],
       page: request.page,
       hasMore: summaries.length >= request.limit,
     );
@@ -320,11 +294,7 @@ class PureLiveSearchRepository implements SearchRepository {
   @override
   Future<SearchResult> search(SearchRequest request) async {
     final coreSite = _siteInstanceOf(site);
-    final rooms = await coreSite.searchRooms(
-      request.query,
-      page: 1,
-      pageSize: request.limit,
-    );
+    final rooms = await coreSite.searchRooms(request.query, page: 1, pageSize: request.limit);
     final hits = [
       for (final room in rooms)
         SearchHit(
@@ -333,11 +303,9 @@ class PureLiveSearchRepository implements SearchRepository {
           title: room.title ?? '',
           avatar: room.avatar ?? '',
           cover: room.cover ?? '',
-          state: room.liveStatus == LiveStatus.live
-              ? SearchHitState.live
-              : SearchHitState.offline,
+          state: room.liveStatus == LiveStatus.live ? SearchHitState.live : SearchHitState.offline,
           category: room.area ?? '',
-          online: room.watching ?? '',
+          online: audienceDisplayOf(room),
         ),
     ];
     return SearchResult(site: site, hits: hits);
@@ -367,24 +335,18 @@ class _PureLiveDanmakuSession implements DanmakuSession {
   /// 由连接器在注册后调用(私有构造外的唯一启动入口)。
   void start() => _start();
 
-
   final String site;
   final String roomId;
 
   LiveDanmaku? _danmaku;
 
-  final StreamController<DanmakuMessage> _messages =
-      StreamController<DanmakuMessage>.broadcast();
-  final StreamController<DanmakuSessionState> _states =
-      StreamController<DanmakuSessionState>.broadcast();
+  final StreamController<DanmakuMessage> _messages = StreamController<DanmakuMessage>.broadcast();
+  final StreamController<DanmakuSessionState> _states = StreamController<DanmakuSessionState>.broadcast();
 
   Future<void> _start() async {
     final coreSite = _siteInstanceOf(site);
     try {
-      final room = await coreSite.getRoomDetail(
-        platform: site,
-        roomId: roomId,
-      );
+      final room = await coreSite.getRoomDetail(platform: site, roomId: roomId);
       final args = room.danmakuData;
       final danmaku = coreSite.getDanmaku();
       danmaku.onMessage = (message) {
@@ -437,9 +399,8 @@ class _PureLiveDanmakuSession implements DanmakuSession {
 /// 组装一个 pure_live 后端的站点注册项(browse/search/danmaku 全挂,
 /// capabilities 如实声明)。由宿主 buildRegistryWithPureLive 按 id 覆盖。
 SiteRegistration buildPureLiveRegistration(String liveParserSite) {
-  if (_siteInstanceOf(liveParserSite) == null) {
-    throw StateError('pure_live backend: 未支持的站点 "$liveParserSite"');
-  }
+  // _siteInstanceOf 对未支持站点直接抛 StateError,此处无需判空。
+  _siteInstanceOf(liveParserSite);
   return SiteRegistration(
     id: liveParserSite,
     name: kPureLiveSiteNames[liveParserSite] ?? liveParserSite,

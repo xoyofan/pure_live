@@ -27,14 +27,18 @@ class TwitcastingSite extends LiveSite
   Future<List<LiveRoom>> getRecommendRooms({int page = 1, int pageSize = 30}) =>
       _api.directory(page: page, pageSize: pageSize);
   @override
-  Future<List<LiveRoom>> getCategoryRooms(LiveArea category, {int page = 1, int pageSize = 30}) {
+  Future<List<LiveRoom>> getCategoryRooms(LiveArea category, {int page = 1, int pageSize = 30}) async {
     if (category.platform != id ||
         category.areaType != 'directory' ||
         category.areaId == null ||
         category.areaId!.isEmpty) {
       throw const TwitcastingException(TwitcastingFailure.schema);
     }
-    return _api.directory(page: page, pageSize: pageSize, category: category.areaId!);
+    final rooms = await _api.directory(page: page, pageSize: pageSize, category: category.areaId!);
+    final areaName = category.areaName ?? '';
+    if (areaName.isEmpty) return rooms;
+    // 目录原始行不带分类名,用目录上下文补齐首页徽标。
+    return [for (final room in rooms) room.copyWith(area: areaName)];
   }
 
   @override

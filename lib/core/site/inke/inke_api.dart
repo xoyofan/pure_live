@@ -259,16 +259,20 @@ class InkeApi {
     // One finite website showcase; do not invent an offset API from its size.
     if (page > 1) return LiveDirectoryPage(rooms: [], page: page, hasMore: false);
     late final List<Map<String, dynamic>> rows;
+    final String groupName;
     if (category == null) {
       rows = _rows((await _get('Live_top_pc', cancel: cancel))['list']);
+      groupName = '';
     } else {
       final matches = (await _channels(cancel: cancel)).where((group) => group['tab_key'] == category.areaId).toList();
       if (matches.length != 1) throw const InkeException(InkeFailure.notFound);
       rows = _rows(matches.single['list']);
+      groupName = _text(matches.single['channel_name']);
     }
     final rooms = <String, LiveRoom>{};
     for (final row in rows) {
-      final card = _card(row);
+      // showcase 原始行不带分组名,用分组上下文补齐首页分类徽标。
+      final card = groupName.isEmpty ? _card(row) : _card(row).copyWith(area: groupName);
       rooms.putIfAbsent(card.roomId!, () => card);
     }
     return LiveDirectoryPage(rooms: rooms.values, page: page, hasMore: false);
