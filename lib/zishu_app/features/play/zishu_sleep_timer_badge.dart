@@ -1,10 +1,8 @@
-import 'dart:async';
-
 import 'package:pure_live/common/index.dart';
 
-import 'package:pure_live/modules/live_play/controllers/live_play_controller.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_sleep_timer_controller.dart';
 
 /// 舞台右上角的睡眠定时倒计时 pill,移植自 zishu_flutter
 /// `lib/src/features/play/views/play_view.dart:1465` 的 `_SleepTimerBadge`
@@ -14,108 +12,29 @@ import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
 /// 本组件自带舞台定位([Positioned] top/right = [AppSpacing.sm],对齐真源
 /// play_view.dart:527-531 的包裹方式),**必须作为舞台 [Stack] 的直接子级放置**。
 ///
-/// 数据源(pure_live 真实 API,非 zishu 的 SleepTimerState):
-/// [LivePlayController.state](`Rx<LivePlayState>`)里的 `ui.closeTimeFlag`
-/// (定时开关)与 `ui.closeTimes`(分钟数),由
-/// [LivePlayController.applyRoomPlaybackTimer] /
-/// `updateTimerFlag` / `updateTimerTimes` 写入
-/// (lib/modules/live_play/controllers/live_play_controller.dart:647-668);
-/// 无定时器(`closeTimeFlag == false`,含到时自动结束)时渲染
-/// [SizedBox.shrink]。
+/// 数据源(2026-10 改):app 级 [ZishuSleepTimerController](真源
+/// sleepTimerProvider 语义:定时挂应用根,离开播放页不清,到点自动停播并清态)。
+/// Obx 订阅 `active` 与 `remaining`(控制器内 1s 心跳推进,本组件不再自备
+/// 计时器);无定时(含到点/取消后的未启用态)渲染 [SizedBox.shrink]。
+/// 剩余文案沿用既有 i18n key `play_sleep_timer_remaining`。
 ///
-/// 底层 StopWatchTimer 倒计时封装在 TimerController 内、未暴露剩余时间流
-/// (lib/modules/live_play/controllers/timer_controller.dart),故剩余时间由本
-/// 组件按「开关翻转 / 分钟数变更即重启」的口径本地推算 —— 该时机与
-/// `TimerController.toggleTimer` 的重启点一一对应;每秒 tick 刷新显示,
-/// 到 00:00 后保持显示直到控制器把 `closeTimeFlag` 置 false。
-class ZishuSleepTimerBadge extends StatefulWidget {
-  const ZishuSleepTimerBadge({super.key, this.controller});
-
-  /// 播放控制器:缺省时按 GetX 惯例 `Get.find<LivePlayController>()`
-  /// (与 ZishuPlayView 同口径,未注册时渲染空)。
-  final LivePlayController? controller;
-
-  @override
-  State<ZishuSleepTimerBadge> createState() => _ZishuSleepTimerBadgeState();
-}
-
-class _ZishuSleepTimerBadgeState extends State<ZishuSleepTimerBadge> {
-  /// 每秒一跳的显示刷新。
-  static const Duration _tickInterval = Duration(seconds: 1);
-
-  Timer? _ticker;
-
-  /// 当前倒计时截止时刻;null = 无定时。
-  DateTime? _endsAt;
-
-  /// 上次同步到的控制器状态(检测 toggleTimer 的重启点)。
-  bool _lastEnabled = false;
-  int _lastMinutes = -1;
-
-  @override
-  void dispose() {
-    _ticker?.cancel();
-    _ticker = null;
-    super.dispose();
-  }
-
-  /// 把控制器的定时状态同步进本地倒计时。
-  /// 在 Obx 求值内调用,只改字段/计时器,不触发 setState(刷新由 tick 驱动)。
-  void _syncSchedule({required bool enabled, required int minutes}) {
-    if (enabled == _lastEnabled && minutes == _lastMinutes) return;
-    _lastEnabled = enabled;
-    _lastMinutes = minutes;
-    if (!enabled) {
-      _endsAt = null;
-      _ticker?.cancel();
-      _ticker = null;
-      return;
-    }
-    // 与 TimerController.toggleTimer 的重启时机对齐:开关翻转或时长变更
-    // 都会重启底层 StopWatchTimer,这里同步重设倒计时起点。
-    _endsAt = DateTime.now().add(Duration(minutes: minutes < 1 ? 1 : minutes));
-    _ticker ??= Timer.periodic(_tickInterval, (_) {
-      if (!mounted) return;
-      setState(() {});
-    });
-  }
-
-  Duration get _remaining {
-    final endsAt = _endsAt;
-    if (endsAt == null) return Duration.zero;
-    final remaining = endsAt.difference(DateTime.now());
-    return remaining.isNegative ? Duration.zero : remaining;
-  }
-
-  /// `mm:ss`;满 1 小时进位为 `h:mm:ss`(对齐 zishu remainingLabel 口径)。
-  String _formatRemaining(Duration remaining) {
-    final totalSeconds = remaining.inSeconds;
-    final hours = totalSeconds ~/ 3600;
-    final minutes = (totalSeconds % 3600) ~/ 60;
-    final seconds = totalSeconds % 60;
-    String two(int value) => value.toString().padLeft(2, '0');
-    return hours > 0 ? '$hours:${two(minutes)}:${two(seconds)}' : '${two(minutes)}:${two(seconds)}';
-  }
+/// 旧房间级定时链路(LivePlayController.ui.closeTimes/applyRoomPlaybackTimer
+/// 经 RoomTimerDialog)仍在 legacy 菜单可达
+/// (live_play_menu_button.dart:112),本 badge 不再读它 —— 旧定时此后没有
+/// 舞台呈现,可见链路只走 app 级控制器(真源同口径:可见状态与到点行为
+/// 单一来源)。
+class ZishuSleepTimerBadge extends StatelessWidget {
+  const ZishuSleepTimerBadge({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final LivePlayController controller;
-    if (widget.controller != null) {
-      controller = widget.controller!;
-    } else if (Get.isRegistered<LivePlayController>()) {
-      controller = Get.find<LivePlayController>();
-    } else {
-      // binding 未就绪(直接热预览等):不渲染。
-      return const SizedBox.shrink();
-    }
+    final timer = ZishuSleepTimerController.to;
     return Obx(() {
-      final ui = controller.state.value.ui;
-      _syncSchedule(enabled: ui.closeTimeFlag, minutes: ui.closeTimes);
-      if (!ui.closeTimeFlag) return const SizedBox.shrink();
+      if (!timer.active) return const SizedBox.shrink();
       return Positioned(
         top: AppSpacing.sm,
         right: AppSpacing.sm,
-        child: _SleepTimerPill(remaining: _formatRemaining(_remaining)),
+        child: _SleepTimerPill(remaining: timer.remainingLabel),
       );
     });
   }

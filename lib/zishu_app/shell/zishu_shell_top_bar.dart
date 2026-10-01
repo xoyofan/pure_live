@@ -23,9 +23,13 @@ import 'package:pure_live/zishu_app/shell/flyouts/zishu_follow_avatars.dart';
 /// 壳层与播放页共用([ZishuShellFlyoutMachine] 同源引用)。
 const Duration kZishuShellHoverCloseDelay = Duration(milliseconds: 800);
 
-/// 平台 tab / 我的分类悬停到浮层弹出的延迟(300ms):扫过顶栏不弹,停留才弹
-/// (对齐真源平台 tab 同款开门延迟)。
-const Duration kZishuShellHoverOpenDelay = Duration(milliseconds: 300);
+/// 平台 tab / 我的分类 hover 到浮层弹出的延迟:**0(进入即开)** —— 对齐
+/// zishu 真源 `_AppShellState`:`_openPlatform` / `_openMyCategory` 在 hover
+/// 进入事件里直接 setState 开门,无开门延迟;防扫过误弹由 800ms 关门延迟
+/// 兜住(移出即排程关门,进浮层/回触发区会取消)。Duration.zero 下开门
+/// Timer 只剩一跳事件轮转,语义仍是「进入即开、仍可被取消」。
+/// 壳层与播放页共用([ZishuShellFlyoutMachine] 同源引用)。
+const Duration kZishuShellHoverOpenDelay = Duration.zero;
 
 /// 顶栏平台入口渲染表:严格按 `savedPlatformIds` 顺序;未保存(隐藏)的站点
 /// 一律不渲染。新平台在「平台顺序与可见」设置里默认关,勾选后才进顶栏。
@@ -79,12 +83,13 @@ class ZishuShellTopBar extends StatelessWidget {
   final void Function(double centerX) onFollowHoverStart;
   final VoidCallback onFollowHoverEnd;
 
-  /// 平台 tab hover → `(站点 id, 触发点中心 x)`,300ms 后弹分类浮层;
+  /// 平台 tab hover → `(站点 id, 触发点中心 x)`,开门延迟(现 0,进入即开)
+  /// 到点弹分类浮层;
   /// 移出取消开门并交给延迟关门。
   final void Function(String siteId, double centerX) onPlatformHoverStart;
   final VoidCallback onPlatformHoverEnd;
 
-  /// 「我的分类」入口:hover 300ms 开浮层、点击 toggle(均回传触发点中心 x,
+  /// 「我的分类」入口:hover 即时开浮层(开门延迟 0)、点击 toggle(均回传触发点中心 x,
   /// 对齐 zishu 真源 top_nav nav-my-category 的 onMyCategoryHover/Tap);
   /// 移出取消开门并交给延迟关门。
   final void Function(double centerX) onMyCategoryHoverStart;
@@ -184,8 +189,8 @@ class _TopNavBrand extends StatelessWidget {
   final VoidCallback? onSelectAll;
   final void Function(int) onSelectMenu;
 
-  /// 「我的分类」hover 浮层挂钩:进入回传触发点中心 x(300ms 后开门,
-  /// 调用方态机持有延迟),点击回传中心 x 做 toggle,移出取消开门并交给
+  /// 「我的分类」hover 浮层挂钩:进入回传触发点中心 x(开门延迟由调用方
+  /// 态机持有,现 0 即时开),点击回传中心 x 做 toggle,移出取消开门并交给
   /// 延迟关门。
   final void Function(double centerX) onMyCategoryHoverStart;
   final void Function(double centerX) onMyCategoryTap;
@@ -286,8 +291,9 @@ class _TopNavIcon extends StatelessWidget {
 /// 顶栏平台 tab:扁平图标直排导航行内,无背景块与背景 padding;命中区
 /// 纵向撑满顶栏内容高(顶栏高 44、无纵向内边距)、横向收窄保持紧凑,
 /// 图标与其他顶栏工具图标同级。选中态用 accent 下划线短横标记(对齐
-/// zishu 顶栏选中语义),不再用背景色块区分。hover ≥300ms 弹分类浮层
-/// (延迟由调用方态机持有,这里只回传触发点中心 x 与移出事件)。
+/// zishu 顶栏选中语义),不再用背景色块区分。hover 即时弹分类浮层(开门
+/// 延迟常量,对齐真源后为 0;延迟由调用方态机持有,这里只回传触发点中心 x
+/// 与移出事件)。
 class _PlatformTab extends StatelessWidget {
   final Site site;
   final bool selected;

@@ -20,7 +20,8 @@ import 'package:pure_live/zishu_app/shell/zishu_shell_top_bar.dart';
 mixin ZishuShellFlyoutMachine<T extends StatefulWidget> on State<T> {
   // ---- hover 浮层态机(自持于宿主 State;Timer 管开/关延迟,浮层互斥) ----
 
-  /// 300ms 悬停开门定时器(平台 tab / 我的分类用;关注钮即时开)。
+  /// 开门定时器(平台 tab / 我的分类用;延迟 = [kZishuShellHoverOpenDelay],
+  /// 对齐真源后为 0 —— 进入即开,Timer 仅剩一跳事件轮转;关注钮本就即时开)。
   Timer? _openTimer;
 
   /// 800ms 延迟关门定时器(离开触发区/浮层后统一走它)。
@@ -34,7 +35,7 @@ mixin ZishuShellFlyoutMachine<T extends StatefulWidget> on State<T> {
   bool _followFlyoutOpen = false;
   double _followFlyoutX = 0;
 
-  /// 我的分类浮层开关与触发点中心 x(hover 300ms 开 / 点击 toggle)。
+  /// 我的分类浮层开关与触发点中心 x(hover 即时开 / 点击 toggle)。
   bool _myCategoryFlyoutOpen = false;
   double _myCategoryFlyoutX = 0;
 
@@ -66,7 +67,8 @@ mixin ZishuShellFlyoutMachine<T extends StatefulWidget> on State<T> {
     });
   }
 
-  /// 平台 tab 悬停:先取消既有的开/关,300ms 后弹该平台分类浮层。
+  /// 平台 tab 悬停:先取消既有的开/关,开门延迟(现 0,进入即开)到点弹
+  /// 该平台分类浮层。
   void schedulePlatformFlyout(String siteId, double centerX) {
     _closeTimer?.cancel();
     _openTimer?.cancel();
@@ -116,7 +118,8 @@ mixin ZishuShellFlyoutMachine<T extends StatefulWidget> on State<T> {
     });
   }
 
-  /// 我的分类悬停:先取消既有的开/关,300ms 后弹浮层(平台 tab 同款开门延迟)。
+  /// 我的分类悬停:先取消既有的开/关,开门延迟(现 0,进入即开)到点弹浮层
+  /// (平台 tab 同款开门延迟)。
   void scheduleMyCategoryFlyout(double centerX) {
     _closeTimer?.cancel();
     _openTimer?.cancel();
@@ -145,7 +148,7 @@ mixin ZishuShellFlyoutMachine<T extends StatefulWidget> on State<T> {
   }
 
   /// 我的分类点击 toggle(对齐 zishu 真源 `_toggleMyCategory`:已开即收,
-  /// 未开立即弹,不等 300ms)。
+  /// 未开立即弹,不等开门延迟)。
   void toggleMyCategoryFlyout(double centerX) {
     if (_myCategoryFlyoutOpen) {
       closeAllFlyouts();

@@ -7,6 +7,12 @@
 /// 画质选盒 + 线路选盒 + 画中画 + 宽屏 W + 全屏 F。on-video 墨色恒定暗底语义
 /// (AppOnVideo),不随应用主题翻转。
 ///
+/// compact 响应式(真源 player_controls.dart:150-157,237,304,377-391 同口径):
+/// 控制条自身可用宽 <560 时隐藏 音量滑杆(保留静音钮)/ 睡眠定时 / 画中画 /
+/// 宽屏,只留播放/刷新/弹幕/静音/画质/线路/全屏核心按钮;判宽用
+/// [LayoutBuilder] 判条自身宽而非视口宽 —— 宽视口也可能被常驻侧栏挤窄
+/// (真源同注)。
+///
 /// 与真源的差异(移植口径):
 /// - 状态管理 Riverpod → GetX:Rx 读取在各子件自己的 `Obx` 内完成;
 /// - 数据源全部走 pure_live 真实 API(VideoController / LivePlayController /
@@ -23,11 +29,11 @@ import 'package:pure_live/common/global/platform_utils.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/common/utils/play_quality_label.dart';
 import 'package:pure_live/modules/live_play/controllers/player_state.dart' show GlobalPlayerState;
-import 'package:pure_live/modules/live_play/dialogs/room_timer_dialog.dart';
 import 'package:pure_live/modules/live_play/states/load_type.dart';
 import 'package:pure_live/modules/live_play/widgets/video_player/video_controller.dart';
 import 'package:pure_live/zishu/presentation/design_tokens.dart';
 import 'package:pure_live/zishu/presentation/zishu_tokens.dart';
+import 'package:pure_live/zishu_app/features/play/zishu_sleep_timer_controller.dart';
 import 'package:pure_live/zishu_app/features/play/zishu_stage_hint.dart';
 import 'package:remixicon/remixicon.dart';
 
@@ -119,30 +125,38 @@ class _ZishuPlayerControlsBarState extends State<ZishuPlayerControlsBar> {
               child: AnimatedOpacity(
                 opacity: visible ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 200),
-                child: SizedBox(
-                  height: 48,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // 渐变 scrim 单独一层并放行指针:空档区域点击继续落到
-                      // 视频手势层,不吞按钮之外的点击。
-                      const Positioned.fill(
-                        child: IgnorePointer(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [Colors.transparent, AppOnVideo.scrim],
+                // compact 判宽取控制条自身可用宽(真源 player_controls.dart:
+                // 148-157 同口径:LayoutBuilder 判 <560;宽视口也可能被常驻
+                // 侧栏挤窄,不判视口宽)。
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 560;
+                    return SizedBox(
+                      height: 48,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // 渐变 scrim 单独一层并放行指针:空档区域点击继续落到
+                          // 视频手势层,不吞按钮之外的点击。
+                          const Positioned.fill(
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [Colors.transparent, AppOnVideo.scrim],
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                          Align(alignment: Alignment.centerLeft, child: _buildLeftGroup(compact)),
+                          Align(alignment: Alignment.centerRight, child: _buildRightGroup(compact)),
+                        ],
                       ),
-                      Align(alignment: Alignment.centerLeft, child: _buildLeftGroup()),
-                      Align(alignment: Alignment.centerRight, child: _buildRightGroup()),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -152,8 +166,9 @@ class _ZishuPlayerControlsBarState extends State<ZishuPlayerControlsBar> {
     );
   }
 
-  /// 左组:播放/暂停 → 刷新 → 睡眠定时 → 弹幕开关「弹」→ 弹幕设置齿轮。
-  Widget _buildLeftGroup() {
+  /// 左组:播放/暂停 → 刷新 → 睡眠定时(compact 隐藏,真源 :237)→
+  /// 弹幕开关「弹」→ 弹幕设置齿轮。
+  Widget _buildLeftGroup(bool compact) {
     final danmakuEnabled = SettingsService.to.danmaku.enableDanmakuDisplay.v;
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -172,7 +187,7 @@ class _ZishuPlayerControlsBarState extends State<ZishuPlayerControlsBar> {
           },
           icon: const Icon(Icons.refresh_rounded, size: 20, color: AppOnVideo.text),
         ),
-        _SleepTimerButton(controller: controller),
+        if (!compact) _SleepTimerButton(controller: controller),
         if (danmakuEnabled) ...[
           _DanmakuToggleButton(controller: controller),
           _DanmakuSettingsButton(controller: controller),
@@ -181,23 +196,24 @@ class _ZishuPlayerControlsBarState extends State<ZishuPlayerControlsBar> {
     );
   }
 
-  /// 右组:静音 + 音量滑杆 96px → 画质 → 线路 → 画中画 → 宽屏 W → 全屏 F。
-  Widget _buildRightGroup() {
+  /// 右组:静音 + 音量滑杆 96px(compact 隐藏滑杆、保留静音,真源 :304)→
+  /// 画质 → 线路 → 画中画 → 宽屏 W → 全屏 F(compact 隐藏 画中画/宽屏,
+  /// 真源 :377-391;全屏恒留)。按钮序保持真源顺序。
+  Widget _buildRightGroup(bool compact) {
     final showPip = GlobalPlayerService.instance.initialized && (PlatformUtils.isWindows || PlatformUtils.isAndroid);
     final showWidescreen = controller.supportWindowFull;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         _MuteButton(controller: controller, onToggleMute: _toggleMute),
-        const SizedBox(width: AppSpacing.xs),
-        _VolumeSlider(controller: controller),
+        if (!compact) ...[const SizedBox(width: AppSpacing.xs), _VolumeSlider(controller: controller)],
         const SizedBox(width: AppSpacing.xs),
         _QualitySelectBox(controller: controller),
         const SizedBox(width: AppSpacing.xs),
         _LineSelectBox(controller: controller),
         const SizedBox(width: AppSpacing.sm),
-        if (showPip) const _PipButton(),
-        if (showWidescreen) _WidescreenButton(controller: controller),
+        if (showPip && !compact) const _PipButton(),
+        if (showWidescreen && !compact) _WidescreenButton(controller: controller),
         _FullscreenButton(controller: controller),
       ],
     );
@@ -219,7 +235,8 @@ class _PlayPauseButton extends StatelessWidget {
         return IconButton(
           key: const Key('play-toggle-play'),
           style: _onVideoButtonStyle(),
-          tooltip: i18n(isPlaying ? 'multiview_pause' : 'multiview_play'),
+          // 键位后缀对齐真源 :196「暂停 (Space)」(读现 tooltip 文案拼接,半角括号)。
+          tooltip: '${i18n(isPlaying ? 'multiview_pause' : 'multiview_play')} (Space)',
           onPressed: () => unawaited(player.togglePlayPause()),
           icon: Icon(isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 20, color: AppOnVideo.text),
         );
@@ -228,49 +245,159 @@ class _PlayPauseButton extends StatelessWidget {
   }
 }
 
-/// 睡眠定时入口(样式真源 _SleepTimerButton,player_controls.dart:576-631;
-/// R14:此前唯一入口在 legacy 沉浸态头部,常规态不可达)。
-/// 排布对齐真源左组「播放 → 刷新 → 定时 → 弹幕」;月亮图标运行中转实心 +
-/// 品牌紫高亮,数据源与 ZishuSleepTimerBadge 同一 Rx
-/// (`LivePlayController.state` 的 `ui.closeTimeFlag`,参照
-/// zishu_sleep_timer_badge.dart:111-114 的读法)。
-///
-/// 交互未做真源同款时长 popover:其「关闭定时」「自定义…」菜单项文案无既有
-/// i18n key(json 本轮全轨冻结),故复用既有 RoomTimerDialog —— 该对话框已
-/// 接线设定/取消 2s ZishuStageHint 反馈(room_timer_dialog.dart:72-76),并
-/// 统一处理自定义时长与 maxSleepMinutes clamp;真源 tooltip 的剩余时间同样
-/// 不在此重复(倒计时 pill 常驻舞台右上角,见 ZishuSleepTimerBadge 文档)。
+/// 睡眠定时入口(真源 _SleepTimerButton,player_controls.dart:576-682 的
+/// GetX 转写):点击弹预设 popover,行为锚定按钮 —— 「关闭定时」(有定时时
+/// 才出现)/ 预设 15/30/60/90/120 分钟 / 「自定义…」(对话框输入,上限 720
+/// 分钟,真源 maxCustomMinutes 同值);当前档位菜单项打勾(对齐本条画质/
+/// 线路选盒的选中标识;真源菜单无打勾,属本项目 popover 家族统一口径)。
+/// active 时按钮 tooltip 显示剩余时间(真源 :590「睡眠定时 (剩余 mm:ss)」
+/// 同构;「定时关闭」/「剩余时间」复用既有 i18n key `sleep_timer` /
+/// `remaining_time` 拼接)。数据源为 app 级 [ZishuSleepTimerController]
+/// (真源 sleepTimerProvider 语义:离开播放页定时不清)。设定/取消反馈复用
+/// 既有 key `room_playback_timer_set` / `room_playback_timer_cancelled`
+/// (zh 文案与真源 :604/:600 同文)。菜单打开期间销定控制条防自动隐藏
+/// (本文件 popover 家族同款 pin/unpin)。
 class _SleepTimerButton extends StatelessWidget {
   const _SleepTimerButton({required this.controller});
 
   final VideoController controller;
 
+  /// 菜单里「自定义…」项的哨兵值;预设档位为分钟数,「关闭定时」为 0
+  /// (真源 _customValue 同口径)。
+  static const int _customValue = -1;
+
+  /// 菜单项文案(真源 :611/:622 同文案;无既有 i18n key、json 本轮全轨冻结,
+  /// 中文常量记录)。
+  static const String _turnOffLabel = '关闭定时';
+  static const String _customLabel = '自定义…';
+
+  /// 自定义对话框标题(真源 :647 同文案;无 i18n key,中文常量记录)。
+  static const String _customDialogTitle = '自定义睡眠定时';
+
   @override
   Widget build(BuildContext context) {
-    final live = controller.livePlayController;
+    final timer = ZishuSleepTimerController.to;
     return Obx(() {
-      final active = live.state.value.ui.closeTimeFlag;
-      return IconButton(
+      final active = timer.active;
+      return PopupMenuButton<int>(
+        // 测试锚点:睡眠定时入口(真源同 key)。
         key: const Key('play-sleep-timer'),
-        style: _onVideoButtonStyle(),
-        tooltip: i18n('sleep_timer'),
-        onPressed: () async {
-          // 对话框打开期间销定控制条(对齐本文件 popover 的 pin/unpin 口径),
-          // 关闭后解除销定并重新武装自动隐藏。
-          _pinControlBar(controller);
-          try {
-            await RoomTimerDialog.show(context: context, controller: live);
-          } finally {
-            _unpinControlBar(controller);
+        tooltip: active
+            // active 带剩余时间(真源 :590 同构;剩余文案由控制器 1s 心跳驱动,
+            // Obx 订阅 remaining 每秒刷新)。
+            ? '${i18n('sleep_timer')} (${i18n('remaining_time')} ${timer.remainingLabel})'
+            : i18n('sleep_timer'),
+        padding: EdgeInsets.zero,
+        color: Get.theme.colorScheme.surfaceContainerHighest,
+        position: PopupMenuPosition.over,
+        onOpened: () => _pinControlBar(controller),
+        onCanceled: () => _unpinControlBar(controller),
+        onSelected: (value) {
+          _unpinControlBar(controller);
+          if (value == _customValue) {
+            unawaited(_pickCustomMinutes(context));
+            return;
           }
+          if (value <= 0) {
+            timer.cancel();
+            ZishuStageHint.show(i18n('room_playback_timer_cancelled'));
+            return;
+          }
+          timer.start(Duration(minutes: value));
+          ZishuStageHint.show(i18n('room_playback_timer_set', args: {'minutes': '$value'}));
         },
-        icon: Icon(
+        itemBuilder: (context) {
+          // 菜单每次打开即时取值(非响应式即可:打开瞬间的新鲜值,真源同口径)。
+          final activeNow = timer.active;
+          final minutes = timer.totalMinutes.value;
+          return [
+            if (activeNow)
+              const PopupMenuItem<int>(
+                // 测试锚点:关闭定时(真源同 key)。
+                key: Key('play-sleep-timer-off'),
+                value: 0,
+                child: Text(_turnOffLabel),
+              ),
+            for (final preset in ZishuSleepTimerController.presetsMinutes)
+              PopupMenuItem<int>(
+                // 测试锚点:预设档(真源同 key)。
+                key: Key('play-sleep-timer-$preset'),
+                value: preset,
+                child: Row(
+                  children: [
+                    if (minutes == preset)
+                      Icon(Icons.check_rounded, size: 16, color: context.tokens.accent)
+                    else
+                      const SizedBox(width: 16),
+                    const SizedBox(width: AppSpacing.xs),
+                    Text('$preset ${i18n('minutes')}'),
+                  ],
+                ),
+              ),
+            PopupMenuItem<int>(
+              // 测试锚点:自定义(真源同 key)。
+              key: const Key('play-sleep-timer-custom'),
+              value: _customValue,
+              child: Row(
+                children: [
+                  // 自定义档打勾:有定时且档位不在预设表(唯一能设出非预设档的入口)。
+                  if (activeNow && minutes != null && !ZishuSleepTimerController.presetsMinutes.contains(minutes))
+                    Icon(Icons.check_rounded, size: 16, color: context.tokens.accent)
+                  else
+                    const SizedBox(width: 16),
+                  const SizedBox(width: AppSpacing.xs),
+                  const Text(_customLabel),
+                ],
+              ),
+            ),
+          ];
+        },
+        child: Icon(
           active ? RemixIcons.moon_fill : RemixIcons.moon_line,
           size: 20,
           color: active ? context.tokens.accent : AppOnVideo.text,
         ),
       );
     });
+  }
+
+  /// 「自定义…」输入对话框(真源 _pickCustomMinutes :641-682 的转写):
+  /// 空/非法输入直接放弃;超上限 clamp 到 720(真源同 clamp)。反馈走
+  /// [ZishuStageHint](免 context 静态通道,await 返回后无需 context.mounted
+  /// 检查;菜单选中后浮层路由关闭,[context] 仅用于挂对话框路由)。
+  Future<void> _pickCustomMinutes(BuildContext context) async {
+    final fieldController = TextEditingController();
+    try {
+      final minutes = await showDialog<int>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text(_customDialogTitle),
+          content: TextField(
+            // 测试锚点:自定义分钟输入(真源同 key)。
+            key: const Key('play-sleep-timer-custom-input'),
+            controller: fieldController,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            // 输入提示(真源 :654「分钟(1-720)」同文案;上限插值,中文常量)。
+            decoration: InputDecoration(hintText: '分钟(1-${ZishuSleepTimerController.maxCustomMinutes})'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text(i18n('cancel'))),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(int.tryParse(fieldController.text.trim())),
+              child: Text(i18n('confirm')),
+            ),
+          ],
+        ),
+      );
+      if (minutes == null || minutes <= 0) return;
+      final max = ZishuSleepTimerController.maxCustomMinutes;
+      final clamped = minutes > max ? max : minutes;
+      ZishuSleepTimerController.to.start(Duration(minutes: clamped));
+      ZishuStageHint.show(i18n('room_playback_timer_set', args: {'minutes': '$clamped'}));
+    } finally {
+      fieldController.dispose();
+    }
   }
 }
 
@@ -288,7 +415,8 @@ class _MuteButton extends StatelessWidget {
       return IconButton(
         key: const Key('play-toggle-mute'),
         style: _onVideoButtonStyle(),
-        tooltip: i18n(muted ? 'cancel_mute' : 'mute'),
+        // 键位后缀对齐真源 :294「静音 (M)」(读现 tooltip 文案拼接,半角括号)。
+        tooltip: '${i18n(muted ? 'cancel_mute' : 'mute')} (M)',
         onPressed: onToggleMute,
         icon: Icon(muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, size: 20, color: AppOnVideo.text),
       );
@@ -523,7 +651,8 @@ class _WidescreenButton extends StatelessWidget {
       return IconButton(
         key: const Key('play-toggle-widescreen'),
         style: _onVideoButtonStyle(),
-        tooltip: i18n(expanded ? 'collapse_player_window' : 'expand_player_window'),
+        // 键位后缀对齐真源 :395-397「网页全屏 (W)」(读现 tooltip 文案拼接,半角括号)。
+        tooltip: '${i18n(expanded ? 'collapse_player_window' : 'expand_player_window')} (W)',
         onPressed: () => controller.toggleWindowFullScreen(),
         icon: Icon(
           expanded ? Icons.close_fullscreen_rounded : Icons.open_in_full_rounded,
@@ -548,7 +677,8 @@ class _FullscreenButton extends StatelessWidget {
       return IconButton(
         key: const Key('play-toggle-fullscreen'),
         style: _onVideoButtonStyle(),
-        tooltip: i18n(expanded ? 'exit_fullscreen' : 'enter_fullscreen'),
+        // 键位后缀对齐真源 :413-415「全屏 (F)」(读现 tooltip 文案拼接,半角括号)。
+        tooltip: '${i18n(expanded ? 'exit_fullscreen' : 'enter_fullscreen')} (F)',
         onPressed: () => unawaited(controller.toggleFullScreen()),
         icon: Icon(
           expanded ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
