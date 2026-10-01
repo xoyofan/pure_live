@@ -115,6 +115,7 @@ const _supportedProbePlatforms = <String>{
   Sites.douyinSite,
   Sites.showroomSite,
   Sites.twitcastingSite,
+  Sites.acfunSite,
 };
 
 Future<Map<String, Object?>> _probePlatform(

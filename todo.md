@@ -2,7 +2,7 @@
 
 > 当前焦点(2026-10-01 启动,2026-10-02 转入弹幕专项,多轮迭代):
 > 第一焦点**首页房间卡的观看人数与分类展示按平台补齐**已完成(迭代1-3);
-> 第二焦点**弹幕接入**(第四节清单 ❌ 未接入平台)进行中,SHOWROOM+TwitCasting 已全链路落地(迭代4-6)。
+> 第二焦点**弹幕接入**(第四节清单 ❌ 未接入平台)进行中,SHOWROOM+TwitCasting+AcFun 已全链路落地(迭代4-6、10)。
 > 数据链路:UI 房间卡(`lib/src/features/browse/widgets/room_card.dart` 渲染 `audience`/`category` 徽标)
 > ← `RoomSummary.online/category` ← `lib/src/shared/application/purelive_backend.dart`(裸映射 `room.watching`/`room.area`)
 > ← 各平台 LiveSite(`lib/core/site/*`,经 `Sites.supportSites` 全量注册覆盖)。
@@ -28,7 +28,7 @@
 | Twitch | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅ | ✅ IRC | 推荐=just-chatting 目录 |
 | SOOP | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅ | ✅ WS | 基准组 |
 | YY | ✅ | ✅ 迭代2 预热 | ✅ | ✅ | 真数据 | ✅ 迭代2 预热 | ✅ WS | 已对齐 |
-| AcFun | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(结果卡无观看,结构性) | ❌ | 完整参照实现 |
+| AcFun | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(结果卡无观看,结构性) | ✅ 迭代10 link-sdk WS | 弹幕已线级验证 |
 | Picarto | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(搜索无观看,结构性) | ❌ | 无缺口 |
 | TwitCasting | ✅ | ✅ 迭代1 | ✅ | ✅ 迭代1 | 真实(HTML) | ✅(搜索无观看,结构性) | ✅ 迭代6 WS(pubsub) | 弹幕已全链路验收 |
 | 猫耳FM | ✅(热度) | ✅ | ✅ | ✅ | 真数据 | ✅ | ❌(契约未验证) | 完整参照实现 |
@@ -120,6 +120,28 @@
 - [x] niconico:主站/watch API 可达(301)但弹幕服务器 `msg*.live2.nicovideo.jp` 000 不可达 → 暂缓(网络结构性)
 - [x] PandaTV:API 对本机 IP 返回"제재된 IP"(封禁)→ 暂缓(网络结构性)
 - [x] CC:目录/房间接口可达,但房间页为 JS 壳、无公开协议文档、biliup 亦已移除 CC 弹幕实现 → 协议未知,暂缓;候选路径:抓包或逆向 umi bundle(工作量大,另行立项)
+
+### 迭代 9(2026-10-02)✅ CC 弹幕攻坚(入口未确证, 定案)
+
+- [x] 从 live-bullet-player 拿到历史 CC 协议参照(cc.py):`wss://weblink.cc.163.com/` + 自研 msgpack 变体 + zlib;信息端点 `api.cc.163.com/v1/activitylives/anchor/lives?anchor_ccid=` 可用
+- [x] 探针实测(`tool/probes/cc_chat_probe.dart`,含最小 msgpack 编解码):**register/heartbeat 均被服务端接受**(result=0 ok),但 **join 三种编码(参考 float64/字符串/标准 uint32)分别被拒或静默丢弃**——参考实现已与服务端脱节,现行 join 参数需逆向官方 umi bundle 或抓包
+- [x] 结论:协议入口未确证,按"不盲写"原则定案为**另行立项**;探针脚本与编码器已存档,后续只需替换 join 包即可复用全部链路
+
+### 迭代 10(2026-10-02)✅ 弹幕专项四:AcFun 全链路落地
+
+- [x] 协议路径修正:弹幕凭据**就在 startPlay 响应里**(availableTickets/enterRoomAttach/liveId),无需此前被 JS 挑战挡住的 getLiveInfo——之前"IM 凭据入口被拦"的判断有误;站点既有的 PC_WEB startPlay 链路直接可用
+- [x] WS 主机 `wss://link.xiatou.com/` 从官方 JS bundle 确认且本机可达
+- [x] `AcFunDanmaku` 实现:protobuf 封帧(0xABCD 帧 + PacketHeader/UpstreamPayload/DownstreamPayload)+ AES-CBC(+IV, ssecurity/sessionKey 双密钥)+ Register→EnterRoom→Heartbeat 会话流;`acfun.proto` 经 protoc 生成 pb 代码入库;visitor 会话补 ssecurity,playback 返回 `AcfunCommentCredentials`
+- [x] 单测 5 用例(封帧往返/坏帧拒绝/AES 往返/评论信号解析)全过;analyze 零问题
+- [x] **线级验证**:真实房间 Register ack(instanceId+sessKey)→ EnterRoom ack → Push 流解析出 `UserEnterRoom`/`Like` 信号与 `RecentComment` 真实评论(`崎路人: 发现了`),评论 schema 线级确认
+- [x] 矩阵探针扩展 acfun 平台,`result: passed`(会话保持;评论帧因观察时段房间静默未触发 requireChat,解析路径由线级 RecentComment + 单测覆盖)
+
+### 迭代 11(2026-10-02,待办评估)ℹ️ 剩余清单定案
+
+- CHZZK / niconico / 猫耳FM / PandaTV:维持迭代8 数据中心 IP 封锁定论(需住宅级对应网络)
+- CC:见迭代9,需逆向官方 JS(另行立项)
+- Steam:需登录,结构性
+- **本环境可做的弹幕接入全部完成:SHOWROOM / TwitCasting / AcFun 三平台落地**
 
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 

@@ -1,6 +1,6 @@
 import 'package:pure_live/common/models/live_room.dart';
 import 'package:pure_live/common/models/live_area.dart';
-import 'package:pure_live/core/danmaku/empty_danmaku.dart';
+import 'package:pure_live/core/danmaku/acfun_danmaku.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/model/live_play_quality.dart';
@@ -11,8 +11,8 @@ import 'acfun_api.dart';
 import 'acfun_directory.dart';
 import 'acfun_search.dart';
 
-/// Anonymous AcFun live directory, author search, playback and recording.
-/// Remote chat is not integrated; the session UI reports this separately.
+/// Anonymous AcFun live directory, author search, playback, recording and
+/// comment transport.
 class AcfunSite extends LiveSite
     implements LiveSiteRoomRefresher, LiveSiteRecordRoomResolver, LivePlayRecoveryResolver {
   AcfunSite({AcfunApi? api, AcfunDirectory? directory, AcfunSearchClient? search})
@@ -31,7 +31,7 @@ class AcfunSite extends LiveSite
   @override
   String get name => 'AcFun 直播';
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => AcFunDanmaku();
 
   static LiveRoom parseRoom(Map<String, dynamic> data, String roomId) {
     final live = AcfunApi.validateRoomInfo(data, roomId);
@@ -129,7 +129,23 @@ class AcfunSite extends LiveSite
   @override
   Future<LiveRoom> getRoomDetail({required String roomId, required String platform}) async {
     final room = await getRoomDetailForRefresh(roomId: roomId, platform: platform);
-    if (room.liveStatus == LiveStatus.live) room.data = await _api.playback(room.roomId!);
+    if (room.liveStatus == LiveStatus.live) {
+      final playback = await _api.playback(room.roomId!);
+      room.data = playback;
+      final comment = playback.comment;
+      if (comment != null) {
+        room.danmakuData = AcFunDanmakuArgs(
+          ticket: comment.ticket,
+          enterRoomAttach: comment.enterRoomAttach,
+          liveId: playback.liveId,
+          uid: comment.uid,
+          ssecurity: comment.ssecurity,
+          token: comment.token,
+          did: comment.did,
+          kpf: 'PC_WEB',
+        );
+      }
+    }
     return room;
   }
 

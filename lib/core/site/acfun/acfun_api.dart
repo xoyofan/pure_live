@@ -57,16 +57,41 @@ class AcfunStreamQuality {
 }
 
 class AcfunPlayback {
-  const AcfunPlayback({required this.liveId, required this.qualities});
+  const AcfunPlayback({required this.liveId, required this.qualities, this.comment});
   final String liveId;
   final List<AcfunStreamQuality> qualities;
+
+  /// Danmaku session credentials from the same startPlay response; null when
+  /// the live is missing them (e.g. replay-only rooms).
+  final AcfunCommentCredentials? comment;
+}
+
+/// Everything the comment WebSocket needs; ssecurity/token/uid/did come from
+/// the anonymous visitor session that also authorized startPlay.
+class AcfunCommentCredentials {
+  const AcfunCommentCredentials({
+    required this.ticket,
+    required this.enterRoomAttach,
+    required this.ssecurity,
+    required this.token,
+    required this.uid,
+    required this.did,
+  });
+
+  final String ticket;
+  final String enterRoomAttach;
+  final String ssecurity;
+  final String token;
+  final String uid;
+  final String did;
 }
 
 class _VisitorSession {
-  const _VisitorSession(this.did, this.userId, this.token, this.expiresAt);
+  const _VisitorSession(this.did, this.userId, this.token, this.ssecurity, this.expiresAt);
   final String did;
   final String userId;
   final String token;
+  final String ssecurity;
   final DateTime expiresAt;
 }
 
@@ -253,8 +278,9 @@ class AcfunApi {
     _success(data, 0);
     final userId = normalizeAuthorId(text(data['userId']));
     final token = text(data['acfun.api.visitor_st']);
+    final ssecurity = text(data['acSecurity']);
     if (token.isEmpty) throw const AcfunApiException(AcfunFailureKind.schema);
-    final session = _VisitorSession(did, userId, token, _clock().add(const Duration(minutes: 5)));
+    final session = _VisitorSession(did, userId, token, ssecurity, _clock().add(const Duration(minutes: 5)));
     _visitor = session;
     return session;
   }
@@ -284,7 +310,22 @@ class AcfunApi {
     final payload = object(data['data']);
     final liveId = text(payload['liveId']);
     if (liveId.isEmpty) throw const AcfunApiException(AcfunFailureKind.schema);
-    return AcfunPlayback(liveId: liveId, qualities: parseQualities(payload['videoPlayRes']));
+    // The same response carries the comment credentials; without them the
+    // room plays but has no danmaku session (e.g. replay-only entries).
+    final tickets = payload['availableTickets'];
+    final ticket = tickets is List && tickets.isNotEmpty ? text(tickets.first) : '';
+    final attach = text(payload['enterRoomAttach']);
+    final comment = ticket.isEmpty || attach.isEmpty
+        ? null
+        : AcfunCommentCredentials(
+            ticket: ticket,
+            enterRoomAttach: attach,
+            ssecurity: session.ssecurity,
+            token: session.token,
+            uid: session.userId,
+            did: session.did,
+          );
+    return AcfunPlayback(liveId: liveId, qualities: parseQualities(payload['videoPlayRes']), comment: comment);
   }
 
   static List<AcfunStreamQuality> parseQualities(Object? raw) {
