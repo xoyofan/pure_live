@@ -153,6 +153,17 @@
 - 构建侧同期修复:工作流默认标签×3 对齐 v3.1.17、secret-audit TLS 夹具断链、CC 探针 mock 兼容、ffmpeg 哈希 3.7 兼容、SiteIds 迁移同步、flame_barrage 死 fork 删除(0.0.7 已含其修复)、firebase 预取无依赖时跳过、JDK21 便携版部署(F:/tools/jdk21)
 - 遗留:Release 构建两度败于运行中应用锁 exe → 应用关闭后 `-SkipQuality` 重建(同源码质量门已过)
 
+### 迭代 12(2026-10-02)✅ 全站播放复检:解析层仍零失效,唯一失效仍是 pandalive(出口 IP 封禁)
+
+用户报告"部分平台首页加载失败,直播间也无法播放",重跑 `all_sites_playback_probe`(G3 境外组先行过冷编译,G1/G2/G4 warm 并行,32 站;报告 `build/probe_reports/iter12/g*.json`):
+
+- **media-ok 28 站**:G1 8/8(bilibili/douyu/huya/douyin/kuaishou/cc/yy/acfun)| G2 10/10(inke/kilakila/baidulive/kugoulive/jdlive/sixroom/looklive/liveme/missevan/weibo)| G3 7/9(chzzk/soop/showroom/twitcasting/picarto/17live/steambroadcast)| twitch
+- owned-input 3:bigo/fc2live/niconico(到 urls,播放配方非失效);no-catalog 3:tiktok/xiaohongshu/youtube(结构性);iptv 设计排除
+- **失效 1:pandalive**:catalog 阶段 565ms 快速失败 `PandaTV access`(`pandalive_api.dart` 类型化 access 异常,IP 封禁类),与迭代8/11 同因;当前 Clash 出口 `103.151.172.13`(越南 DC 段)。迭代8 实测直连/越南/韩国出口均被封 → 换节点不保证,需干净(住宅级)出口
+- 环境佐证:curl 裸 TLS 下 `api.chzzk.naver.com`/`api.sooplive.co.kr`/`api-v2.17app.co` TLS 握手黑洞,但适配层自定义 ALPN 客户端全通(既有环境事实,非平台失效);`gql.twitch.tv`/pandalive 边缘/showroom/niconico/twitcasting/picarto 可达
+- 应用侧核对:运行中 pure_live.exe = 迭代11 最终构建(14:42:50 出包,14:43:29 启动),与探针同源码同链路;若应用内失败面大于 pandalive,优先重启应用对齐(站点单例缓存/Clash 节点切换瞬时窗),探针期间应用保持运行(flutter test 不触 exe)
+- 工具链:并行前置条件确认——**冷构建绝不能并发**(迭代11 竞态教训),warm 缓存下 3 组并行安全;`flutterw.ps1` 参数直接是 flutter 子命令(`test <file>`),不能再传一层 `flutter`
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:
