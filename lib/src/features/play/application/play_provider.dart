@@ -302,6 +302,16 @@ class PlayController extends AsyncNotifier<PlayState> {
       // 首帧落地后才预取其他画质(pure_live 进房不做任何预取):开流握手的
       // 1~3s 是最敏感窗口,此刻并发补档会与它抢带宽,表现为「打开很慢」。
       unawaited(_prefetchAfterFirstFrame(payload, source, prefetchToken));
+    } else if (!next.isFixture) {
+      // 解析成功但选不出可开线路(owned-input 平台如 niconico/bigo/fc2:
+      // getPlayUrls 有意返回空,取流走专属配方):此前完全静默,真机只能
+      // 靠「连 open 事件都没有」反推。落一条 skip 供诊断归因。
+      PlaybackLog.write('open_skip', {
+        'site': params.site,
+        'room': params.roomId,
+        'qualities': payload.availableQualities.length,
+        'streams': payload.streams.length,
+      });
     }
     return next;
   }

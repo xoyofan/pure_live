@@ -283,6 +283,19 @@
 
 **备注**:chzzk/pandalive/bigo/jdlive/weibo/steam 等单占位目录为既有审计结论(结构性/出口封禁),youtube 无目录结构性; hover 顺序:补充表→remap→soop 进程表→跨平台表→原名,四家原生中文名不受影响
 
+### 迭代 17B(2026-10-02)✅ niconico 直达链:lv 号/观察页 URL 从"搜索无结果"到可直达 + owned-input 静默黑屏诊断埋点
+
+用户报告 `live.nicovideo.jp/watch/lv351393299` 解析失败。诊断:房间实为 ON_AIR(watch 页 embedded-data 实测 status=ON_AIR/canWatch=true),真机日志首页路径 `resolve_ms` 也成功(3 档画质)——**解析层健康,缺口全在输入/直达链与播放配方**,三处修两处:
+
+- **niconico_site.searchRoomsCancellable 加直达分支**(对齐猫耳口径):`lv…` 裸节目号与 `live.nicovideo.jp/watch/…` 链接经 `NiconicoWatch.parseInput` 识别后走 detail;missing(房间消失)转空列表,网络/服务类失败照常上抛。此前 lv 号被当关键词送站内搜索,必空
+- **zishu 搜索页直达识别扩展**(`search_provider`):`resolveSearchDirect` 提为顶层纯函数(可离线单测);niconico 观察页链接任意平台档直达;`lv…` 裸号仅选定 niconico 档直达(全站模式不识别,防普通搜索词误判)。**`_openDirect` 链接直达从硬编码 douyu 改为按 URL 域名推断**(`siteHintFromInput`),未来补表即扩展
+- **siteHintFromInput 表补 niconico**:`--room <URL>` 启动直达此前静默回落首页(猫耳同款缺口,猫耳 14B 已修)
+- **真机复验(Windows Release 20:47)**:`--room https://live.nicovideo.jp/watch/lv351393299` → `route=/niconico/play/lv351393299` → `resolve_ms=1490` 3 档画质(800×450·1080800bps 等)——用户报的房间解析链全通
+
+**已知不修(owned-input,需立项)**:resolve 成功后播放页静默黑屏——`NiconicoSite.getPlayUrls` 设计性返回空(取流走 `NiconicoInputRecipe` 座位配方,zishu 播放链未接入;20:30 首页路径进房同样 resolve 后无 open、playing=false,系旧有行为非本轮回归)。座位风险口径此前已定暂缓,接入需用户立项。顺手埋点:play_provider 对"解析成功但选不出线路"落 `open_skip`(cat=line),终结"连 open 事件都没有"的静默黑屏诊断盲区(bigo/fc2 同样受益)。
+
+**验证**:`search_direct_resolve_test` 6 用例 + `startup_url_hint_test` 扩至 4 用例(直达识别契约/既有 douyu 行为不回归/非法 lv 不误判);播放链回归 `play_quality_prefetch_test` 8/8;analyze 10 条全预存在零新增;opt-in 探针 `tool/probes/niconico_search_direct_probe_test.dart`(`PURELIVE_NICONICO_SEARCH_PROBE=1`)确认两种直达输入均从 detail 路径返回(Flutter test 环境对 nicovideo TLS 失败为已知环境差异,真机 detail 由 playback.log resolve_ms 证健康)。
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:

@@ -11,6 +11,10 @@ void main() {
       expect(siteHintFromInput('http://fm.missevan.com/live/123'), 'missevan');
     });
 
+    test('niconico 观察页 URL 推断为 niconico', () {
+      expect(siteHintFromInput('https://live.nicovideo.jp/watch/lv351393299'), 'niconico');
+    });
+
     test('既有头部平台域名不回归', () {
       expect(siteHintFromInput('https://www.douyu.com/8682569'), 'douyu');
       expect(siteHintFromInput('https://live.bilibili.com/1'), 'bilibili');

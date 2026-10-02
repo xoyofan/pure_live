@@ -115,6 +115,16 @@ class NiconicoSite extends LiveSite
   Future<List<LiveRoom>> searchRooms(String keyword, {int page = 1, int pageSize = 30}) =>
       searchRoomsCancellable(keyword, page: page, pageSize: pageSize);
 
+  /// 节目号/观察页 URL 直达识别:`lv…` 裸号或 `live.nicovideo.jp/watch/…`
+  /// 链接。其余输入(NaN 之外的关键词)一律交给站内关键词搜索。
+  static String? _searchProgramId(String input) {
+    try {
+      return NiconicoWatch.parseInput(input);
+    } on NiconicoException {
+      return null;
+    }
+  }
+
   @override
   Future<List<LiveRoom>> searchRoomsCancellable(
     String keyword, {
@@ -124,6 +134,18 @@ class NiconicoSite extends LiveSite
   }) async {
     if (cancel?.isCancelled == true) throw cancel!.cancelError!;
     _pageSize(pageSize);
+    // 直达分支(对齐猫耳口径):节目号/链接不走关键词搜索;房间不存在
+    // (missing)返回空列表,网络/服务类失败照常上抛。
+    final directId = _searchProgramId(keyword);
+    if (directId != null) {
+      if (page != 1) return const [];
+      try {
+        return [await _detail(directId, id)];
+      } on NiconicoException catch (error) {
+        if (error.kind == NiconicoFailure.missing) return const [];
+        rethrow;
+      }
+    }
     return (await _directory.search(keyword, page: page, cancel: cancel)).rooms;
   }
 

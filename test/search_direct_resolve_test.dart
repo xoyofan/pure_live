@@ -1,0 +1,48 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:pure_live/src/features/search/application/search_provider.dart';
+
+/// 搜索页直达识别契约(纯函数)。2026-10-02:niconico 节目号/观察页链接
+/// 此前不识别(lv351393299 报"解析失败",实为搜索页直达链缺口——房间
+/// ON_AIR、purelive 解析层健康)。
+void main() {
+  group('resolveSearchDirect(搜索直达识别)', () {
+    test('纯数字 → 房间号直达(既有行为不回归)', () {
+      final target = resolveSearchDirect('douyu', '8682569');
+      expect(target?.kind, DirectKind.roomId);
+      expect(target?.roomId, '8682569');
+    });
+
+    test('douyu 链接 → 链接直达(既有行为不回归)', () {
+      final target = resolveSearchDirect('douyu', 'https://www.douyu.com/8682569');
+      expect(target?.kind, DirectKind.link);
+      expect(target?.roomId, '8682569');
+    });
+
+    test('niconico 观察页链接 → 链接直达(任意平台档下识别)', () {
+      for (final site in ['all', 'douyu', 'niconico']) {
+        final target = resolveSearchDirect(site, 'https://live.nicovideo.jp/watch/lv351393299');
+        expect(target?.kind, DirectKind.link, reason: 'site=$site');
+        expect(target?.roomId, 'lv351393299', reason: 'site=$site');
+        expect(target?.url, 'https://live.nicovideo.jp/watch/lv351393299');
+      }
+    });
+
+    test('niconico 节目号裸输入 → 仅选定 niconico 平台时房间号直达', () {
+      expect(resolveSearchDirect('niconico', 'lv351393299')?.kind, DirectKind.roomId);
+      expect(resolveSearchDirect('niconico', 'lv351393299')?.roomId, 'lv351393299');
+      // 全站/其他平台档下不识别:避免普通搜索词误判为直达。
+      expect(resolveSearchDirect('all', 'lv351393299'), isNull);
+      expect(resolveSearchDirect('douyu', 'lv351393299'), isNull);
+    });
+
+    test('非法 lv 形态不识别(与 validateProgramId 同口径)', () {
+      expect(resolveSearchDirect('niconico', 'lv0'), isNull);
+      expect(resolveSearchDirect('niconico', 'lv'), isNull);
+    });
+
+    test('普通关键词不误判', () {
+      expect(resolveSearchDirect('niconico', 'うちの弟'), isNull);
+      expect(resolveSearchDirect('douyu', '英雄联盟'), isNull);
+    });
+  });
+}

@@ -10,6 +10,7 @@ import '../../../platforms/common/playback/playback_log.dart';
 import '../../../shared/presentation/design_tokens.dart';
 import '../../../shared/presentation/platform_brands.dart';
 import '../../../shared/presentation/zishu_tokens.dart';
+import '../../../app/app_router.dart' show siteHintFromInput;
 import '../application/search_provider.dart';
 import '../widgets/search_direct_tile.dart';
 import '../widgets/search_platform_chips.dart';
@@ -112,11 +113,13 @@ class _SearchViewState extends ConsumerState<SearchView> {
     _go('/${item.site}/anchor/${item.hit.id}');
   }
 
-  /// 打开直达项:链接直达固定 douyu;房间号直达跟随当前所选平台。
+  /// 打开直达项:链接直达按 URL 域名推断平台(认不出的历史行为回落
+  /// douyu);房间号直达跟随当前所选平台。
   void _openDirect(DirectTarget target) {
     final site = target.kind == DirectKind.link
-        ? 'douyu'
+        ? (target.url == null ? '' : siteHintFromInput(target.url!))
         : ref.read(searchProvider).site;
+    if (site.isEmpty) return;
     _inputFocus.unfocus();
     PlaybackLog.logRoomNav(
       source: 'search_direct',

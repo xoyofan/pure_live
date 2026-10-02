@@ -20,10 +20,16 @@ final RegExp _roomIdPattern = RegExp(r'^\d+$');
 /// 含 douyu.com 的输入 → 链接直达,从链接中提取房间号。
 final RegExp _douyuLinkPattern = RegExp(r'douyu\.com/(\d+)');
 
+/// 含 niconico 观察页的输入 → 链接直达,提取节目号(`lv…`)。
+final RegExp _niconicoLinkPattern = RegExp(r'live\.nicovideo\.jp/watch/(lv[1-9][0-9]{0,17})');
+
+/// niconico 节目号裸输入(与 NiconicoWatch.validateProgramId 同口径)。
+final RegExp _niconicoIdPattern = RegExp(r'^lv[1-9][0-9]{0,17}$');
+
 /// 直达项类型。
 enum DirectKind { roomId, link }
 
-/// 直达目标:纯数字房间号,或 douyu.com 链接解析出的房间。
+/// 直达目标:纯数字房间号,或 douyu.com / niconico 链接解析出的房间。
 class DirectTarget {
   const DirectTarget({required this.kind, required this.roomId, this.url});
 
@@ -182,7 +188,7 @@ class SearchController extends Notifier<SearchState> {
       state = state.copyWith(
         searching: false,
         hits: hits,
-        direct: _resolveDirect(keyword),
+        direct: _resolveDirect(site, keyword),
         clearError: true,
       );
     } on Object catch (e) {
@@ -232,21 +238,39 @@ class SearchController extends Notifier<SearchState> {
 
   String _errorMessage(Object e) => e is StateError ? e.message : e.toString();
 
-  /// 直达识别:纯数字 → 房间号;含 douyu.com → 链接直达。
-  DirectTarget? _resolveDirect(String keyword) {
-    if (_roomIdPattern.hasMatch(keyword)) {
-      return DirectTarget(kind: DirectKind.roomId, roomId: keyword);
-    }
-    final match = _douyuLinkPattern.firstMatch(keyword);
-    if (match != null) {
-      return DirectTarget(
-        kind: DirectKind.link,
-        roomId: match.group(1)!,
-        url: keyword,
-      );
-    }
-    return null;
+  /// 直达识别:见顶层 [resolveSearchDirect]。
+  DirectTarget? _resolveDirect(String site, String keyword) =>
+      resolveSearchDirect(site, keyword);
+}
+
+/// 直达识别(纯函数):纯数字 → 房间号;含 douyu.com / niconico 观察页 →
+/// 链接直达;选定 niconico 平台时 `lv…` 裸节目号 → 房间号直达(全站模式下
+/// 不识别,避免普通搜索词误判)。
+DirectTarget? resolveSearchDirect(String site, String keyword) {
+  if (_roomIdPattern.hasMatch(keyword)) {
+    return DirectTarget(kind: DirectKind.roomId, roomId: keyword);
   }
+  final niconicoId = _niconicoIdPattern.firstMatch(keyword);
+  if (niconicoId != null && site == 'niconico') {
+    return DirectTarget(kind: DirectKind.roomId, roomId: keyword);
+  }
+  final douyu = _douyuLinkPattern.firstMatch(keyword);
+  if (douyu != null) {
+    return DirectTarget(
+      kind: DirectKind.link,
+      roomId: douyu.group(1)!,
+      url: keyword,
+    );
+  }
+  final niconico = _niconicoLinkPattern.firstMatch(keyword);
+  if (niconico != null) {
+    return DirectTarget(
+      kind: DirectKind.link,
+      roomId: niconico.group(1)!,
+      url: keyword,
+    );
+  }
+  return null;
 }
 
 /// 搜索页全局 provider(keep-alive:返回搜索页保留上次输入与结果)。
