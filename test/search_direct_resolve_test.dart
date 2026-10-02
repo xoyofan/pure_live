@@ -35,6 +35,21 @@ void main() {
       expect(resolveSearchDirect('douyu', 'lv351393299'), isNull);
     });
 
+    test('17.live 直播页链接 → 链接直达(任意平台档下识别,含语言前缀)', () {
+      for (final url in [
+        'https://17.live/en/live/29725277',
+        'https://17.live/live/29725277',
+        'https://www.17.live/zh-tw/live/29725277',
+      ]) {
+        final target = resolveSearchDirect('douyu', url);
+        expect(target?.kind, DirectKind.link, reason: url);
+        expect(target?.roomId, '29725277', reason: url);
+        expect(target?.url, url, reason: url);
+      }
+      // 非直播页路径(如 profile)不识别。
+      expect(resolveSearchDirect('douyu', 'https://17.live/en/profile/r/29725277'), isNull);
+    });
+
     test('非法 lv 形态不识别(与 validateProgramId 同口径)', () {
       expect(resolveSearchDirect('niconico', 'lv0'), isNull);
       expect(resolveSearchDirect('niconico', 'lv'), isNull);

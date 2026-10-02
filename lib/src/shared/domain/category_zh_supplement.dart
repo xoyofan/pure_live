@@ -60,6 +60,8 @@ const Map<String, String> kPicartoZhByName = {
 };
 
 /// SHOWROOM genre 名(小写,服务端英文本地化) → 中文(onlives 全量 2026-10-02)。
+/// 列表接口的语言在 en/ja 间摇摆(实测同机两次请求分别返回英文/日文),
+/// 故附日文原名别名,保证首页徽标不随上游摇摆漏日文。
 const Map<String, String> kShowroomZhByName = {
   'popularity': '人气',
   'newcomer': '新人',
@@ -80,6 +82,43 @@ const Map<String, String> kShowroomZhByName = {
   'new1day': '新开1天',
   'new7day': '新开7天',
   'new30day': '新开30天',
+  // 日文原名别名(onlives ja 本地化)。
+  '人気': '人气',
+  '新人': '新人',
+  '音楽': '音乐',
+  'アイドル': '偶像',
+  '芸能': '才艺',
+  '声優': '声优',
+  'お笑い': '搞笑',
+  'バーチャル': '虚拟主播',
+  'モデル': '模特',
+  '俳優': '演员',
+  'アナウンサー': '播音',
+  'クリエイター': '创作者',
+  'ストリーマー': '主播',
+  'メンズ': '男生',
+  'カラオケ': '卡拉OK',
+  'ゲーム': '游戏',
+};
+
+/// FC2 目录标签别名:目录行与房间详情的上游标签语言不一致(实测同一直播间
+/// 目录给 `Idle Chat`、详情给 `雑談`),中文名以 zh.json 的 fc2live_category_*
+/// 为准,未收录标签回落原名。
+const Map<String, String> kFc2liveZhByName = {
+  'all': '全部公开直播',
+  'chat': '闲聊',
+  'game': '游戏 / 作业',
+  'video': '视频',
+  'audio': '音频',
+  'other': '其他',
+  // 英文目录行(2026-10-02 实测)。
+  'idle chat': '闲聊',
+  // 日文详情标签(2026-10-02 实测)。
+  '雑談': '闲聊',
+  'ゲーム/作業': '游戏 / 作业',
+  'ゲーム': '游戏 / 作业',
+  '動画': '视频',
+  'その他': '其他',
 };
 
 /// SOOP 目录英文名(小写) → 中文,只收 web 真源 remap 表未覆盖的热门项
@@ -311,6 +350,10 @@ final Map<String, String> _soopZh = {for (final entry in kSoopZhByName.entries) 
 
 final Map<String, String> _chzzkZh = {for (final entry in kChzzkZhByName.entries) _normalize(entry.key): entry.value};
 
+final Map<String, String> _fc2liveZh = {
+  for (final entry in kFc2liveZhByName.entries) _normalize(entry.key): entry.value,
+};
+
 /// fork 补充表中文名:TwitCasting 按稳定 cid 反查(标签语言不稳),
 /// picarto/showroom 按 小写标签,twitch 一级分组标签,soop 补 remap 未覆盖项,
 /// chzzk 按 slug + 韩文原名双键;未命中返回 null。
@@ -332,6 +375,8 @@ String? zhSupplementCategoryName(String? site, String? cid, String? name) {
       return _twitchGroupZh[_normalize(name)];
     case 'soop':
       return _soopZh[_normalize(name)];
+    case 'fc2live':
+      return _fc2liveZh[_normalize(name)];
     case 'chzzk':
       // 分类树带 cid=slug 优先;房间徽标只带韩文名,走名字键。
       final cidKey = (cid ?? '').trim();

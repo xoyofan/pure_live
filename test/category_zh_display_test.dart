@@ -53,6 +53,17 @@ void main() {
       expect(displayCategoryName('soop', '안 어카테고리', ''), '안 어카테고리');
     });
 
+    test('showroom 日文别名 / fc2 双语标签(列表与详情语言摇摆)', () {
+      // onlives 列表接口在 en/ja 间摇摆:同站可能返回 idol 或 アイドル。
+      expect(displayCategoryName('showroom', 'アイドル', '3'), '偶像');
+      expect(displayCategoryName('showroom', '声優', '5'), '声优');
+      // fc2 目录行给英文、详情给日文,统一到 zh.json 分类名口径。
+      expect(displayCategoryName('fc2live', 'Idle Chat', 'chat'), '闲聊');
+      expect(displayCategoryName('fc2live', '雑談', 'chat'), '闲聊');
+      expect(displayCategoryName('fc2live', 'ゲーム', 'game'), '游戏 / 作业');
+      expect(displayCategoryName('fc2live', '未知标签', 'x'), '未知标签');
+    });
+
     test('chzzk:slug/韩文名双键映射', () {
       // 分类树:cid=slug。
       expect(displayCategoryName('chzzk', '리그 오브 레전드', 'League_of_Legends'), '英雄联盟');

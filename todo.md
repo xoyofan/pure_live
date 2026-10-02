@@ -296,6 +296,18 @@
 
 **验证**:`search_direct_resolve_test` 6 用例 + `startup_url_hint_test` 扩至 4 用例(直达识别契约/既有 douyu 行为不回归/非法 lv 不误判);播放链回归 `play_quality_prefetch_test` 8/8;analyze 10 条全预存在零新增;opt-in 探针 `tool/probes/niconico_search_direct_probe_test.dart`(`PURELIVE_NICONICO_SEARCH_PROBE=1`)确认两种直达输入均从 detail 路径返回(Flutter test 环境对 nicovideo TLS 失败为已知环境差异,真机 detail 由 playback.log resolve_ms 证健康)。
 
+### 迭代 18(2026-10-02)✅ 17live 直达入口 + pure_live 字段 zh 回落(界面漏 key 清零)+ bigo liveStatus 死分支 + 首页/直播页对齐巡检
+
+用户报告 `https://17.live/en/live/29725277` 无法解析,并定口径:**直播地址相关字段映射完全用 purelive 的,不要 zishu 的**;检查各平台首页与直播页解析是否对齐;niconico 分类要中文。诊断出四个独立问题:
+
+1. **zishu UI 漏 i18n key(nico 分类乱码根因)**:zishu UI(lib/src)不包 EasyLocalization,`tr()` 恒返回 key 本身——pure_live 适配器 111 处 `i18n()` 字段(niconico 分类 `niconico_category_*`、17live 画质名、各站公告)在界面全是原始 key。修复(按用户口径,文案真源仍是 pure_live 自己的 zh.json,不建 zishu 侧映射):`locale_helper.i18n()` 增加**打包 zh.json 回落**(tr 未命中/未初始化时直查,`{name}` 参数替换同构),`main.dart` 首帧前 `ensureZhTextFallback()` 预载;旧 UI locale 已初始化路径行为不变
+2. **17live 无搜索/直达入口(本报告直接根因)**:解析层全链路健康(探针:URL → searchRooms 1 hit → detail live → 4 档 → 2 线路),缺口全在入口——搜索平台 chips 被 `brand.browseSupported`(栏目浏览位)一并裁剪,17live 选不到、直达识别无其域名。修复(能力口径以 purelive 注册表为准):`filterPlatforms` 增加 `requireBrowseSupport` 位,搜索入口不设品牌位(浏览/导航入口维持原裁剪);`siteHintFromInput` 表补 `17.live`;`resolveSearchDirect` 补 17.live 链接直达(语言前缀可选,与 SeventeenLiveLink.parse 同口径)——任意平台档粘贴 17.live 链接均可直达
+3. **bigo liveStatus 死分支**:`_room` 的 `(public, true, Uri())` 用空 Uri 常量匹配 `Uri?` 字段永假 → 在播房间详情全 unknown → `getPlayQualites` 前置(`effectiveLiveStatus==live`)必失败(迭代14 设备日志 bigo `schema`×4 即此表现)。修为只看 `access+reportedAlive`。另实测上游结构性变化:`getInternalStudioInfo` 对匿名请求现恒回 `needLogin:true`(curl 直证),bigo 直播页详情/取流当前被上游匿名封锁,结构性入账
+4. **首页/直播页对齐巡检**(新探针 `tool/probes/home_play_alignment_probe_test.dart`,29 站):raw-key 泄漏 **0**;主流站 area/audience 同源对齐(acfun/bilibili/douyu/huya/kuaishou/chzzk/picarto/twitch/yy 等 aligned=true);showroom 列表 ja↔详情 en、fc2 目录 en↔详情 ja 的语言摇摆 → `kShowroomZhByName` 附 16 项日文别名、新增 `kFc2liveZhByName` 双语标签(对齐 zh.json 分类名口径);baidulive/chzzk 单站差异为列表↔详情时点差(主播切分类),非映射问题;soop TLS/niconico schema 抖动与 pandalive 出口封禁为既有瞬态/结构性
+
+**验证**:单测 **51 用例全过**(直达识别 +17live 3 形态/域名 hint +17live/zh 回落 3/搜索门槛 3/展示层 10/retry 2/missevan 3/site_settings 2/audience/prefetch 8);改动 12 文件 analyze 零问题;17live 对齐探针 live+公告中文("17LIVE 要求观看者年满 18 周岁。");bigo 登录墙房 unknown+中文公告语义正确。新探针入库 `resolve_room_diag_probe_test.dart`(单房间端到端)/`home_play_alignment_probe_test.dart`(首页↔直播页字段对齐)
+
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:

@@ -19,6 +19,7 @@ void main() {
       expect(siteHintFromInput('https://www.douyu.com/8682569'), 'douyu');
       expect(siteHintFromInput('https://live.bilibili.com/1'), 'bilibili');
       expect(siteHintFromInput('https://www.twitch.tv/jinnytty'), 'twitch');
+      expect(siteHintFromInput('https://17.live/en/live/29725277'), '17live');
     });
 
     test('纯房间号/未知域名返回空串(不做联网探测)', () {

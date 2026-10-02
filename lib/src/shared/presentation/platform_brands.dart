@@ -13,6 +13,7 @@ class PlatformBrand {
 
   final String id;
   final String name;
+
   /// 平台品牌色。**单一真源**:对齐 web `config/platformCatalog.ts` 的
   /// `PLATFORM_BRAND_COLORS[id].bg`。
   ///
@@ -66,11 +67,7 @@ abstract final class PlatformBrandCatalog {
     chipForeground: chipForegroundDark,
   );
 
-  static const PlatformBrand douyu = PlatformBrand(
-    id: 'douyu',
-    name: '斗鱼',
-    color: Color(0xFFFF6A00),
-  );
+  static const PlatformBrand douyu = PlatformBrand(id: 'douyu', name: '斗鱼', color: Color(0xFFFF6A00));
 
   static const PlatformBrand huya = PlatformBrand(
     id: 'huya',
@@ -80,11 +77,7 @@ abstract final class PlatformBrandCatalog {
     chipForeground: chipForegroundDark,
   );
 
-  static const PlatformBrand bilibili = PlatformBrand(
-    id: 'bilibili',
-    name: '哔哩',
-    color: Color(0xFFFB7299),
-  );
+  static const PlatformBrand bilibili = PlatformBrand(id: 'bilibili', name: '哔哩', color: Color(0xFFFB7299));
 
   static const PlatformBrand douyin = PlatformBrand(
     id: 'douyin',
@@ -102,35 +95,15 @@ abstract final class PlatformBrandCatalog {
     chipForeground: chipForegroundDark,
   );
 
-  static const PlatformBrand twitch = PlatformBrand(
-    id: 'twitch',
-    name: 'Twitch',
-    color: Color(0xFF9146FF),
-  );
+  static const PlatformBrand twitch = PlatformBrand(id: 'twitch', name: 'Twitch', color: Color(0xFF9146FF));
 
-  static const PlatformBrand kuaishou = PlatformBrand(
-    id: 'kuaishou',
-    name: '快手',
-    color: Color(0xFFFF4906),
-  );
+  static const PlatformBrand kuaishou = PlatformBrand(id: 'kuaishou', name: '快手', color: Color(0xFFFF4906));
 
-  static const PlatformBrand soop = PlatformBrand(
-    id: 'soop',
-    name: 'SOOP',
-    color: Color(0xFF00A8FF),
-  );
+  static const PlatformBrand soop = PlatformBrand(id: 'soop', name: 'SOOP', color: Color(0xFF00A8FF));
 
-  static const PlatformBrand xhs = PlatformBrand(
-    id: 'xhs',
-    name: '小红书',
-    color: Color(0xFFFF2442),
-  );
+  static const PlatformBrand xhs = PlatformBrand(id: 'xhs', name: '小红书', color: Color(0xFFFF2442));
 
-  static const PlatformBrand youtube = PlatformBrand(
-    id: 'youtube',
-    name: 'YouTube',
-    color: Color(0xFFFF0000),
-  );
+  static const PlatformBrand youtube = PlatformBrand(id: 'youtube', name: 'YouTube', color: Color(0xFFFF0000));
 
   /// pure_live 全量平台条目(`Sites.supportSites` 的其余各站),补齐
   /// lib/core/sites.dart:346 `_supportedSites` 的完整目录。
@@ -146,23 +119,11 @@ abstract final class PlatformBrandCatalog {
   ///   未覆盖的站(liveme / tiktok / 17live)继承基类
   ///   lib/core/interface/live_site.dart:210 的空实现,置 false。
   ///   小红书沿用上方 `xhs` 条目(pure_live 侧 id 为 `xiaohongshu`)。
-  static const PlatformBrand cc = PlatformBrand(
-    id: 'cc',
-    name: '网易CC',
-    color: Color(0xFFFF4D7D),
-  );
+  static const PlatformBrand cc = PlatformBrand(id: 'cc', name: '网易CC', color: Color(0xFFFF4D7D));
 
-  static const PlatformBrand acfun = PlatformBrand(
-    id: 'acfun',
-    name: 'AcFun 直播',
-    color: Color(0xFFFD4C5D),
-  );
+  static const PlatformBrand acfun = PlatformBrand(id: 'acfun', name: 'AcFun 直播', color: Color(0xFFFD4C5D));
 
-  static const PlatformBrand picarto = PlatformBrand(
-    id: 'picarto',
-    name: 'Picarto',
-    color: Color(0xFF25BFA4),
-  );
+  static const PlatformBrand picarto = PlatformBrand(id: 'picarto', name: 'Picarto', color: Color(0xFF25BFA4));
 
   static const PlatformBrand twitcasting = PlatformBrand(
     id: 'twitcasting',
@@ -170,41 +131,17 @@ abstract final class PlatformBrandCatalog {
     color: Color(0xFF294DDB),
   );
 
-  static const PlatformBrand missevan = PlatformBrand(
-    id: 'missevan',
-    name: '猫耳 FM',
-    color: Color(0xFFF38AAE),
-  );
+  static const PlatformBrand missevan = PlatformBrand(id: 'missevan', name: '猫耳 FM', color: Color(0xFFF38AAE));
 
-  static const PlatformBrand inke = PlatformBrand(
-    id: 'inke',
-    name: '映客',
-    color: Color(0xFFFF4F9A),
-  );
+  static const PlatformBrand inke = PlatformBrand(id: 'inke', name: '映客', color: Color(0xFFFF4F9A));
 
-  static const PlatformBrand kilakila = PlatformBrand(
-    id: 'kilakila',
-    name: '克拉克拉',
-    color: Color(0xFF7C5CFC),
-  );
+  static const PlatformBrand kilakila = PlatformBrand(id: 'kilakila', name: '克拉克拉', color: Color(0xFF7C5CFC));
 
-  static const PlatformBrand niconico = PlatformBrand(
-    id: 'niconico',
-    name: 'niconico',
-    color: Color(0xFF252525),
-  );
+  static const PlatformBrand niconico = PlatformBrand(id: 'niconico', name: 'niconico', color: Color(0xFF252525));
 
-  static const PlatformBrand weibo = PlatformBrand(
-    id: 'weibo',
-    name: '微博直播',
-    color: Color(0xFFFF8200),
-  );
+  static const PlatformBrand weibo = PlatformBrand(id: 'weibo', name: '微博直播', color: Color(0xFFFF8200));
 
-  static const PlatformBrand showroom = PlatformBrand(
-    id: 'showroom',
-    name: 'SHOWROOM',
-    color: Color(0xFFFF2B67),
-  );
+  static const PlatformBrand showroom = PlatformBrand(id: 'showroom', name: 'SHOWROOM', color: Color(0xFFFF2B67));
 
   static const PlatformBrand chzzk = PlatformBrand(
     id: 'chzzk',
@@ -230,23 +167,11 @@ abstract final class PlatformBrandCatalog {
     browseSupported: false,
   );
 
-  static const PlatformBrand bigo = PlatformBrand(
-    id: 'bigo',
-    name: 'Bigo Live',
-    color: Color(0xFF6A5CFF),
-  );
+  static const PlatformBrand bigo = PlatformBrand(id: 'bigo', name: 'Bigo Live', color: Color(0xFF6A5CFF));
 
-  static const PlatformBrand pandalive = PlatformBrand(
-    id: 'pandalive',
-    name: 'PandaTV',
-    color: Color(0xFFFE4D6A),
-  );
+  static const PlatformBrand pandalive = PlatformBrand(id: 'pandalive', name: 'PandaTV', color: Color(0xFFFE4D6A));
 
-  static const PlatformBrand fc2live = PlatformBrand(
-    id: 'fc2live',
-    name: 'FC2 Live',
-    color: Color(0xFFEA4C89),
-  );
+  static const PlatformBrand fc2live = PlatformBrand(id: 'fc2live', name: 'FC2 Live', color: Color(0xFFEA4C89));
 
   static const PlatformBrand steambroadcast = PlatformBrand(
     id: 'steambroadcast',
@@ -254,35 +179,15 @@ abstract final class PlatformBrandCatalog {
     color: Color(0xFF1B2838),
   );
 
-  static const PlatformBrand jdlive = PlatformBrand(
-    id: 'jdlive',
-    name: '京东直播',
-    color: Color(0xFFE1251B),
-  );
+  static const PlatformBrand jdlive = PlatformBrand(id: 'jdlive', name: '京东直播', color: Color(0xFFE1251B));
 
-  static const PlatformBrand kugoulive = PlatformBrand(
-    id: 'kugoulive',
-    name: '酷狗直播',
-    color: Color(0xFF19A7FF),
-  );
+  static const PlatformBrand kugoulive = PlatformBrand(id: 'kugoulive', name: '酷狗直播', color: Color(0xFF19A7FF));
 
-  static const PlatformBrand baidulive = PlatformBrand(
-    id: 'baidulive',
-    name: '百度直播',
-    color: Color(0xFF2932E1),
-  );
+  static const PlatformBrand baidulive = PlatformBrand(id: 'baidulive', name: '百度直播', color: Color(0xFF2932E1));
 
-  static const PlatformBrand sixroom = PlatformBrand(
-    id: 'sixroom',
-    name: '六间房直播',
-    color: Color(0xFFFF5A5F),
-  );
+  static const PlatformBrand sixroom = PlatformBrand(id: 'sixroom', name: '六间房直播', color: Color(0xFFFF5A5F));
 
-  static const PlatformBrand looklive = PlatformBrand(
-    id: 'looklive',
-    name: 'LOOK 直播',
-    color: Color(0xFFFF2C55),
-  );
+  static const PlatformBrand looklive = PlatformBrand(id: 'looklive', name: 'LOOK 直播', color: Color(0xFFFF2C55));
 
   static const PlatformBrand seventeenLive = PlatformBrand(
     id: '17live',
@@ -292,62 +197,61 @@ abstract final class PlatformBrandCatalog {
     browseSupported: false,
   );
 
-  static const PlatformBrand iptv = PlatformBrand(
-    id: 'iptv',
-    name: '网络',
-    color: Color(0xFF00A2FF),
-  );
+  static const PlatformBrand iptv = PlatformBrand(id: 'iptv', name: '网络', color: Color(0xFF00A2FF));
 
-  static const bool realParserEnabled = bool.fromEnvironment(
-    'ZISHU_REAL_PARSER',
-    defaultValue: false,
-  );
+  static const bool realParserEnabled = bool.fromEnvironment('ZISHU_REAL_PARSER', defaultValue: false);
 
   /// 真实解析模式下按注册表的 browse 能力裁剪导航平台；同时要求实际
   /// 注册了 browse repository，避免「声明能力但不可用」的平台
   /// 出现在入口里。fixture 模式保留完整视觉目录，避免离线 UI 测试漂移。
   static List<PlatformBrand> get browsePlatforms => _platformsWith(
-    (registration) =>
-        registration.capabilities.browse && registration.browse != null,
+    (registration) => registration.capabilities.browse && registration.browse != null,
+    requireBrowseSupport: true,
   );
 
   /// 搜索页按注册表的 search 能力裁剪平台筛选项；空实现(例如快手当前的
   /// 占位 search repository)不作为真实搜索入口暴露。
+  ///
+  /// 能力口径以 purelive 注册表为准,不受 `brand.browseSupported`(栏目浏览)
+  /// 限制:17live 等无目录站有真搜索+链接直达(searchRooms 内建 URL 解析),
+  /// 按 browseSupported 裁剪会把它们的搜索入口整块藏掉(用户口径
+  /// 2026-10-02:直播地址相关能力映射完全以 purelive 为准)。
   static List<PlatformBrand> get searchPlatforms => _platformsWith(
     (registration) =>
-        (registration.capabilities.roomSearch ||
-            registration.capabilities.anchorSearch) &&
-        registration.search != null,
+        (registration.capabilities.roomSearch || registration.capabilities.anchorSearch) && registration.search != null,
+    requireBrowseSupport: false,
   );
 
   static List<PlatformBrand> _platformsWith(
-    bool Function(SiteRegistration registration) supported,
-  ) => filterPlatforms(
+    bool Function(SiteRegistration registration) supported, {
+    required bool requireBrowseSupport,
+  }) => filterPlatforms(
     registry: buildSiteRegistry(),
     realParser: realParserEnabled,
+    requireBrowseSupport: requireBrowseSupport,
     supported: supported,
   );
 
   /// 纯过滤逻辑(A11,可测):
   ///
   /// - `realParser: false`(fixture 构建)原样返回 [navPlatforms] 全量目录;
-  /// - `realParser: true` 只保留「品牌支持栏目浏览 && 注册表有该站 &&
-  ///   [supported] 能力为真」的站点 —— 保证入口列表里的每一站
-  ///   `registration.browse != null`,点击分类不会在
-  ///   `ParserBrowseSource.fetchCategories` 抛 `StateError('站点 X 不支持分类浏览')`。
+  /// - `realParser: true` 只保留「注册表有该站 && [supported] 能力为真 &&
+  ///   (`requireBrowseSupport` 为假或品牌支持栏目浏览)」的站点 —— 浏览
+  ///   入口要求 `registration.browse != null` 且品牌标了 browseSupported,
+  ///   点击分类不会在 `ParserBrowseSource.fetchCategories` 抛
+  ///   `StateError('站点 X 不支持分类浏览')`;搜索入口不设品牌位。
   @visibleForTesting
   static List<PlatformBrand> filterPlatforms({
     required SiteRegistry registry,
     required bool realParser,
+    required bool requireBrowseSupport,
     required bool Function(SiteRegistration registration) supported,
   }) {
     if (!realParser) return navPlatforms;
     final result = <PlatformBrand>[all];
     for (final brand in navPlatforms.skip(1)) {
       final registration = registry[brand.id];
-      if (brand.browseSupported &&
-          registration != null &&
-          supported(registration)) {
+      if (registration != null && (!requireBrowseSupport || brand.browseSupported) && supported(registration)) {
         result.add(brand);
       }
     }
@@ -356,37 +260,30 @@ abstract final class PlatformBrandCatalog {
 
   /// 真实解析构建使用注册表的实际能力;fixture 构建保留完整导航目录。
   static List<PlatformBrand> get navigationPlatforms => _platformsWith(
-    (registration) =>
-        registration.capabilities.browse && registration.browse != null,
+    (registration) => registration.capabilities.browse && registration.browse != null,
+    requireBrowseSupport: true,
   );
 
-  static bool supportsBrowse(String site) =>
-      browsePlatforms.any((brand) => brand.id == site);
+  static bool supportsBrowse(String site) => browsePlatforms.any((brand) => brand.id == site);
 
-  static bool supportsSearch(String site) =>
-      searchPlatforms.any((brand) => brand.id == site);
+  static bool supportsSearch(String site) => searchPlatforms.any((brand) => brand.id == site);
 
   /// 平台是否支持**主播**搜索(昵称 / 抖音号),对齐 web
   /// `SearchDialog.vue:207` 的 `supportsAnchorSearch(site)`。
   ///
   /// 用于搜索弹框的「主播 / 房间」双档显隐:只支持房间搜索的平台
   /// 不出现主播档。
-  static bool supportsAnchorSearch(String site) =>
-      _capabilitySearch(site, (c) => c.anchorSearch);
+  static bool supportsAnchorSearch(String site) => _capabilitySearch(site, (c) => c.anchorSearch);
 
   /// 平台是否支持**房间**搜索(房间名 / 标题 / 房间号),对齐 web
   /// `SearchDialog.vue:208` 的 `supportsRoomSearch(site)`。
-  static bool supportsRoomSearch(String site) =>
-      _capabilitySearch(site, (c) => c.roomSearch);
+  static bool supportsRoomSearch(String site) => _capabilitySearch(site, (c) => c.roomSearch);
 
   /// 按能力位 + 是否注册了真实 search repository 判定。
   ///
   /// fixture 构建(离线 UI 测试)下与 [supportsSearch] 同口径放行:fixture
   /// 目录没有真实注册表,若此处收紧会让双档在测试里整块消失,失去覆盖。
-  static bool _capabilitySearch(
-    String site,
-    bool Function(SiteCapabilities capabilities) test,
-  ) {
+  static bool _capabilitySearch(String site, bool Function(SiteCapabilities capabilities) test) {
     if (!realParserEnabled) return supportsSearch(site);
     final registration = buildSiteRegistry()[site];
     if (registration == null || registration.search == null) return false;

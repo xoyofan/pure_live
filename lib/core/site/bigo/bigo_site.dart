@@ -142,9 +142,13 @@ final class BigoSite extends LiveSite
 
   LiveRoom _room(BigoStudioRoom room, {required bool includeMedia}) {
     final status = room.status;
-    final liveStatus = switch ((status.access, status.reportedAlive, room.hls)) {
-      (BigoAccess.public, true, Uri()) => LiveStatus.live,
-      (BigoAccess.public, false, _) => LiveStatus.offline,
+    // 在播判定只看 access+reportedAlive:room.hls 只有 null/真实 URL 两态,
+    // 旧写法 `(public, true, Uri())` 用空 Uri 常量匹配永假 → 在播房间全部
+    // 落 unknown,owned-input 配方站的取流前置(effectiveLiveStatus==live)
+    // 必失败(2026-10-02 首页/直播页对齐探针实锤)。
+    final liveStatus = switch ((status.access, status.reportedAlive)) {
+      (BigoAccess.public, true) => LiveStatus.live,
+      (BigoAccess.public, false) => LiveStatus.offline,
       _ => LiveStatus.unknown,
     };
     final notice = switch (status.access) {

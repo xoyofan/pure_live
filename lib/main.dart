@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:live_parser/live_parser.dart' show UpstreamProxy;
 import 'package:media_kit/media_kit.dart';
+import 'package:pure_live/plugins/locale_helper.dart' show ensureZhTextFallback;
 import 'package:window_manager/window_manager.dart';
 
 import 'src/app/app_router.dart';
@@ -25,10 +26,7 @@ Future<void> main(List<String> args) async {
   await configureUpstreamProxy();
   // 会话分隔标记:日志会跨多次启动追加,没有它无法区分「这次运行」。
   // 同时记录代理状态 —— 海外站解析/翻译/模型下载失败时第一个要看的字段。
-  PlaybackLog.write('app_start', {
-    'proxy': UpstreamProxy.hostPort ?? 'direct',
-    'route': StartupRoute.value,
-  });
+  PlaybackLog.write('app_start', {'proxy': UpstreamProxy.hostPort ?? 'direct', 'route': StartupRoute.value});
   // window_manager 必须先初始化:播放页的全屏(setFullScreen)与画中画都走它。
   // 未初始化时插件不监听窗口事件,isFullScreen() 的边界与状态同步都没有保障。
   // 非桌面平台(Web / Android)没有对应原生实现,静默跳过——那些平台的窗口呈现
@@ -49,5 +47,8 @@ Future<void> main(List<String> args) async {
   // 慢时该竞态必然复现,表现为打开白屏数秒直到下一帧数据到达)。此前恢复
   // 挂在 WindowsApp.initState(runApp 之后),正是白屏根因。
   await WindowPresentation.instance.restoreMainWindowGeometry();
+  // pure_live 适配器字段(分类名/画质名/公告)走 i18n();zishu UI 不包
+  // EasyLocalization,启动时载入打包 zh.json 作回落,否则界面上漏原始 key。
+  await ensureZhTextFallback();
   runApp(const ProviderScope(child: WindowsApp()));
 }

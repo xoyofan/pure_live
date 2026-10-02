@@ -110,17 +110,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       // 就是 restoring,行为与"未登录"一致,不会闪进关注页再跳回)。
       GoRoute(
         path: '/',
-        redirect: (_, _) =>
-            ref.read(authProvider).phase == AuthPhase.authenticated
-            ? '/follow'
-            : '/all',
+        redirect: (_, _) => ref.read(authProvider).phase == AuthPhase.authenticated ? '/follow' : '/all',
       ),
       // ---- legacy 深链兼容(web 有一整套 `/watch/*` 与 `/platform/*`)----
       // 旧版/网页版分享出来的 URL 直接打开不再落到 404。
       GoRoute(
         path: '/watch/:site/play/:id',
-        redirect: (_, state) =>
-            '/${state.pathParameters['site']}/play/${state.pathParameters['id']}',
+        redirect: (_, state) => '/${state.pathParameters['site']}/play/${state.pathParameters['id']}',
       ),
       GoRoute(
         path: '/watch/:site/category/:cid',
@@ -130,45 +126,30 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/watch/:site/:room',
-        redirect: (_, state) =>
-            '/${state.pathParameters['site']}/play/${state.pathParameters['room']}',
+        redirect: (_, state) => '/${state.pathParameters['site']}/play/${state.pathParameters['room']}',
       ),
-      GoRoute(
-        path: '/watch/:site',
-        redirect: (_, state) => '/${state.pathParameters['site']}',
-      ),
-      GoRoute(
-        path: '/platform/:site',
-        redirect: (_, state) => '/${state.pathParameters['site']}',
-      ),
+      GoRoute(path: '/watch/:site', redirect: (_, state) => '/${state.pathParameters['site']}'),
+      GoRoute(path: '/platform/:site', redirect: (_, state) => '/${state.pathParameters['site']}'),
       // ---- 固定路由(声明在 /:site 之前,保证优先匹配)----
       GoRoute(
         path: '/follow',
-        pageBuilder: (_, state) =>
-            _shellPage(state, 'all', const FollowView(), title: '我的关注'),
+        pageBuilder: (_, state) => _shellPage(state, 'all', const FollowView(), title: '我的关注'),
       ),
       // `/time` 语义对齐 web(`router.js` → `TimeView.vue`):解析耗时基准页
       // (冷解析 vs 缓存命中的客户端墙钟对比),**不是**动态时间线。
       GoRoute(
         path: '/time',
-        pageBuilder: (_, state) => _shellPage(
-          state,
-          'all',
-          const ParseBenchmarkView(),
-          title: '解析耗时',
-        ),
+        pageBuilder: (_, state) => _shellPage(state, 'all', const ParseBenchmarkView(), title: '解析耗时'),
       ),
       // 动态时间线是本仓私有页面(web 无对应路由),从 `/time` 让位到 `/timeline`,
       // 顶/底栏「动态」入口同步指向它。
       GoRoute(
         path: '/timeline',
-        pageBuilder: (_, state) =>
-            _shellPage(state, 'all', const TimelineView(), title: '动态时间线'),
+        pageBuilder: (_, state) => _shellPage(state, 'all', const TimelineView(), title: '动态时间线'),
       ),
       GoRoute(
         path: '/settings',
-        pageBuilder: (_, state) =>
-            _shellPage(state, 'all', const SettingsView(), title: '设置'),
+        pageBuilder: (_, state) => _shellPage(state, 'all', const SettingsView(), title: '设置'),
       ),
       // 平台凭证已改为弹框(顶栏账号菜单入口,见 user_credentials_view.dart):
       // `/user` 与 web 一样不再承载页面,保留深链兼容 → 重定向到平台首页
@@ -181,15 +162,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/search', redirect: (_, _) => '/all'),
       GoRoute(
         path: '/all',
-        pageBuilder: (_, state) =>
-            _shellPage(state, 'all', const HomeView(site: 'all'), title: '全平台首页'),
+        pageBuilder: (_, state) => _shellPage(state, 'all', const HomeView(site: 'all'), title: '全平台首页'),
       ),
       // 分类落地页(不带子分类):对齐 SFVideoLive `/${site}/category`,
       // 进入后由 CategoryView 默认选中第一组。
       GoRoute(
         path: '/all/category',
-        pageBuilder: (_, state) =>
-            _shellPage(state, 'all', const CategoryView(site: 'all'), title: '跨平台分类'),
+        pageBuilder: (_, state) => _shellPage(state, 'all', const CategoryView(site: 'all'), title: '跨平台分类'),
       ),
       GoRoute(
         path: '/all/category/:key',
@@ -215,16 +194,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           // 输入里带了明确的平台域名,但与路由 site 不符 → 纠正到真实平台
           // (对齐 web `inferPlaySiteForRoom` 的 URL hints 分支;不认识的输入
           // 一律不动,不做猜测)。
-          return inferred.isNotEmpty && inferred != site
-              ? '/$inferred/play/${Uri.encodeComponent(id)}'
-              : null;
+          return inferred.isNotEmpty && inferred != site ? '/$inferred/play/${Uri.encodeComponent(id)}' : null;
         },
         pageBuilder: (_, state) => NoTransitionPage(
           key: state.pageKey,
-          child: _PlayRoute(
-            site: state.pathParameters['site']!,
-            roomId: state.pathParameters['id']!,
-          ),
+          child: _PlayRoute(site: state.pathParameters['site']!, roomId: state.pathParameters['id']!),
         ),
       ),
       GoRoute(
@@ -232,35 +206,21 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (_, state) => _shellPage(
           state,
           state.pathParameters['site']!,
-          AnchorView(
-            site: state.pathParameters['site']!,
-            anchorId: state.pathParameters['id']!,
-          ),
+          AnchorView(site: state.pathParameters['site']!, anchorId: state.pathParameters['id']!),
           title: '主播主页',
         ),
       ),
       GoRoute(
         path: '/:site/category',
-        redirect: (_, state) =>
-            _siteBrowsable(ref, state.pathParameters['site']!)
-            ? null
-            : '/all',
+        redirect: (_, state) => _siteBrowsable(ref, state.pathParameters['site']!) ? null : '/all',
         pageBuilder: (_, state) {
           final site = state.pathParameters['site']!;
-          return _shellPage(
-            state,
-            site,
-            CategoryView(site: site),
-            title: '${_siteLabel(site)} · 分类',
-          );
+          return _shellPage(state, site, CategoryView(site: site), title: '${_siteLabel(site)} · 分类');
         },
       ),
       GoRoute(
         path: '/:site/category/:cid',
-        redirect: (_, state) =>
-            _siteBrowsable(ref, state.pathParameters['site']!)
-            ? null
-            : '/all',
+        redirect: (_, state) => _siteBrowsable(ref, state.pathParameters['site']!) ? null : '/all',
         pageBuilder: (_, state) {
           final site = state.pathParameters['site']!;
           return _shellPage(
@@ -273,18 +233,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/:site',
-        redirect: (_, state) =>
-            _siteBrowsable(ref, state.pathParameters['site']!)
-            ? null
-            : '/all',
+        redirect: (_, state) => _siteBrowsable(ref, state.pathParameters['site']!) ? null : '/all',
         pageBuilder: (_, state) {
           final site = state.pathParameters['site']!;
-          return _shellPage(
-            state,
-            site,
-            HomeView(site: site),
-            title: _siteLabel(site),
-          );
+          return _shellPage(state, site, HomeView(site: site), title: _siteLabel(site));
         },
       ),
     ],
@@ -292,19 +244,10 @@ final routerProvider = Provider<GoRouter>((ref) {
 });
 
 /// 除播放页外的页面都包在应用壳层里。
-Page<dynamic> _shellPage(
-  GoRouterState state,
-  String site,
-  Widget child, {
-  required String title,
-}) => NoTransitionPage(
+Page<dynamic> _shellPage(GoRouterState state, String site, Widget child, {required String title}) => NoTransitionPage(
   key: state.pageKey,
   child: _WindowTitle(
-    title: formatWindowTitle(
-      pageTitle: title,
-      appName: _kAppTitle,
-      version: currentAppVersion(),
-    ),
+    title: formatWindowTitle(pageTitle: title, appName: _kAppTitle, version: currentAppVersion()),
     child: AppShell(site: site, child: child),
   ),
 );
@@ -312,13 +255,11 @@ Page<dynamic> _shellPage(
 /// 平台首页/分类是否可达:支持栏目浏览 且 未被用户隐藏
 /// (设置「平台」分区)。隐藏平台只拦浏览入口,播放页/主播页深链不拦
 /// (在播关注、历史记录不受偏好影响)。
-bool _siteBrowsable(Ref ref, String site) =>
-    PlatformBrandCatalog.supportsBrowse(site) && !_siteHidden(ref, site);
+bool _siteBrowsable(Ref ref, String site) => PlatformBrandCatalog.supportsBrowse(site) && !_siteHidden(ref, site);
 
 /// 平台是否被用户隐藏(`all` 恒可见)。读当前内存态即可:redirect 每次
 /// 导航都执行,启动恢复(SharedPreferencesAsync)完成后即取到最新偏好。
-bool _siteHidden(Ref ref, String site) =>
-    site != 'all' && !ref.read(platformPrefsProvider).isVisible(site);
+bool _siteHidden(Ref ref, String site) => site != 'all' && !ref.read(platformPrefsProvider).isVisible(site);
 
 /// 播放页宿主:壳层 + 播放页。
 ///
@@ -336,18 +277,10 @@ class _PlayRoute extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // 必须 watch(而非 read):chrome 显隐要随呈现态切换立即重建。
     final chromeHidden = ref.watch(playScreenProvider).hidesChrome;
-    final roomTitle = ref.watch(
-      playControllerProvider((site: site, roomId: roomId)),
-    ).value?.payload?.title;
-    final title = roomTitle == null || roomTitle.trim().isEmpty
-        ? '${_siteLabel(site)} · 直播间'
-        : roomTitle.trim();
+    final roomTitle = ref.watch(playControllerProvider((site: site, roomId: roomId))).value?.payload?.title;
+    final title = roomTitle == null || roomTitle.trim().isEmpty ? '${_siteLabel(site)} · 直播间' : roomTitle.trim();
     return _WindowTitle(
-      title: formatWindowTitle(
-        pageTitle: title,
-        appName: _kAppTitle,
-        version: currentAppVersion(),
-      ),
+      title: formatWindowTitle(pageTitle: title, appName: _kAppTitle, version: currentAppVersion()),
       child: AppShell(
         site: site,
         chromeHidden: chromeHidden,
@@ -416,10 +349,7 @@ class _RouteFallback extends StatelessWidget {
           children: [
             Icon(Icons.explore_off_outlined, size: 40, color: tokens.textSecondary),
             const SizedBox(height: AppSpacing.md),
-            Text(
-              '页面不存在',
-              style: AppTypography.title.copyWith(color: tokens.textPrimary),
-            ),
+            Text('页面不存在', style: AppTypography.title.copyWith(color: tokens.textPrimary)),
             const SizedBox(height: AppSpacing.xs),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
@@ -469,10 +399,7 @@ String siteHintFromInput(String input) {
 
 final List<(String, RegExp)> _kUrlSiteHints = [
   ('twitch', RegExp(r'(?:^|/)(?:www\.)?twitch\.tv/', caseSensitive: false)),
-  (
-    'soop',
-    RegExp(r'(?:^|/)(?:play\.)?sooplive\.(?:co\.kr|com)/', caseSensitive: false),
-  ),
+  ('soop', RegExp(r'(?:^|/)(?:play\.)?sooplive\.(?:co\.kr|com)/', caseSensitive: false)),
   ('soop', RegExp(r'(?:^|/)afreeca\.com/', caseSensitive: false)),
   ('kuaishou', RegExp(r'(?:^|/)live\.kuaishou\.com/u/', caseSensitive: false)),
   ('yy', RegExp(r'(?:^|/)(?:www\.)?yy\.com/', caseSensitive: false)),
@@ -482,4 +409,5 @@ final List<(String, RegExp)> _kUrlSiteHints = [
   ('douyu', RegExp(r'(?:^|/)(?:www\.)?douyu\.com/', caseSensitive: false)),
   ('missevan', RegExp(r'(?:^|/)fm\.missevan\.com/', caseSensitive: false)),
   ('niconico', RegExp(r'(?:^|/)live\.nicovideo\.jp/', caseSensitive: false)),
+  ('17live', RegExp(r'(?:^|/)(?:www\.)?17\.live/', caseSensitive: false)),
 ];

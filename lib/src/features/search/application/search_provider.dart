@@ -23,6 +23,13 @@ final RegExp _douyuLinkPattern = RegExp(r'douyu\.com/(\d+)');
 /// 含 niconico 观察页的输入 → 链接直达,提取节目号(`lv…`)。
 final RegExp _niconicoLinkPattern = RegExp(r'live\.nicovideo\.jp/watch/(lv[1-9][0-9]{0,17})');
 
+/// 含 17.live 直播页的输入 → 链接直达,提取房间号(语言前缀 `/en/` 等可选,
+/// 与 SeventeenLiveLink.parse 同口径)。
+final RegExp _seventeenLinkPattern = RegExp(
+  r'17\.live/(?:[a-z]{2}(?:-[a-z]{2,4})?/)?live/([1-9][0-9]{0,11})',
+  caseSensitive: false,
+);
+
 /// niconico 节目号裸输入(与 NiconicoWatch.validateProgramId 同口径)。
 final RegExp _niconicoIdPattern = RegExp(r'^lv[1-9][0-9]{0,17}$');
 
@@ -162,12 +169,7 @@ class SearchController extends Notifier<SearchState> {
     final keyword = state.query.trim();
     if (keyword.isEmpty) {
       // 清空输入:立即回到空态,同时令未完成的查询全部过期。
-      state = state.copyWith(
-        searching: false,
-        hits: const [],
-        clearDirect: true,
-        clearError: true,
-      );
+      state = state.copyWith(searching: false, hits: const [], clearDirect: true, clearError: true);
       return;
     }
     state = state.copyWith(searching: true, clearError: true);
@@ -185,12 +187,7 @@ class SearchController extends Notifier<SearchState> {
       final hits = await _searchAttributed(site, keyword, type);
       // generation fence:期间有新输入/切平台/切档,则丢弃本次结果。
       if (!ref.mounted || generation != _generation) return;
-      state = state.copyWith(
-        searching: false,
-        hits: hits,
-        direct: _resolveDirect(site, keyword),
-        clearError: true,
-      );
+      state = state.copyWith(searching: false, hits: hits, direct: _resolveDirect(site, keyword), clearError: true);
     } on Object catch (e) {
       // 查询失败:保留上次结果与输入,仅标记 error;不抛到 widget、不整页空白。
       if (!ref.mounted || generation != _generation) return;
@@ -205,15 +202,10 @@ class SearchController extends Notifier<SearchState> {
   ///
   /// 单站失败直接向上抛出(由 [_resolve] 统一以 [SearchState.error] 表达,
   /// 不整页空白、不抛到 widget);仅 `all` 聚合模式下才逐站隔离失败。
-  Future<List<SearchHitItem>> _searchAttributed(
-    String site,
-    String keyword,
-    SearchType type,
-  ) async {
+  Future<List<SearchHitItem>> _searchAttributed(String site, String keyword, SearchType type) async {
     if (site == 'all') {
       final results = await Future.wait([
-        for (final s in _source.aggregateSites)
-          _searchSiteIsolated(s, keyword, type),
+        for (final s in _source.aggregateSites) _searchSiteIsolated(s, keyword, type),
       ]);
       return results.expand((items) => items).toList(growable: false);
     }
@@ -223,11 +215,7 @@ class SearchController extends Notifier<SearchState> {
 
   /// 单站隔离查询(仅用于 `all` 聚合):失败返回空,该站本轮空缺,
   /// 不影响其余平台结果,整页不空白。
-  Future<List<SearchHitItem>> _searchSiteIsolated(
-    String site,
-    String keyword,
-    SearchType type,
-  ) async {
+  Future<List<SearchHitItem>> _searchSiteIsolated(String site, String keyword, SearchType type) async {
     try {
       final hits = await _source.search(site: site, keyword: keyword, type: type);
       return [for (final hit in hits) SearchHitItem(site: site, hit: hit)];
@@ -239,13 +227,12 @@ class SearchController extends Notifier<SearchState> {
   String _errorMessage(Object e) => e is StateError ? e.message : e.toString();
 
   /// 直达识别:见顶层 [resolveSearchDirect]。
-  DirectTarget? _resolveDirect(String site, String keyword) =>
-      resolveSearchDirect(site, keyword);
+  DirectTarget? _resolveDirect(String site, String keyword) => resolveSearchDirect(site, keyword);
 }
 
-/// 直达识别(纯函数):纯数字 → 房间号;含 douyu.com / niconico 观察页 →
-/// 链接直达;选定 niconico 平台时 `lv…` 裸节目号 → 房间号直达(全站模式下
-/// 不识别,避免普通搜索词误判)。
+/// 直达识别(纯函数):纯数字 → 房间号;含 douyu.com / niconico 观察页 /
+/// 17.live 直播页 → 链接直达;选定 niconico 平台时 `lv…` 裸节目号 → 房间号
+/// 直达(全站模式下不识别,避免普通搜索词误判)。
 DirectTarget? resolveSearchDirect(String site, String keyword) {
   if (_roomIdPattern.hasMatch(keyword)) {
     return DirectTarget(kind: DirectKind.roomId, roomId: keyword);
@@ -256,24 +243,18 @@ DirectTarget? resolveSearchDirect(String site, String keyword) {
   }
   final douyu = _douyuLinkPattern.firstMatch(keyword);
   if (douyu != null) {
-    return DirectTarget(
-      kind: DirectKind.link,
-      roomId: douyu.group(1)!,
-      url: keyword,
-    );
+    return DirectTarget(kind: DirectKind.link, roomId: douyu.group(1)!, url: keyword);
   }
   final niconico = _niconicoLinkPattern.firstMatch(keyword);
   if (niconico != null) {
-    return DirectTarget(
-      kind: DirectKind.link,
-      roomId: niconico.group(1)!,
-      url: keyword,
-    );
+    return DirectTarget(kind: DirectKind.link, roomId: niconico.group(1)!, url: keyword);
+  }
+  final seventeen = _seventeenLinkPattern.firstMatch(keyword);
+  if (seventeen != null) {
+    return DirectTarget(kind: DirectKind.link, roomId: seventeen.group(1)!, url: keyword);
   }
   return null;
 }
 
 /// 搜索页全局 provider(keep-alive:返回搜索页保留上次输入与结果)。
-final searchProvider = NotifierProvider<SearchController, SearchState>(
-  SearchController.new,
-);
+final searchProvider = NotifierProvider<SearchController, SearchState>(SearchController.new);
