@@ -17,6 +17,7 @@ import 'package:live_parser/live_parser.dart' as lp;
 import 'package:pure_live/services/settings_service.dart';
 import 'package:pure_live/core/storage/hive_pref_util.dart';
 import 'package:pure_live/core/network/core_error.dart';
+import 'package:pure_live/src/shared/domain/category_display.dart';
 import 'package:pure_live/platforms/sites.dart';
 import 'package:pure_live/get/get.dart';
 
@@ -115,6 +116,16 @@ Future<void> _probePureLiveSite(String id, Map<String, Object?> result) async {
   final site = Sites.of(id).liveSite;
   final categories = await site.getCategores(1, 100);
   _fillCatalog(result, categories.map((c) => (c.name, [for (final a in c.children) (a.areaName ?? '')])).toList());
+  // 展示层中文名抽查: 与 UI 同一 displayCategoryName 入口, 即用户实际所见。
+  final samples = <String>[];
+  for (final category in categories) {
+    for (final area in category.children) {
+      samples.add(displayCategoryName(id, area.areaName, area.areaId));
+      if (samples.length >= 12) break;
+    }
+    if (samples.length >= 12) break;
+  }
+  result['displayNames'] = samples;
 }
 
 Future<void> _probeLiveParserXhs(Map<String, Object?> result) async {

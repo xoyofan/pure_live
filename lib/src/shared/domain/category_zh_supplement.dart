@@ -278,6 +278,8 @@ const Map<String, String> kChzzkZhByName = {
   '천하제일상거상': '巨商',
   'Teamfight_Tactics': '云顶之弈',
   '전략적 팀 전투 : 신비의 숲': '云顶之弈',
+  'WARDOGS': '战犬',
+  '워독스': '战犬',
 };
 
 /// Twitch 一级分组标签(SearchCategoryTags,小写) → 中文。
