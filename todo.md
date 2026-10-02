@@ -346,6 +346,17 @@
 **验证**:`analyze lib tool` **0 error**;全套件 **128/128 过**(11 平台弹幕协议/直达识别/分类中文化/画质契约/统计刷新);`audit_repository.py` **0 error**;上游祖先关系保留(merge commit cf47156c)。**待办**:opt-in 探针复验(全站播放/分类/对齐)建议在下次真机窗口跑一轮;pip/壁纸等上游新功能属旧 UI,zishu 界面不消费
 
 
+
+### 迭代 21(2026-10-02)✅ 解析/UI 分层硬边界:三站 GetX 回退契约化 + 审计规则固化
+
+用户定稿分层原则:**解析全部以 purelive 为准,缺失字段才由下游补充;解析与 UI 分开,我们的 UI(zishu lib/src)与上游 UI(features/app)分开**。合并后边界审计(迭代20 收尾扫描)发现三处真违规并修复:
+
+- **kuaishou/soop/yy 适配器**把旧 UI 的 GetX `PlayerController` 拉进解析层做"UI 当前房间回退"(上游自有耦合)——统一改为 `LiveCurrentRoomContext` 契约(与 douyu/huya/bilibili/cc 同款;旧 UI 启动已注册 bridge 行为不变,zishu 运行时未注册优雅跳过回退)。至此 platforms/ 适配器零 UI 控制器依赖(iptv 的 GetX DbService 为本地 IPTV 数据库服务,非 UI,单独记账)
+- **审计规则固化**(`audit_repository.py` 新增 `parsing_layer_ui_import`):`lib/platforms/**` 引 `features/`/`app/` = **error**;`lib/core/**` 引 UI = warning 债务(上游自有布局:core/index 大桶、core/widgets 旧组件、live_url_tool 工具箱流等,随同步机会性收敛);`features/recorder/services/` 输入管道为解析邻接例外(niconico owned-input 座位架构,非 UI)
+- **lib/src 复扫**:零 features/app/services 依赖——我们 UI 与上游 UI 隔离成立
+
+**验证**:analyze lib tool 0 error;128/128 全过;audit 0 error + 10 warning(全部为 core/** 历史形态,已列债务清单)
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:
