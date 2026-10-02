@@ -58,9 +58,13 @@ class ChzzkLive {
     required this.isLive,
     required this.timeMachineActive,
     required Iterable<ChzzkMedia> media,
+    this.chatChannelId,
   }) : media = List.unmodifiable(media);
 
   final int liveId;
+
+  /// Live chat session id from live-detail; null on TV/broadcast channels.
+  final String? chatChannelId;
   final ChzzkChannel channel;
   final String title;
   final String cover;
@@ -285,6 +289,7 @@ class ChzzkApi {
       isLive: isLive,
       timeMachineActive: _bool(detail['timeMachineActive']),
       media: media,
+      chatChannelId: _optionalText(detail['chatChannelId']),
     );
   }
 
@@ -298,6 +303,7 @@ class ChzzkApi {
     final channel = _channel(_object(data['channel']), isLive: true);
     return ChzzkLive(
       liveId: _positiveInt(data['liveId']),
+      chatChannelId: _optionalText(data['chatChannelId']),
       channel: channel,
       title: _text(data['liveTitle']),
       cover: _cover(data['liveImageUrl'], data['defaultThumbnailImageUrl']),

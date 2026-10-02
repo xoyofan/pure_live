@@ -5,7 +5,7 @@ import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
 import 'package:pure_live/core/common/hls_master_selection.dart';
 import 'package:pure_live/core/common/request_scope.dart';
-import 'package:pure_live/core/danmaku/empty_danmaku.dart';
+import 'package:pure_live/core/danmaku/chzzk_danmaku.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/interface/live_directory.dart';
 import 'package:pure_live/core/interface/live_search.dart';
@@ -55,7 +55,7 @@ class ChzzkSite extends LiveSite
   String get directoryNoticeKey => 'chzzk_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => ChzzkDanmaku();
 
   static LiveRoom _liveCard(ChzzkLive live) => LiveRoom(
     platform: 'chzzk',
@@ -71,6 +71,9 @@ class ChzzkSite extends LiveSite
     onlineViewers: live.concurrentViewers?.toString(),
     audienceMetricType: AudienceMetricType.onlineViewers,
     notice: live.adult ? i18n('chzzk_adult_notice') : null,
+    danmakuData: (live.chatChannelId == null || live.chatChannelId!.isEmpty)
+        ? null
+        : ChzzkDanmakuArgs(chatChannelId: live.chatChannelId!),
     httpHeaders: ChzzkApi.mediaHeaders,
   );
 
