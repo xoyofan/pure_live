@@ -244,6 +244,23 @@
 - **猫耳(唯一真缺陷)**:`fm.missevan.com` 灰度改版,`meta/data` 的 `info.tabs` 沦为纯展示键(无 type/id),旧解析必抛 schema → 首页错误。改版后可过滤 id 在 `info.catalogs[]`;实测 `chatroom/open/list` 只认**顶层 catalog_id**(sub_catalogs/custom_tag_groups 的 id 过滤恒空 count=0)。修复 `MissevanApi.categories`:`tabs`→`catalogs` 映射,瓦片只暴露顶层目录(配音/音乐/情感/放松/古风 5 项),不虚构子分类
 - **验证**:新增 `test/missevan_categories_test.dart` 3 用例(新 schema 映射/旧 schema 拒绝/服务错误透传)全过;missevan 站回归(danmaku 8/8);分类探针复验 missevan categories-ok 5 项、kuaishou 831/showroom 18/soop 543/yy 3×18 全绿;范围化 analyze 零问题(全仓 analyze 仍随并行弹幕批次收敛后统一跑)
 
+### 迭代 16(2026-10-02)✅ 分类全站中文化:remap 表接入展示层 + fork 补充表 + soop 英文化 + 瞬态错误重试
+
+用户报告"分类部分平台没解析,hover 顶部平台显示很多错误,要像 zishu 对齐、分类都解释为中文显示"。迭代15 已把解析层修到 26/34(余项结构性);本轮审计聚焦**显示层语言**与**瞬态错误体验**,两个上游变化实锤:
+
+- **SOOP 上游撤了 zh_CN 本地化**(迭代12 期间 `categoryList` 带 `lang=zh_CN` 直出中文,现已失效,仅保留 ko/en 两档;live_parser 的 soop zh 进程表机制随之整体失效)。实锤:`lang=zh_CN` 与无 lang 均回韩文,`Accept-Language: zh-CN/en-US` 回英文。修复:`SoopSite.getHeaders` 统一 `Accept-Language: en-US`(数据层取英文目录名,543 项),展示层中文化
+- **`remapCategoryName`(web 真源 `category-name-remap.ts` 生成的 180+ 条英文→归一中文表)在 fork 的 pure_live 数据链路从未被调用**——这是"没对齐 zishu"的核心缺口(live_parser 旧 browse 数据层有调用,但被 purelive 注册覆盖成死代码)
+
+修复三件套:
+
+1. **展示层统一中文缝**:`displayCategoryName`(`lib/src/shared/domain/category_display.dart`)按序接 ①fork 补充表 ②`remapCategoryName`(twitch/soop,live_parser barrel 新增导出) ③soop zh 进程表 ④跨平台表 ⑤原名。twitch 41 个一级分组标签全量中文(Adventure Game→冒险游戏等),二级热门游戏经 remap 命中(Just Chatting→聊天、IRL→户外),长尾回落英文(与 web 真源口径一致)
+2. **fork 补充表**(`lib/src/shared/domain/category_zh_supplement.dart`,不动两个生成文件):TwitCasting 按**稳定 data-channel key** 反查 22 项(标签随请求语言变)+ 标签兜底表;Picarto 官方 categories API 全量 20 项;SHOWROOM onlives genre 全量 19 项;SOOP 补 remap 未覆盖热门 36 项(Lost Ark→命运方舟、Virtual→虚拟主播、Diablo II→暗黑破坏神2 等)
+3. **瞬态错误不再常驻**:`CategoryController.build` 失败自动延迟重试一次(800ms,持续失败仅重试一次);hover 浮层错误态从"原始异常字符串"改为「分类加载失败 · 点击重试」(点击 invalidate 重拉),底部分类面板错误态加重试按钮
+
+**验证**:新增 2 套单测 10 用例全过(`category_zh_display_test` 8:twitch 分组/remap/twitcasting cid+标签兜底/picarto/showroom/soop 英文映射+韩文回落/中文平台不劫持/跨平台 cid 仍生效;`category_controller_retry_test` 2:失败重试一次成功/持续失败只重试一次);missevan_categories+site_settings_fallback 回归全绿(16/16);范围化 analyze 零问题;探针复验 soop 数据层已切英文目录名(展示层中文由单测覆盖)、missevan 5/showroom 18 稳定。探针入库 `tool/probes/catalog_diag_probe_test.dart`(任意站点目录+完整栈诊断)
+
+**备注**:chzzk/pandalive/bigo/jdlive/weibo/steam 等单占位目录为既有审计结论(结构性/出口封禁),youtube 无目录结构性; hover 顺序:补充表→remap→soop 进程表→跨平台表→原名,四家原生中文名不受影响
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:

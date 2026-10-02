@@ -17,9 +17,7 @@ class _PlatformCategorySheet extends ConsumerWidget {
       height: MediaQuery.sizeOf(context).height * 0.72,
       decoration: BoxDecoration(
         color: tokens.surface,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(AppRadius.lg),
-        ),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -45,14 +43,8 @@ class _PlatformCategorySheet extends ConsumerWidget {
                   hoverColor: tokens.surfaceRaised,
                   focusColor: AppStateLayer.focusOf(tokens.accent),
                   splashColor: AppStateLayer.splashOf(context.tokens.accent),
-                  highlightColor: AppStateLayer.pressedOf(
-                    context.tokens.accent,
-                  ),
-                  icon: Icon(
-                    Icons.close_rounded,
-                    size: 18,
-                    color: tokens.textSecondary,
-                  ),
+                  highlightColor: AppStateLayer.pressedOf(context.tokens.accent),
+                  icon: Icon(Icons.close_rounded, size: 18, color: tokens.textSecondary),
                 ),
               ],
             ),
@@ -60,16 +52,22 @@ class _PlatformCategorySheet extends ConsumerWidget {
           Container(height: 1, color: tokens.border),
           Expanded(
             child: async.when(
-              loading: () => const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+              loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
               error: (_, _) => Center(
-                child: Text(
-                  '分类加载失败',
-                  style: TextStyle(
-                    fontSize: AppFontSize.bodySecondary,
-                    color: tokens.textSecondary,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '分类加载失败',
+                      style: TextStyle(fontSize: AppFontSize.bodySecondary, color: tokens.textSecondary),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      key: const Key('platform-cat-sheet-retry'),
+                      onPressed: () => ref.invalidate(browseCategoriesProvider(site)),
+                      child: const Text('重试'),
+                    ),
+                  ],
                 ),
               ),
               data: (result) {
@@ -78,10 +76,7 @@ class _PlatformCategorySheet extends ConsumerWidget {
                   return Center(
                     child: Text(
                       '暂无分类数据',
-                      style: TextStyle(
-                        fontSize: AppFontSize.bodySecondary,
-                        color: tokens.textSecondary,
-                      ),
+                      style: TextStyle(fontSize: AppFontSize.bodySecondary, color: tokens.textSecondary),
                     ),
                   );
                 }
@@ -119,41 +114,21 @@ class _PlatformCategorySheet extends ConsumerWidget {
                                 borderRadius: AppRadius.allMd,
                                 // 底色已是抬升顶档 surfaceRaised,没有更亮的灰阶可抬:
                                 // hover 改走强调色 12% 淡染(同浮层内分类 chip 口径)。
-                                hoverColor: tokens.accent.withValues(
-                                  alpha: AppDirectoryDrawer.activeChipAlpha,
-                                ),
+                                hoverColor: tokens.accent.withValues(alpha: AppDirectoryDrawer.activeChipAlpha),
                                 // 焦点:底色与 surfaceRaised 同值会看不见,
                                 // 故取 AppFocus 环的光晕色(accent 24%,直接取自 token)。
-                                focusColor: AppFocus.ring(tokens.accent)
-                                    .first
-                                    .color,
-                                splashColor: AppStateLayer.splashOf(
-                                  context.tokens.accent,
-                                ),
-                                highlightColor: AppStateLayer.pressedOf(
-                                  context.tokens.accent,
-                                ),
+                                focusColor: AppFocus.ring(tokens.accent).first.color,
+                                splashColor: AppStateLayer.splashOf(context.tokens.accent),
+                                highlightColor: AppStateLayer.pressedOf(context.tokens.accent),
                                 onTap: () {
                                   Navigator.of(context).pop();
-                                  context.go(
-                                    _categoryRoute(site, cid: item.cid),
-                                  );
+                                  context.go(_categoryRoute(site, cid: item.cid));
                                 },
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                   child: Text(
-                                    displayCategoryName(
-                                      site,
-                                      item.name,
-                                      item.cid,
-                                    ),
-                                    style: TextStyle(
-                                      fontSize: AppFontSize.bodySecondary,
-                                      color: tokens.textPrimary,
-                                    ),
+                                    displayCategoryName(site, item.name, item.cid),
+                                    style: TextStyle(fontSize: AppFontSize.bodySecondary, color: tokens.textPrimary),
                                   ),
                                 ),
                               ),
@@ -241,11 +216,7 @@ class _FlyoutHint extends StatelessWidget {
 /// 数据来自 [browseCategoriesProvider](fixture/真实解析双轨同一入口),
 /// 不新造硬编码分类表。
 class _PlatformCategoryFlyout extends ConsumerWidget {
-  const _PlatformCategoryFlyout({
-    required this.site,
-    required this.onEnter,
-    required this.onExit,
-  });
+  const _PlatformCategoryFlyout({required this.site, required this.onEnter, required this.onExit});
 
   final String site;
   final VoidCallback onEnter;
@@ -261,12 +232,13 @@ class _PlatformCategoryFlyout extends ConsumerWidget {
         key: const Key('platform-flyout-panel'),
         child: switch (async) {
           AsyncData(:final value) =>
-            value.groups.isEmpty
-                ? const _FlyoutHint('暂无分类')
-                : _CategoryBoard(site: site, groups: value.groups),
-          AsyncError(:final error) => _FlyoutHint(
-            error.toString(),
-            danger: true,
+            value.groups.isEmpty ? const _FlyoutHint('暂无分类') : _CategoryBoard(site: site, groups: value.groups),
+          // 瞬态失败已被 controller 自动重试兜过一轮;仍到错误态就给出
+          // 中文提示 + 点击重试(不再把原始异常字符串直接甩给用户)。
+          AsyncError() => GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => ref.invalidate(browseCategoriesProvider(site)),
+            child: const _FlyoutHint('分类加载失败 · 点击重试', danger: true),
           ),
           _ => const _FlyoutHint('加载分类…'),
         },
@@ -300,8 +272,7 @@ class _CategoryBoardState extends State<_CategoryBoard> {
   /// PrimaryScrollController 上多 ScrollPosition 会直接报错(实测)。
   final _scrollControllers = <int, ScrollController>{};
 
-  ScrollController _controllerFor(int index) =>
-      _scrollControllers.putIfAbsent(index, () => ScrollController());
+  ScrollController _controllerFor(int index) => _scrollControllers.putIfAbsent(index, () => ScrollController());
 
   @override
   void dispose() {
@@ -349,9 +320,7 @@ class _CategoryBoardState extends State<_CategoryBoard> {
             Container(
               width: _CategoryBoard._kColumnWidth,
               padding: const EdgeInsets.only(left: 2.4),
-              constraints: const BoxConstraints(
-                maxHeight: _CategoryBoard._kBoardContentMax,
-              ),
+              constraints: const BoxConstraints(maxHeight: _CategoryBoard._kBoardContentMax),
               decoration: BoxDecoration(
                 border: Border(right: BorderSide(color: context.tokens.border)),
               ),
@@ -369,9 +338,7 @@ class _CategoryBoardState extends State<_CategoryBoard> {
                         width: double.infinity,
                         padding: const EdgeInsets.only(bottom: 3.8),
                         decoration: BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(color: context.tokens.border),
-                          ),
+                          border: Border(bottom: BorderSide(color: context.tokens.border)),
                         ),
                         child: Text(
                           displayCategoryGroupName(site, section.name),
@@ -402,8 +369,7 @@ class _CategoryBoardState extends State<_CategoryBoard> {
 
   /// 跳平台分类页:带 cid 进 `/:site/category/:cid`,CategoryView 据此高亮
   /// 所属分组与子分类(落地页形态见 [_categoryRoute])。
-  void _goCategory(BuildContext context, String cid) =>
-      context.go(_categoryRoute(widget.site, cid: cid));
+  void _goCategory(BuildContext context, String cid) => context.go(_categoryRoute(widget.site, cid: cid));
 }
 
 /// 浮层内纵向滚动条:常驻 4px 细条(对齐 web `scrolly` 的
@@ -451,9 +417,7 @@ class _CategoryChipState extends State<_CategoryChip> {
       onExit: (_) => setState(() => _hovering = false),
       child: InkWell(
         onTap: widget.onTap,
-        hoverColor: context.tokens.accent.withValues(
-          alpha: AppDirectoryDrawer.activeChipAlpha,
-        ),
+        hoverColor: context.tokens.accent.withValues(alpha: AppDirectoryDrawer.activeChipAlpha),
         focusColor: AppStateLayer.focusOf(context.tokens.accent),
         splashColor: AppStateLayer.splashOf(context.tokens.accent),
         highlightColor: AppStateLayer.pressedOf(context.tokens.accent),
@@ -465,9 +429,7 @@ class _CategoryChipState extends State<_CategoryChip> {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: AppFontSize.bodySecondary,
-              color: _hovering
-                  ? context.tokens.accent
-                  : context.tokens.textPrimary,
+              color: _hovering ? context.tokens.accent : context.tokens.textPrimary,
             ),
           ),
         ),

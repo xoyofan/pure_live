@@ -244,6 +244,8 @@ class PureLiveBrowseRepository implements BrowseRepository {
           ],
         ),
     ];
+    // soop 目录中文化走展示层(displayCategoryName → remap/补充表),数据层
+    // 保持上游英文本名(Accept-Language 口径见 SoopSite.getHeaders)。
     return CategoryResult(site: site, groups: groups);
   }
 

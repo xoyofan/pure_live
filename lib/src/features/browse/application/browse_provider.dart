@@ -24,17 +24,13 @@ class BrowseRoomQuery {
 
   @override
   bool operator ==(Object other) =>
-      other is BrowseRoomQuery &&
-      other.site == site &&
-      other.cid == cid &&
-      other.limit == limit;
+      other is BrowseRoomQuery && other.site == site && other.cid == cid && other.limit == limit;
 
   @override
   int get hashCode => Object.hash(site, cid, limit);
 
   @override
-  String toString() =>
-      'BrowseRoomQuery(site: $site, cid: $cid, limit: $limit)';
+  String toString() => 'BrowseRoomQuery(site: $site, cid: $cid, limit: $limit)';
 }
 
 /// 房间列表 controller:按 (site, cid) 拉取第一页,支持分页追加与刷新。
@@ -50,12 +46,7 @@ class BrowseRoomController extends AsyncNotifier<RoomListResult> {
   Future<RoomListResult> build() async {
     // watch 数据源端口:G1 换 direct 实现时自动重建。
     final source = ref.watch(browseSourceProvider);
-    return source.fetchRooms(
-      site: query.site,
-      cid: query.cid,
-      page: 1,
-      limit: query.limit,
-    );
+    return source.fetchRooms(site: query.site, cid: query.cid, page: 1, limit: query.limit);
   }
 
   /// 加载下一页并把结果追加到现有列表;防重入,无更多时为空操作。
@@ -64,17 +55,11 @@ class BrowseRoomController extends AsyncNotifier<RoomListResult> {
     if (_loadingMore || current == null || !current.hasMore) return;
     _loadingMore = true;
     try {
-      final next = await ref.read(browseSourceProvider).fetchRooms(
-            site: query.site,
-            cid: query.cid,
-            page: current.page + 1,
-          );
+      final next = await ref
+          .read(browseSourceProvider)
+          .fetchRooms(site: query.site, cid: query.cid, page: current.page + 1);
       state = AsyncData(
-        RoomListResult(
-          rooms: [...current.rooms, ...next.rooms],
-          page: next.page,
-          hasMore: next.hasMore,
-        ),
+        RoomListResult(rooms: [...current.rooms, ...next.rooms], page: next.page, hasMore: next.hasMore),
       );
     } catch (_) {
       // 追加失败保留当前数据,下次滚动到底部会再次尝试。
@@ -90,23 +75,18 @@ class BrowseRoomController extends AsyncNotifier<RoomListResult> {
     try {
       // 刷新与首屏同容量:F5/下拉刷新的条数 = 当前视口算出的首屏容量
       // (否则刷新一回来条数漂移,首屏可能多/空一截)。
-      final result = await ref.read(browseSourceProvider).fetchRooms(
-            site: query.site,
-            cid: query.cid,
-            page: 1,
-            limit: query.limit,
-          );
+      final result = await ref
+          .read(browseSourceProvider)
+          .fetchRooms(site: query.site, cid: query.cid, page: 1, limit: query.limit);
       state = AsyncData(result);
     } catch (error, stackTrace) {
-      state =
-          previous != null ? AsyncData(previous) : AsyncError(error, stackTrace);
+      state = previous != null ? AsyncData(previous) : AsyncError(error, stackTrace);
     }
   }
 }
 
 /// (site, cid) -> 房间分页列表。
-final browseRoomsProvider = AsyncNotifierProvider.family<
-    BrowseRoomController, RoomListResult, BrowseRoomQuery>(
+final browseRoomsProvider = AsyncNotifierProvider.family<BrowseRoomController, RoomListResult, BrowseRoomQuery>(
   BrowseRoomController.new,
 );
 
@@ -114,20 +94,29 @@ final browseRoomsProvider = AsyncNotifierProvider.family<
 class CategoryController extends AsyncNotifier<CategoryResult> {
   CategoryController(this.site);
 
+  /// 站点目录接口的瞬态抖动(灰度页/边缘重置/出口抖动)重试前等待;
+  /// 只重试一次,再失败才进错误态(避免 hover 浮层把偶发错误缓存成常驻)。
+  static const Duration retryDelay = Duration(milliseconds: 800);
+
   /// family 参数(站点 id),由 [browseCategoriesProvider] 注入。
   final String site;
 
   @override
-  Future<CategoryResult> build() {
-    return ref.watch(browseSourceProvider).fetchCategories(site);
+  Future<CategoryResult> build() async {
+    final source = ref.watch(browseSourceProvider);
+    try {
+      return await source.fetchCategories(site);
+    } catch (_) {
+      await Future<void>.delayed(retryDelay);
+      return source.fetchCategories(site);
+    }
   }
 
   /// 重新拉取分类索引。
   Future<void> refresh() async {
     state = AsyncLoading<CategoryResult>();
     try {
-      state =
-          AsyncData(await ref.read(browseSourceProvider).fetchCategories(site));
+      state = AsyncData(await ref.read(browseSourceProvider).fetchCategories(site));
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
     }
@@ -135,7 +124,6 @@ class CategoryController extends AsyncNotifier<CategoryResult> {
 }
 
 /// site -> 分类索引。
-final browseCategoriesProvider =
-    AsyncNotifierProvider.family<CategoryController, CategoryResult, String>(
+final browseCategoriesProvider = AsyncNotifierProvider.family<CategoryController, CategoryResult, String>(
   CategoryController.new,
 );

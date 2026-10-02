@@ -184,6 +184,10 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
   Map<String, String> getHeaders() {
     return {
       'Accept': '*/*',
+      // 上游 2026-10 已撤 lang=zh_CN 本地化,仅保留 ko/en(Accept-Language);
+      // 统一取英文目录名,展示层经 remapCategoryName/fork 补充表中文化,
+      // 未覆盖长尾回落英文(对中文用户可读性优于韩文)。
+      'Accept-Language': 'en-US',
       'Origin': 'https://www.sooplive.co.kr',
       'Referer': 'https://www.sooplive.co.kr/',
       'Sec-Fetch-Dest': 'empty',

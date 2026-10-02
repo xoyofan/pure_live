@@ -9,8 +9,9 @@
 /// 语义与 web 保持一致:命中跨平台映射用 canonical 中文名,否则回落平台原名。
 library;
 
-import 'package:live_parser/live_parser.dart' show soopZhCategoryName;
+import 'package:live_parser/live_parser.dart' show remapCategoryName, soopZhCategoryName;
 
+import 'category_zh_supplement.dart';
 import 'cross_categories_data.dart';
 import 'cross_categories_data_models.dart';
 
@@ -52,15 +53,10 @@ const Map<String, String> _kCrossKeyAliases = {
 };
 
 /// 各平台 cid 不同,跨平台 key 对应斗鱼 cid 需手工校正。
-const Map<String, String> _kCrossDouyuCidPatch = {
-  'dnf': '40',
-};
+const Map<String, String> _kCrossDouyuCidPatch = {'dnf': '40'};
 
 /// 虎牙同义 gid:分类页 100032 与直播 ZJGAME(1964) 均为主机游戏。
-const Map<String, String> _kHuyaCidAliases = {
-  '100032': 'host',
-  '1964': 'host',
-};
+const Map<String, String> _kHuyaCidAliases = {'100032': 'host', '1964': 'host'};
 
 /// 历史/自动生成的冗长 key → 当前简短 key(兼容旧链接与本地缓存)。
 String resolveCrossCategoryKey(String? key) {
@@ -105,10 +101,7 @@ CrossCategoryEntry? findCrossCategoryByKey(String? key) {
 }
 
 CrossCategoryEntry? _findByKey(String text) =>
-    kCrossCategories.cast<CrossCategoryEntry?>().firstWhere(
-          (e) => e?.key == text,
-          orElse: () => null,
-        );
+    kCrossCategories.cast<CrossCategoryEntry?>().firstWhere((e) => e?.key == text, orElse: () => null);
 
 // 内置表已是唯一数据源,FALLBACK 与正式表同源,此处回落到同一常量表。
 CrossCategoryEntry? _findByKeyFallback(String text) => _findByKey(text);
@@ -139,8 +132,7 @@ String huyaCidForCrossKey(String? key, [Object? fallback]) {
   return (pic: '', huyaCid: '');
 }
 
-String _norm(String? text) =>
-    (text ?? '').toString().trim().toLowerCase().replaceAll(RegExp(r'\s+'), '');
+String _norm(String? text) => (text ?? '').toString().trim().toLowerCase().replaceAll(RegExp(r'\s+'), '');
 
 String? _gameCidForSite(CrossCategoryEntry entry, String site) {
   final ref = entry.siteCids[site];
@@ -253,15 +245,10 @@ CrossCategoryEntry? matchCrossCategoryByName(String? categoryName) {
 List<CrossCategoryEntry> _fallbackPool() => kCrossCategories;
 
 /// 统一查找:综合 cid 与分类名,返回最优跨平台分类。
-CrossCategoryEntry? findCrossCategory(
-  String? site,
-  String? categoryName,
-  Object? cid,
-) {
+CrossCategoryEntry? findCrossCategory(String? site, String? categoryName, Object? cid) {
   final siteId = (site ?? '').toString().trim();
   final cidText = (cid ?? '').toString().trim();
-  final byCid =
-      cidText.isNotEmpty && siteId.isNotEmpty ? matchCrossCategoryByCid(siteId, cidText) : null;
+  final byCid = cidText.isNotEmpty && siteId.isNotEmpty ? matchCrossCategoryByCid(siteId, cidText) : null;
   final byName = matchCrossCategoryByName(categoryName);
   final rawName = _norm(categoryName);
 
@@ -278,11 +265,7 @@ CrossCategoryEntry? findCrossCategory(
 }
 
 /// 平台分类项 → 跨平台收藏 key;无映射时返回空字符串。
-String crossKeyForPlatformCategory(
-  String? site,
-  String? cid,
-  String? name,
-) {
+String crossKeyForPlatformCategory(String? site, String? cid, String? name) {
   final siteId = (site ?? '').toString().trim();
   final cidText = (cid ?? '').toString().trim();
   final nameText = (name ?? '').toString().trim();
@@ -293,11 +276,7 @@ String crossKeyForPlatformCategory(
 }
 
 /// 统一展示名:命中跨平台映射用 canonical name,否则用平台原名。
-String displayCategoryName(
-  String? site,
-  String? categoryName, [
-  Object? cid,
-]) {
+String displayCategoryName(String? site, String? categoryName, [Object? cid]) {
   final raw = (categoryName ?? '').toString().trim();
   final siteId = (site ?? '').toString().trim();
   if (raw.isEmpty) return '';
@@ -312,6 +291,16 @@ String displayCategoryName(
   // 若仍走名称映射,「体育」会被登记为「户外」的别名而互相抢占:
   // 侧栏出现两个「户外」、「体育」整项消失。
   if (siteId == 'all') return raw;
+  // fork 全平台扩展(pure_live 数据链):海外平台展示层中文化。
+  // 1) fork 补充表(twitcasting 按 cid / picarto·showroom·twitch 分组按标签);
+  // 2) web 真源 remap 表(twitch/soop 英文别名 → 归一中文,180+ 条);
+  // 命中即返回,未命中继续走 soop 进程表与跨平台表,最后回落原名。
+  final supplementZh = zhSupplementCategoryName(siteId, cid?.toString(), raw);
+  if (supplementZh != null && supplementZh.isNotEmpty) return supplementZh;
+  if (siteId == 'twitch' || siteId == 'soop') {
+    final remapped = remapCategoryName(siteId, raw);
+    if (remapped != raw) return remapped;
+  }
   // soop:分类号反查 zh_CN 进程表(解析层分类预热时填充),覆盖 cross 表
   // 之外的冷门分类;表未就绪/未命中再走跨平台表与原名。
   if (siteId == 'soop') {
@@ -327,11 +316,7 @@ String displayCategoryName(
 }
 
 /// 播放页标题:中文优先;跨平台 key(如 huwai)→ 中文名;有原生中文则保留。
-String formatCategoryHeaderLabel(
-  String? site,
-  String? categoryName, [
-  Object? cid,
-]) {
+String formatCategoryHeaderLabel(String? site, String? categoryName, [Object? cid]) {
   final raw = (categoryName ?? '').toString().trim();
   if (raw.isEmpty) return displayCategoryName(site, '', cid);
   final byKey = findCrossCategoryByKey(raw);
@@ -343,11 +328,7 @@ String formatCategoryHeaderLabel(
 }
 
 /// 房间角标/列表:原生分类名经跨平台映射后展示(如虎牙 lol → 英雄联盟)。
-String roomCategoryLabel(
-  String? site, {
-  required String? nativeCategory,
-  String? cid,
-}) {
+String roomCategoryLabel(String? site, {required String? nativeCategory, String? cid}) {
   final siteId = (site ?? '').toString().trim();
   final native = (nativeCategory ?? '').toString().trim();
   if (native.isNotEmpty) {
@@ -360,17 +341,10 @@ String roomCategoryLabel(
 
 /// 分组名展示:抖音/斗鱼/虎牙/哔哩哔哩直接用平台原名(这些平台分组名已是中文
 /// 或平台原生),其余才走跨平台映射。
-String displayCategoryGroupName(
-  String? site,
-  String? categoryName, [
-  Object? cid,
-]) {
+String displayCategoryGroupName(String? site, String? categoryName, [Object? cid]) {
   final raw = (categoryName ?? '').toString().trim();
   if (raw.isEmpty) return '';
-  if (site == 'douyin' ||
-      site == 'douyu' ||
-      site == 'huya' ||
-      site == 'bilibili') {
+  if (site == 'douyin' || site == 'douyu' || site == 'huya' || site == 'bilibili') {
     return raw;
   }
   return displayCategoryName(site, raw, cid);

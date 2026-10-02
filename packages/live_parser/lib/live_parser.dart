@@ -4,6 +4,7 @@
 /// package:web 与 dart:js_interop;仅允许纯 Dart。
 library;
 
+export 'src/catalog/category_name_remap.dart';
 export 'src/catalog/cross_catalog.dart';
 export 'src/catalog/cross_hot_categories_generated.dart';
 export 'src/contracts/contracts.dart';
