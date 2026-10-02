@@ -386,6 +386,14 @@
 
 **验证**:analyze lib tool **0 error**;全套件 **133/133 过**;audit **0 error**;三站播放探针如上。剩 CHZZK 弹幕验收(聊天边缘对数据中心 IP 封锁,迭代8 定论待住宅网络)与 B 站/斗鱼匿名降档(服务端行为,需用户 Cookie,非代码缺陷)——台账既有项,无新增暂缓
 
+
+### 迭代 25(2026-10-03)✅ Windows Release 3.1.18+4107 打包成功并启动验证
+
+- **ffmpeg_kit 哈希谜团(三哈希三角色)**:`e616...`=fork n9.0.2-b1 真品(build 脚本 pin+wzgrx 资产实测一致);`ac4f...`=akashskypatel 官方 0.11.1(hook 内置 GitHub digest 校验指向它);`1e4cc...`=curl -r 0-0 断点残留假象。合并后首败根因=持久缓存里的坏 zip(01:23 下载损坏)被复用;清缓存后 fresh 下载哈希=ac4f(官方资产未变)但 build 脚本 pin e616 仍拦——**hook 与 build 脚本校验的是两代不同的原生包**(上游 0.11.1 官方 vs fork 自建 n9.0.2-b1),prefetch 本会播种 e616 进 hook 缓存,hook 却拿官方 digest 验同名文件必败(此前成功系 digest API 竞态失败跳过校验)
+- **修复**:pubspec `ffmpeg_kit_extended_config.windows` 指向本地预取文件(`../native-cache/ffmpeg-kit/...zip`,hook 对 local override 完全跳过网络哈希;prefetch pin+build_local_release 复核双保险);另修 media_core_memory/win32 相对 rootUri 锁漂移(显式绝对路径);version.json 全平台字段同步 3.1.18+4107(Windows 构建取 platforms.windows)
+- **产物**:`local-artifacts/3.1.18-4107/PureLive-3.1.18-4107-windows-x64-portable.zip`(73.4MB,SHA256 332df7ac...;1357 文件,pure_live.exe+3 原生 dll;包内 flutter_assets/assets/version.json 实测 3.1.18+4107)
+- **启动验证**:进程活(PID 5020),窗口标题「全平台首页 · 紫薯直播 3.1.18」;niconico/FC2 owned-input 播放与分类中文化待真机抽查
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:
