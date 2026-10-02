@@ -63,6 +63,19 @@
 - [x] niconico:评估为**暂缓**——弹幕需从播放会话 room 消息取 msg 主机,独立会话有座位互踢风险,且 msg 主机不可达无法验证
 - 现役弹幕平台:8 家新增(SHOWROOM/TwitCasting/AcFun/猫耳/Picarto/FC2/Bigo 落地 + PandaTV/CHZZK 代码先行)
 
+### 迭代 14(2026-10-02)✅ 弹幕专项七:17LIVE 落地 + KilaKila 落地 + 国内 8 平台档案
+
+- [x] 17LIVE:浏览器逐帧抓包全捕获。匿名通配 token 端点 = `POST /api/v1/messenger/auth`(permissions=["*"];/messenger/token 是全局限能力 token,ATTACH 房间被 40160 拒);Ably 帧序列 = 服务端 CONNECTED(4)→客户端 ATTACH(10)→ATTACHED(11)→MESSAGE(15,data=Base64(gzip(JSON)) 魔数嗅探,type3=评论);curl 匿名复现成功;调试探针实测 **ATTACHED+房间频道 action15 持续到达**(chat=0 系凌晨房间安静);单测 5 用例;矩阵探针 passed
+- [x] KilaKila:调研确证 `/LiveRoom/latestQuery` 匿名 200(b.data[] 行 content=JSON 串);REST 4s 轮询版实现(relativeTime 去重、防御键名解析、bizType2 问答卡天然过滤);单测 4 用例;矩阵会话 passed(chat=0 同因房间安静)
+- [x] 国内 8 平台档案(调研 agent):
+  - **映客**:协议确证(chatroom.inke.cn/url 匿名返回带签名 WS,JSON 帧),本机 WS 边缘拒(IP 绑定签名)→ 待网络,成本最低
+  - **酷狗**:协议确证(chat1wss.kugou.com/acksocket,JSON+
+ 命令字 201/501,心跳 H/10s),匿名登录未放行待复测
+  - **六间房**:文本行协议确证(login/心跳 y8vPLwAA/16s),缺 WS 域名+encpass 签发,需浏览器抓包
+  - **LOOK**:网易云信 NIM Chatroom(凭证 chat/address),工作量大按需投入
+  - LiveMe(socket.io 主机未定位)/京东(h5st+eid 风控,不建议)/百度(房间页封锁,无社区资料):暂缓
+- 现役弹幕平台:**10 家新增落地**(SHOWROOM/TwitCasting/AcFun/猫耳/Picarto/FC2/Bigo/17LIVE/KilaKila + 头部 8 家既有)+ PandaTV/CHZZK 代码先行
+
 ## 三、修复计划(多轮迭代)
 
 ### 迭代 1(2026-10-01)✅ 已完成
