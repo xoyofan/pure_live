@@ -91,28 +91,72 @@ class ChzzkSite extends LiveSite
     liveStatus: channel.isLive ? LiveStatus.live : LiveStatus.offline,
   );
 
+  /// 一级类型枚举 → 中文分组名(榜单现值 GAME/ETC/SPORTS/ENTERTAINMENT;
+  /// 未知类型回落原枚举名)。
+  static const Map<String, String> _categoryTypeNames = {
+    'GAME': '游戏',
+    'ETC': '聊天',
+    'SPORTS': '体育',
+    'ENTERTAINMENT': '娱乐',
+  };
+
+  /// 分组顺序:游戏 → 聊天 → 体育 → 娱乐 → 其余按首现序。
+  static const List<String> _categoryTypeOrder = ['GAME', 'ETC', 'SPORTS', 'ENTERTAINMENT'];
+
+  /// 目录 = 「公开热门直播」单入口(总榜,既有路由/收藏不变)+ 热门分类
+  /// top-20 按类型分组。上游忽略翻页参数、无全量树公开端点(2026-10-02
+  /// 实测),故只暴露真实榜单,不虚构子分类。
   @override
-  Future<List<LiveCategory>> getCategores(int page, int pageSize) async => page == 1
-      ? [
-          LiveCategory(
-            id: id,
-            name: name,
-            children: [
-              LiveArea(
-                platform: id,
-                areaType: 'directory',
-                areaId: 'popular',
-                areaName: i18n('chzzk_public_directory'),
-                typeName: name,
-              ),
-            ],
+  Future<List<LiveCategory>> getCategores(int page, int pageSize) async {
+    if (page != 1 || pageSize <= 0) return [];
+    final groups = <LiveCategory>[
+      LiveCategory(
+        id: 'popular',
+        name: i18n('chzzk_public_directory'),
+        children: [
+          LiveArea(
+            platform: id,
+            areaType: 'directory',
+            areaId: 'popular',
+            areaName: i18n('chzzk_public_directory'),
+            typeName: name,
           ),
-        ]
-      : [];
+        ],
+      ),
+    ];
+    final categories = await _api.popularCategories();
+    final byType = <String, List<LiveArea>>{};
+    for (final category in categories) {
+      byType
+          .putIfAbsent(category.type, () => [])
+          .add(
+            LiveArea(
+              platform: id,
+              areaType: category.type,
+              areaId: category.id,
+              areaName: category.name,
+              typeName: _categoryTypeNames[category.type] ?? category.type,
+            ),
+          );
+    }
+    final types = [
+      for (final type in _categoryTypeOrder)
+        if (byType.containsKey(type)) type,
+      ...byType.keys.where((type) => !_categoryTypeOrder.contains(type)),
+    ];
+    for (final type in types) {
+      groups.add(LiveCategory(id: type, name: _categoryTypeNames[type] ?? type, children: byType[type]!));
+    }
+    return groups;
+  }
 
   void _validateCategory(LiveArea? category) {
-    if (category != null &&
-        (category.platform != id || category.areaType != 'directory' || category.areaId != 'popular')) {
+    if (category == null) return;
+    if (category.platform != id) throw const ChzzkException(ChzzkFailure.identity);
+    // 既有总榜入口(areaType=directory/popular)与新分类入口
+    // (areaType=类型枚举/areaId=slug)放行;空段拒绝(slug 形状校验在 api 层)。
+    if (category.areaType == 'directory' && category.areaId == 'popular') return;
+    if ((category.areaType ?? '').isEmpty || (category.areaId ?? '').isEmpty) {
       throw const ChzzkException(ChzzkFailure.identity);
     }
   }
@@ -128,7 +172,15 @@ class ChzzkSite extends LiveSite
       throw const ChzzkException(ChzzkFailure.schema);
     }
     _validateCategory(category);
-    final result = await _api.directory(cursor: cursor, cancel: cancel);
+    final isPopularDirectory = category == null || (category.areaType == 'directory' && category.areaId == 'popular');
+    final result = isPopularDirectory
+        ? await _api.directory(cursor: cursor, cancel: cancel)
+        : await _api.categoryDirectory(
+            categoryType: category.areaType ?? '',
+            categoryId: category.areaId ?? '',
+            cursor: cursor,
+            cancel: cancel,
+          );
     final seen = <String>{};
     return LiveDirectoryPage(
       page: page,

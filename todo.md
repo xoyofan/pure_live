@@ -267,6 +267,20 @@
 
 **验证**:新增 2 套单测 10 用例全过(`category_zh_display_test` 8:twitch 分组/remap/twitcasting cid+标签兜底/picarto/showroom/soop 英文映射+韩文回落/中文平台不劫持/跨平台 cid 仍生效;`category_controller_retry_test` 2:失败重试一次成功/持续失败只重试一次);missevan_categories+site_settings_fallback 回归全绿(16/16);范围化 analyze 零问题;探针复验 soop 数据层已切英文目录名(展示层中文由单测覆盖)、missevan 5/showroom 18 稳定。探针入库 `tool/probes/catalog_diag_probe_test.dart`(任意站点目录+完整栈诊断)
 
+### 迭代 17(2026-10-02)✅ 分类中文化续:CHZZK 真实目录落地 + SOOP 推荐流韩文徽标中文化
+
+迭代16 收尾续作,补掉两个分类缺口:
+
+- **CHZZK 真实分类目录**(原为"公开热门直播"单占位)。端点考古:web JS 反查 + cloudstream-chzzk 交叉确证——目录 `/service/v1/categories/live?size=20`(top-20 榜单,实测服务端**忽略一切 cursor/offset/page 翻页参数**,全量树无公开端点);分类直播 `/service/v2/categories/{type}/{id}/lives`(v1 lives 端点忽略分类参数,v2 才真过滤)。实现:
+  - `ChzzkApi.popularCategories`(去重保序,行形状异常跳过不炸目录)+ `categoryDirectory`(与总榜共用 inclusive-cursor 分页解析,抽 `_directoryPageFrom`;type 大写枚举/id slug 形状双校验防路径注入)
+  - `ChzzkSite.getCategores`:「公开热门直播」总榜入口(既有路由/收藏不变)+ top-20 按类型分组(游戏16/聊天1/体育2/娱乐1,分组名直接中文);`getDirectoryPageAtCursor` 按 areaType 分支总榜/分类;`_validateCategory` 放行新入口(areaType=类型枚举/areaId=slug)
+  - 中文:`kChzzkZhByName` slug+韩文原名**双键**(分类树带 cid=slug,房间徽标只带韩文 `liveCategoryValue`),20 项全量翻译(로스트아크→命运方舟、발로란트→无畏契约、이환(NTE)→异环 等);UI 走 `displayCategoryName` 补充表 chzzk 分支
+- **SOOP 推荐流房间徽标中文化**。实测缺口:`sch.sooplive.co.kr` 分类/目录接口吃 `Accept-Language: en-US`(迭代16),但**推荐流 `live.sooplive.co.kr/api/main_broad_list_api.php` 不吃**,房间行仍直出韩文分类名 → 首页徽标韩文。修复:按 `category_no` 把韩文名与英文名对齐(95 对),为已有中文翻译的 68 项生成韩文键并入 `kSoopZhByName`——首页房间徽标(토크/캠방→聊天/秀场、버추얼→虚拟主播、국가대표→国际足球 等)与英文目录同源中文化
+
+**验证**:`category_zh_display_test` 增 chzzk 双键用例 + soop 韩文键断言(9 用例全过);回归 25/25(missevan/site_settings/audience/retry);analyze 零问题;探针实测 CHZZK 目录 5 组分组正确、`rooms[Project_Zomboid]: 26`(v2 分类房间真过滤)、总榜 30 房间正常;SOOP 分类房间 `rooms[00130000]: 3`(英文化)。
+
+**备注**:CHZZK 全量分类树需登录后 web 路由 chunk 里的端点(HAR 才能拿),top-20 榜单为当前匿名可达上限;SOOP 长尾(百名外)韩文键未收录,徽标回落韩文原名
+
 **备注**:chzzk/pandalive/bigo/jdlive/weibo/steam 等单占位目录为既有审计结论(结构性/出口封禁),youtube 无目录结构性; hover 顺序:补充表→remap→soop 进程表→跨平台表→原名,四家原生中文名不受影响
 
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论

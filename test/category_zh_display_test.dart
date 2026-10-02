@@ -48,8 +48,18 @@ void main() {
       // fork 补充表覆盖(remap 未收录)。
       expect(displayCategoryName('soop', 'Virtual', '00810000'), '虚拟主播');
       expect(displayCategoryName('soop', 'Lost Ark', '00040067'), '命运方舟');
-      // 上游韩文(未走 en 本地化的数据)保持原名回退。
-      expect(displayCategoryName('soop', '토크/캠방', '00130000'), '토크/캠방');
+      // 韩文原名(推荐流直出)经韩文键映射;未收录韩文名回落原名。
+      expect(displayCategoryName('soop', '토크/캠방', '00130000'), '聊天/秀场');
+      expect(displayCategoryName('soop', '안 어카테고리', ''), '안 어카테고리');
+    });
+
+    test('chzzk:slug/韩文名双键映射', () {
+      // 分类树:cid=slug。
+      expect(displayCategoryName('chzzk', '리그 오브 레전드', 'League_of_Legends'), '英雄联盟');
+      // 房间徽标只带韩文名,无 cid。
+      expect(displayCategoryName('chzzk', '로스트아크', ''), '命运方舟');
+      // 双未命中保持原名(长尾韩文回落)。
+      expect(displayCategoryName('chzzk', '어떤 게임', 'Some_Game'), '어떤 게임');
     });
 
     test('中文平台不被补充表劫持', () {

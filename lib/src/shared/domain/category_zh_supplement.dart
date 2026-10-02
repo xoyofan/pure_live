@@ -122,6 +122,123 @@ const Map<String, String> kSoopZhByName = {
   'talesrunner': '超级跑跑',
   'religion': '宗教',
   'valheim': '英灵神殿',
+
+  // 推荐流(main_broad_list_api.php)不吃 Accept-Language,房间行仍直出韩文
+  // 分类名;以下按 category_no 对齐的韩文原名键,保证首页房间徽标中文化
+  // (2026-10-02 实测生成,与上方英文键同源)。
+  '토크/캠방': '聊天/秀场',
+  '버추얼': '虚拟主播',
+  '국가대표': '国际足球',
+  '스타크래프트': '星际争霸：重制版',
+  'FC 온라인': 'FC Online足球在线',
+  'PUBG: 배틀그라운드': '绝地求生',
+  '마인크래프트': '我的世界',
+  '발로란트': '无畏契约',
+  '리그 오브 레전드': '英雄联盟',
+  '서든어택': '突击风暴',
+  '오버워치': '守望先锋',
+  '종합게임': '其他游戏',
+  '여행': '旅行',
+  '취미': '兴趣爱好',
+  '메이플스토리': '冒险岛',
+  '먹방/쿡방': '吃播',
+  '뮤직/댄스': '音乐/舞蹈',
+  '제우스: 오만의 신': '宙斯：傲慢之神',
+  '전략적 팀 전투': '云顶之弈',
+  '피트니스': '健身运动',
+  '메이플스토리 월드': '冒险岛Worlds',
+  '음악 스트리밍': '音乐电台',
+  '로스트아크': '命运方舟',
+  '이터널 리턴': '永恒轮回',
+  '아이온 2': '永恒之塔2',
+  '암호화폐': '加密货币',
+  '더빙/라디오': '配音/电台',
+  '리니지 클래식': '天堂Classic',
+  '스페셜포스': '特种部队',
+  '낚시/아웃도어': '钓鱼/户外',
+  '국내프로축구': '韩国职业足球',
+  '토크/분석': '谈话/分析',
+  '월드 오브 워크래프트': '魔兽世界',
+  '스타크래프트 II': '星际争霸II',
+  '중립': '棒球转播',
+  '모바일 종합게임': '全部手游',
+  '천하제일상 거상': '巨商',
+  '테일즈런너': '超级跑跑',
+  '종교': '宗教',
+  '시사': '头条',
+  '러스트': '失控进化-RUST',
+  '주식': '股票',
+  '미술': '绘画',
+  '운세': '占卜运势',
+  '리니지': '天堂',
+  '그랜드 테프트 오토 V': 'GTA5',
+  '히어로즈 오브 더 스톰': '风暴英雄',
+  '레트로게임': '复古游戏',
+  '델타포스': '三角洲行动',
+  '디아블로 II': '暗黑破坏神2',
+  '프리스타일': '街头篮球',
+  '발헤임': '英灵神殿',
+  '명조: 워더링 웨이브': '鸣潮',
+  '마인드 스포츠': '智力运动',
+  '디아블로 III': '暗黑破坏神3',
+  '아마 야구': '业余棒球',
+  '디아블로 IV': '暗黑破坏神Ⅳ',
+  '포트나이트': '堡垒之夜',
+  '콜 오브 듀티': '使命召唤',
+  '스트리트 파이터 6': '街头霸王6',
+  '데드 바이 데이라이트': '黎明杀机',
+  '아크 레이더스': '弧光猎人(ARC Raiders)',
+  '로블록스': '罗布乐思',
+  '유로 트럭 시뮬레이터 2': '欧洲卡车模拟2',
+  '림버스 컴퍼니': '边狱公司',
+  '마비노기 모바일': '洛奇手游',
+  '팰월드': '幻兽帕鲁',
+  '패스 오브 엑자일 2': '流放之路2',
+};
+
+/// CHZZK 热门分类 → 中文(top-20 榜单 2026-10-02;键含 slug 与韩文原名,
+/// 分类树走 slug、房间徽标只带韩文名 liveCategoryValue,双键都要能查)。
+const Map<String, String> kChzzkZhByName = {
+  'talk': '聊天',
+  '토크': '聊天',
+  'Project_Zomboid': '僵尸毁灭工程',
+  '프로젝트 좀보이드': '僵尸毁灭工程',
+  'Lost_Ark': '命运方舟',
+  '로스트아크': '命运方舟',
+  'Valorant': '无畏契约',
+  '발로란트': '无畏契约',
+  'asiangames2026': '2026 亚运会',
+  '2026 아시안게임': '2026 亚运会',
+  'WutheringWaves': '鸣潮',
+  '명조:워더링 웨이브': '鸣潮',
+  'Black_Survival_Eternal_Return': '永恒轮回',
+  '이터널 리턴': '永恒轮回',
+  'animation': '动画',
+  '애니메이션': '动画',
+  'League_of_Legends': '英雄联盟',
+  '리그 오브 레전드': '英雄联盟',
+  'soccer': '足球',
+  '축구': '足球',
+  'Minecraft': '我的世界',
+  '마인크래프트': '我的世界',
+  'FIFA_ONLINE4': 'FC Online足球在线',
+  'FC온라인': 'FC Online足球在线',
+  'Roblox': '罗布乐思',
+  '로블록스': '罗布乐思',
+  'various_games': '综合游戏',
+  '종합 게임': '综合游戏',
+  'Genshin_Impact': '原神',
+  '원신': '原神',
+  'Limbus_Company': '边狱公司',
+  '림버스 컴퍼니': '边狱公司',
+  'World_of_Warcraft_Midnight': '魔兽世界：午夜',
+  '월드 오브 워크래프트: 한밤': '魔兽世界：午夜',
+  'NTE': '异环',
+  '이환': '异环',
+  'Great_Merchant': '巨商',
+  '천하제일상거상': '巨商',
+  'Teamfight_Tactics': '云顶之弈',
+  '전략적 팀 전투 : 신비의 숲': '云顶之弈',
 };
 
 /// Twitch 一级分组标签(SearchCategoryTags,小写) → 中文。
@@ -192,9 +309,11 @@ final Map<String, String> _twitcastingLabelZh = {
 
 final Map<String, String> _soopZh = {for (final entry in kSoopZhByName.entries) _normalize(entry.key): entry.value};
 
+final Map<String, String> _chzzkZh = {for (final entry in kChzzkZhByName.entries) _normalize(entry.key): entry.value};
+
 /// fork 补充表中文名:TwitCasting 按稳定 cid 反查(标签语言不稳),
-/// picarto/showroom 按 小写标签,twitch 一级分组标签,soop 补 remap 未覆盖项;
-/// 未命中返回 null。
+/// picarto/showroom 按 小写标签,twitch 一级分组标签,soop 补 remap 未覆盖项,
+/// chzzk 按 slug + 韩文原名双键;未命中返回 null。
 String? zhSupplementCategoryName(String? site, String? cid, String? name) {
   switch ((site ?? '').trim()) {
     case 'twitcasting':
@@ -213,6 +332,14 @@ String? zhSupplementCategoryName(String? site, String? cid, String? name) {
       return _twitchGroupZh[_normalize(name)];
     case 'soop':
       return _soopZh[_normalize(name)];
+    case 'chzzk':
+      // 分类树带 cid=slug 优先;房间徽标只带韩文名,走名字键。
+      final cidKey = (cid ?? '').trim();
+      if (cidKey.isNotEmpty) {
+        final byCid = _chzzkZh[cidKey.toLowerCase()];
+        if (byCid != null) return byCid;
+      }
+      return _chzzkZh[_normalize(name)];
     default:
       return null;
   }

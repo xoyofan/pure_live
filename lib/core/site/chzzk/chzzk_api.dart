@@ -19,6 +19,23 @@ class ChzzkException implements Exception {
 
 typedef ChzzkRequest = Future<({int status, String body})> Function(Uri uri, CancelToken? cancel);
 
+/// 直播热门分类行(`/service/v1/categories/live`,2026-10-02 实测:服务端
+/// 忽略 cursor/offset/page 参数,恒为 top-20 榜单,无全量树公开端点)。
+class ChzzkCategory {
+  const ChzzkCategory({required this.type, required this.id, required this.name, required this.openLiveCount});
+
+  /// 一级类型枚举(GAME/ETC/SPORTS/ENTERTAINMENT)。
+  final String type;
+
+  /// 分类 slug(v2 分类直播端点路径段,如 `League_of_Legends`)。
+  final String id;
+
+  /// 韩文展示名(categoryValue)。
+  final String name;
+
+  final int openLiveCount;
+}
+
 class ChzzkChannel {
   const ChzzkChannel({
     required this.id,
@@ -99,6 +116,11 @@ class ChzzkApi {
   static const apiOrigin = 'https://api.chzzk.naver.com';
   static const webOrigin = 'https://chzzk.naver.com';
   static const responseLimit = 2 * 1024 * 1024;
+
+  /// 分类路径段形状:type 为大写枚举,id 为榜单同形 slug;进入 URL 前
+  /// 双重校验(cid 经用户可控路由传入,不得拼进路径)。
+  static final RegExp _categoryTypeShape = RegExp(r'^[A-Z]{1,24}$');
+  static final RegExp _categoryIdShape = RegExp(r'^[A-Za-z0-9_-]{1,80}$');
   static const userAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
       'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
@@ -199,6 +221,49 @@ class ChzzkApi {
 
   Future<String> manifest(String url, {CancelToken? cancel}) => _read(_mediaUri(url), cancel);
 
+  /// 热门分类目录(去重保序)。服务端忽略一切翻页参数,恒为 top-20 榜单;
+  /// 全量分类树无公开端点(web 全量列表在登录后的路由 chunk 里),不虚构。
+  Future<List<ChzzkCategory>> popularCategories({CancelToken? cancel}) async {
+    final content = _object(await _get('/service/v1/categories/live', const {'size': '20'}, cancel));
+    final rows = _list(content['data'], max: 32);
+    final result = <String, ChzzkCategory>{};
+    for (final raw in rows) {
+      final row = _object(raw);
+      final type = _text(row['categoryType']);
+      final id = _text(row['categoryId']);
+      final name = _text(row['categoryValue']);
+      // openLiveCount 缺失按 0 处理(运营位行不炸整个目录)。
+      final openLiveCount = _optionalNonNegativeInt(row['openLiveCount']) ?? 0;
+      if (_categoryTypeShape.hasMatch(type) && _categoryIdShape.hasMatch(id) && name.isNotEmpty) {
+        result.putIfAbsent(id, () => ChzzkCategory(type: type, id: id, name: name, openLiveCount: openLiveCount));
+      }
+    }
+    return result.values.toList(growable: false);
+  }
+
+  /// 分类直播流(`/service/v2/categories/{type}/{id}/lives`),与总榜同一
+  /// inclusive-cursor 分页口径。type/id 只接受榜单同形 slug,杜绝路径注入。
+  Future<ChzzkDirectoryPage> categoryDirectory({
+    required String categoryType,
+    required String categoryId,
+    int size = 30,
+    String? cursor,
+    CancelToken? cancel,
+  }) async {
+    if (size < 1 || size > 30) throw const ChzzkException(ChzzkFailure.schema);
+    if (!_categoryTypeShape.hasMatch(categoryType) || !_categoryIdShape.hasMatch(categoryId)) {
+      throw const ChzzkException(ChzzkFailure.identity);
+    }
+    final decodedCursor = cursor == null ? null : _decodeDirectoryCursor(cursor);
+    final query = <String, String>{
+      'size': '${decodedCursor == null ? size : size + 1}',
+      if (decodedCursor != null) 'concurrentUserCount': '${decodedCursor.$1}',
+      if (decodedCursor != null) 'liveId': '${decodedCursor.$2}',
+    };
+    final content = _object(await _get('/service/v2/categories/$categoryType/$categoryId/lives', query, cancel));
+    return _directoryPageFrom(content, cursor: cursor, decodedCursor: decodedCursor, size: size);
+  }
+
   Future<ChzzkDirectoryPage> directory({int size = 30, String? cursor, CancelToken? cancel}) async {
     if (size < 1 || size > 30) throw const ChzzkException(ChzzkFailure.schema);
     final decodedCursor = cursor == null ? null : _decodeDirectoryCursor(cursor);
@@ -210,6 +275,16 @@ class ChzzkApi {
       if (decodedCursor != null) 'liveId': '${decodedCursor.$2}',
     };
     final content = _object(await _get('/service/v1/lives', query, cancel));
+    return _directoryPageFrom(content, cursor: cursor, decodedCursor: decodedCursor, size: size);
+  }
+
+  /// directory/categoryDirectory 共用的行解析 + inclusive 去重 + 游标提取。
+  ChzzkDirectoryPage _directoryPageFrom(
+    Map<String, dynamic> content, {
+    required String? cursor,
+    required (int, int)? decodedCursor,
+    required int size,
+  }) {
     final rows = _list(content['data'], max: 64).map((value) => _live(_object(value))).toList(growable: true);
     if (decodedCursor != null && rows.isNotEmpty && rows.first.liveId == decodedCursor.$2) rows.removeAt(0);
     if (rows.length > size) rows.removeRange(size, rows.length);
