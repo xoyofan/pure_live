@@ -146,6 +146,10 @@ dependencies:
     path: F:/media_core/packages/media_core_live
   media_core_logging:
     path: F:/media_core/packages/media_core_logging
+  media_core_memory:
+    path: F:/media_core/packages/media_core_memory
+  media_core_win32:
+    path: F:/media_core/packages/media_core_win32
 
   # -------------------------- 数据存储/数据库 --------------------------
   hive_ce: ^2.20.0 # Hive本地数据库
