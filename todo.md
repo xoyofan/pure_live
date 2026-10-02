@@ -136,12 +136,22 @@
 - [x] **线级验证**:真实房间 Register ack(instanceId+sessKey)→ EnterRoom ack → Push 流解析出 `UserEnterRoom`/`Like` 信号与 `RecentComment` 真实评论(`崎路人: 发现了`),评论 schema 线级确认
 - [x] 矩阵探针扩展 acfun 平台,`result: passed`(会话保持;评论帧因观察时段房间静默未触发 requireChat,解析路径由线级 RecentComment + 单测覆盖)
 
-### 迭代 11(2026-10-02,待办评估)ℹ️ 剩余清单定案
+### 迭代 11(2026-10-02)✅ 全站播放检测: purelive 解析层零失效
 
-- CHZZK / niconico / 猫耳FM / PandaTV:维持迭代8 数据中心 IP 封锁定论(需住宅级对应网络)
-- CC:见迭代9,需逆向官方 JS(另行立项)
-- Steam:需登录,结构性
-- **本环境可做的弹幕接入全部完成:SHOWROOM / TwitCasting / AcFun 三平台落地**
+用户要求并行检测各平台首页与直播间播放,验证 purelive 是否部分失效。用 `tool/probes/all_sites_playback_probe_test.dart`
+(分类目录→房间详情→画质→播放地址→真实媒体字节,走 purelive 自身适配层)分 4 组并行 + 补测,33 站点全覆盖:
+
+- **media-ok(全链路健康)25 平台**:bilibili/douyu/huya/douyin/kuaishou/cc/yy/twitch/soop(9/9)|
+  inke/kilakila/baidulive/kugoulive/jdlive/sixroom/looklive/liveme/missevan(9/9)|
+  chzzk/picarto/showroom/steambroadcast/twitcasting(5)|acfun/weibo(2)|17live(补测)
+  —— 含本轮迭代全部改动平台,CHATWS/pubsub/link-sdk 弹幕落地未破坏任何播放链路;chzzk 播放全链路正常(迭代8 封锁结论仅限聊天 WS 边缘)
+- **owned-input 播放配方(非失效,探针通用取流不适用)3 平台**:bigo、fc2live、niconico(到 urls 阶段,verdict=owned-input)
+- **环境封锁 1**:pandalive(本机出口 IP 被 PandaTV 封禁,迭代8 同因)
+- **结构性无目录 3**:tiktok/xiaohongshu/youtube(设计如此)
+- **未测 1**:iptv(需本地频道 DB,设计排除)
+- 工具链教训:4 个 flutter test 并发会在 `build/native_assets` 竞态(G1 首跑因此作废),重跑需串行
+- 构建侧同期修复:工作流默认标签×3 对齐 v3.1.17、secret-audit TLS 夹具断链、CC 探针 mock 兼容、ffmpeg 哈希 3.7 兼容、SiteIds 迁移同步、flame_barrage 死 fork 删除(0.0.7 已含其修复)、firebase 预取无依赖时跳过、JDK21 便携版部署(F:/tools/jdk21)
+- 遗留:Release 构建两度败于运行中应用锁 exe → 应用关闭后 `-SkipQuality` 重建(同源码质量门已过)
 
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
