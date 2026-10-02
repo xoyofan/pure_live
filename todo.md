@@ -357,6 +357,13 @@
 
 **验证**:analyze lib tool 0 error;128/128 全过;audit 0 error + 10 warning(全部为 core/** 历史形态,已列债务清单)
 
+
+### 迭代 22(2026-10-02)✅ 合并后优化轮:分层债务清零 + 探针契约迁移 + 运行时复核
+
+- **分层债务 10 warning → 0**:6 个住在 core/ 的旧 UI 文件归位迁出(`core/widgets/room_card→features/live/widgets`、`common_appbar_actions→features/shared/widgets`、`link/live_url_tool+shared_live_link_opener→features/link`、`release/version_util→features/about`、`platform/desktop_manager→app/desktop`),导入面+core/index 桶出口同步;桶豁免为旧 UI 唯一 core 内幸存者(只做 re-export)。至此 core/ 内除豁免桶外零 UI 引用
+- **tool/probes 15 文件迁移新契约**:合并漏网的探针(getRoomDetail(platform,roomId)/getPlayQualites(detail:) 等旧签名)批量迁 `liveroom` 契约+新导入路径,analyze 0 error
+- **运行时复核(合并前后基线一致)**:分类探针 28/34 categories-ok(非 ok 全为结构性空目录/凭证门控);对齐探针 33 站 raw-key 泄漏 0、aligned 16(PandaTV 出口封禁/Steam transport 为已知瞬态)
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:
