@@ -426,7 +426,9 @@ class PandaLiveApi {
     if (_bool(playMedia['isLive']) != true) return _profileRoom(userId, profileIndex, profile);
     // The chat Centrifugo credentials ride on the same play response.
     final chatToken = _optionalText(play['token']);
-    final chatChannel = _optionalText(play['channel']) ?? '$profileIndex';
+    // _optionalText 契约是非空 String(缺失返回空串),此前缀的 ?? 兜底是
+    // 死代码(analyze dead_null_aware);空串时下游 chatChannel 原样为空。
+    final chatChannel = _optionalText(play['channel']);
     final playlist = _object(play['PlayList']);
     final master = _firstMaster(playlist);
     final manifest = await _read('GET', master, null, referer, token, manifest: true);

@@ -7,42 +7,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/user/application/platform_credentials_provider.dart';
 import 'browse_source.dart';
 import 'fixture_sources.dart';
+
 import 'package:live_parser/live_parser.dart' show buildSiteRegistry;
 import 'package:pure_live/core/sites.dart';
+
 import 'parser_sources.dart';
 import 'purelive_backend.dart';
-import 'package:live_parser/live_parser.dart' show SiteRegistry;
+
+import 'package:live_parser/live_parser.dart' show RoomSummaryRefresher, SiteRegistry;
 
 /// 通过 `--dart-define=ZISHU_REAL_PARSER=true` 启用真实 live_parser。
 /// 默认 fixture，避免 widget 测试和离线开发依赖公网。
-const bool useRealParser = bool.fromEnvironment(
-  'ZISHU_REAL_PARSER',
-  defaultValue: true,
-);
+const bool useRealParser = bool.fromEnvironment('ZISHU_REAL_PARSER', defaultValue: true);
 
 /// 用 pure_live 解析(lib/core LiveSite)覆盖 live_parser 自带的四家
 /// (bilibili/douyin/huya/douyu)。注册项按 id 覆盖,UI 契约不变。
-const bool usePureLiveBackend = bool.fromEnvironment(
-  'PURE_LIVE_PARSER',
-  defaultValue: true,
-);
+const bool usePureLiveBackend = bool.fromEnvironment('PURE_LIVE_PARSER', defaultValue: true);
 
 /// 带覆盖的 registry 构建:PURE_LIVE_PARSER 时在标准 registry 上重注册
 /// purelive 后端的全部平台(Sites.supportSites 每一个, 排除 all)。
-SiteRegistry buildRegistryWithPureLive({
-  String douyinCookie = '',
-  String xhsCookie = '',
-  String bilibiliCookie = '',
-}) {
-  final registry = buildSiteRegistry(
-    douyinCookie: douyinCookie,
-    xhsCookie: xhsCookie,
-    bilibiliCookie: bilibiliCookie,
-  );
+SiteRegistry buildRegistryWithPureLive({String douyinCookie = '', String xhsCookie = '', String bilibiliCookie = ''}) {
+  final registry = buildSiteRegistry(douyinCookie: douyinCookie, xhsCookie: xhsCookie, bilibiliCookie: bilibiliCookie);
   if (usePureLiveBackend) {
     for (final site in Sites.supportSites) {
       if (site.id == Sites.allSite) continue;
-      registry.register(buildPureLiveRegistration(site.id));
+      // 统计刷新委托:native 解析器自带实测过的观看/贵宾/超粉/钻粉快照
+      // (pure_live 适配层无 vip/svip 数据源),播放/线路仍走 purelive。
+      final nativeResolver = registry.byId(site.id)?.resolver;
+      final nativeStats = nativeResolver is RoomSummaryRefresher ? nativeResolver : null;
+      registry.register(buildPureLiveRegistration(site.id, nativeStatsRefresher: nativeStats));
     }
   }
   return registry;
@@ -51,20 +44,10 @@ SiteRegistry buildRegistryWithPureLive({
 /// 栏目浏览数据源(首页/分类/搜索底卡)。
 final browseSourceProvider = Provider<BrowseSource>((ref) {
   if (!useRealParser) return const FixtureBrowseSource();
-  final douyinCookie = ref.watch(
-    platformCredentialsProvider.select(
-      (state) => state.credentialFor('douyin').value,
-    ),
-  );
-  final xhsCookie = ref.watch(
-    platformCredentialsProvider.select(
-      (state) => state.credentialFor('xhs').value,
-    ),
-  );
+  final douyinCookie = ref.watch(platformCredentialsProvider.select((state) => state.credentialFor('douyin').value));
+  final xhsCookie = ref.watch(platformCredentialsProvider.select((state) => state.credentialFor('xhs').value));
   final bilibiliCookie = ref.watch(
-    platformCredentialsProvider.select(
-      (state) => state.credentialFor('bilibili').value,
-    ),
+    platformCredentialsProvider.select((state) => state.credentialFor('bilibili').value),
   );
   return ParserBrowseSource(
     douyinCookie: douyinCookie,
@@ -81,23 +64,13 @@ final browseSourceProvider = Provider<BrowseSource>((ref) {
 /// 房间解析数据源(播放页)。
 final roomSourceProvider = Provider<RoomSource>((ref) {
   if (!useRealParser) return const FixtureRoomSource();
-  final douyinCookie = ref.watch(
-    platformCredentialsProvider.select(
-      (state) => state.credentialFor('douyin').value,
-    ),
-  );
-  final xhsCookie = ref.watch(
-    platformCredentialsProvider.select(
-      (state) => state.credentialFor('xhs').value,
-    ),
-  );
+  final douyinCookie = ref.watch(platformCredentialsProvider.select((state) => state.credentialFor('douyin').value));
+  final xhsCookie = ref.watch(platformCredentialsProvider.select((state) => state.credentialFor('xhs').value));
   // B 站登录 Cookie(凭证页粘贴,含 SESSDATA):解锁低清晰度档 ——
   // 匿名请求 qn=80/150 都被服务器强制回落 250 超清(2026-09-29 实测),
   // 劣化网络下超清码率(~312KB/s)超出可用带宽会反复 stall。
   final bilibiliCookie = ref.watch(
-    platformCredentialsProvider.select(
-      (state) => state.credentialFor('bilibili').value,
-    ),
+    platformCredentialsProvider.select((state) => state.credentialFor('bilibili').value),
   );
   return ParserRoomSource(
     douyinCookie: douyinCookie,

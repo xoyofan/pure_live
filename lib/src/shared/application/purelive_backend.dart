@@ -96,6 +96,23 @@ RoomState _stateOf(LiveRoom room) {
   }
 }
 
+/// pure_live LiveRoom 能提供的统计快照(仅观看/关注;vip/svip 无数据源)。
+///
+/// 观看走 [audienceDisplayOf] 统一口径(legacy watching 优先,缺口回落
+/// audienceValue;'0' 哨兵/'null'/空串不冒充人数);[RoomRecord] 契约
+/// 「空串=未提供」在构造边界归一为 null,真实 0 保留。
+RoomRecord pureliveStatsRecord(LiveRoom room, String site) {
+  final audience = audienceDisplayOf(room);
+  final followers = (room.followers ?? '').trim();
+  return RoomRecord(
+    site: site,
+    roomId: room.roomId ?? '',
+    roomState: _stateOf(room),
+    audience: audience.isEmpty ? null : audience,
+    followers: followers.isEmpty ? null : followers,
+  );
+}
+
 /// 把 pure_live LiveRoom 映射为 live_parser RoomPayload(不含流)。
 Future<RoomPayload> _roomToPayload(LiveRoom room, String site) async {
   return RoomPayload(
@@ -196,7 +213,11 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
   Future<RoomRecord> refreshRoomSummary(RoomRequest request) async {
     final coreSite = _siteInstanceOf(site);
     final detail = await coreSite.getRoomDetail(platform: site, roomId: request.roomIdOrUrl);
-    return RoomRecord.fromPayload(await _roomToPayload(detail, site));
+    final payload = await _roomToPayload(detail, site);
+    // 统计快照(2026-10-02 用户口径: 直播页观看/贵宾/超粉/钻粉要解析显示):
+    // pure_live LiveRoom 只有观看/粉丝测量值,vip/svip 无数据源留空
+    // (数据诚实性: 不伪造);native 覆盖平台由注册层委托原生解析器补全。
+    return RoomRecord.fromPayload(payload).mergeRefresh(pureliveStatsRecord(detail, site));
   }
 }
 
@@ -398,7 +419,7 @@ class _PureLiveDanmakuSession implements DanmakuSession {
 
 /// 组装一个 pure_live 后端的站点注册项(browse/search/danmaku 全挂,
 /// capabilities 如实声明)。由宿主 buildRegistryWithPureLive 按 id 覆盖。
-SiteRegistration buildPureLiveRegistration(String liveParserSite) {
+SiteRegistration buildPureLiveRegistration(String liveParserSite, {RoomSummaryRefresher? nativeStatsRefresher}) {
   // _siteInstanceOf 对未支持站点直接抛 StateError,此处无需判空。
   _siteInstanceOf(liveParserSite);
   return SiteRegistration(
@@ -411,9 +432,23 @@ SiteRegistration buildPureLiveRegistration(String liveParserSite) {
       multiQuality: true,
       multiLine: true,
     ),
-    resolver: PureLiveRoomResolver(liveParserSite),
+    resolver: nativeStatsRefresher == null
+        ? PureLiveRoomResolver(liveParserSite)
+        : _NativeStatsPureLiveResolver(liveParserSite, nativeStatsRefresher),
     browse: PureLiveBrowseRepository(liveParserSite),
     search: PureLiveSearchRepository(liveParserSite),
     danmaku: PureLiveDanmakuConnector(liveParserSite),
   );
+}
+
+/// 播放/线路/弹幕走 pure_live,统计刷新委托 native 解析器(2026-10-02
+/// 用户口径: 直播页观看/贵宾/超粉/钻粉要解析显示;pure_live 适配层没有
+/// vip/svip 数据源,而 native 解析器自带实测过的完整统计快照链)。
+class _NativeStatsPureLiveResolver extends PureLiveRoomResolver {
+  _NativeStatsPureLiveResolver(super.site, this._statsRefresher);
+
+  final RoomSummaryRefresher _statsRefresher;
+
+  @override
+  Future<RoomRecord> refreshRoomSummary(RoomRequest request) => _statsRefresher.refreshRoomSummary(request);
 }

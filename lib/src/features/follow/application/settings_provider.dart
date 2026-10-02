@@ -173,8 +173,9 @@ class SettingsState {
   final String serverUrl;
   final bool hydrated;
 
-  /// 画质候选(全平台默认可选,与 fixture 画质名对齐)。
-  static const List<String> qualityOptions = ['蓝光8M', '超清', '高清', '流畅'];
+  /// 画质候选(全平台默认可选;「最高」为 2026-10-02 用户口径的出厂默认,
+  /// 不是具体档名 —— 播放/解析侧按「未命中档名 → 取第一档(最高)」落地)。
+  static const List<String> qualityOptions = ['最高', '蓝光8M', '超清', '高清', '流畅'];
 
   /// 各平台原生画质档位(对齐 SFVideoLive `PLATFORM_QUALITY_OPTIONS`),
   /// 设置页「平台独立默认清晰度」按此列表展示;未收录的平台回落 [qualityOptions]。
@@ -192,23 +193,19 @@ class SettingsState {
     'youtube': ['自动', '1080p', '720p', '480p', '360p', '240p', '144p'],
   };
 
-  /// 平台默认档(未在设置里单独选择时的值,对齐 SF `PLATFORM_DEFAULT_QUALITY`):
-  /// soop/twitch/youtube 取高清档,解析侧只取该档,进房更快。
-  static const Map<String, String> platformDefaultQuality = {
-    'soop': '高清',
-    'twitch': '720p',
-    'youtube': '720p',
-  };
+  /// 平台默认档(未在设置里单独选择时的值)。2026-10-02 用户口径:
+  /// **默认全平台最高档** —— 原对齐 SF `PLATFORM_DEFAULT_QUALITY` 的
+  /// soop/twitch/youtube 低档提速条目移除,未单独配置一律落「最高」
+  /// (解析侧未命中档名时取第一档)。需要低档进房更快的用户在
+  /// 「平台独立默认清晰度」里显式选择。
+  static const Map<String, String> platformDefaultQuality = {};
 
   /// 某平台设置页可选档位(平台原生文案);未收录平台回落通用预设。
-  static List<String> qualityOptionsForSite(String site) =>
-      platformQualityOptions[site] ?? qualityOptions;
+  static List<String> qualityOptionsForSite(String site) => platformQualityOptions[site] ?? qualityOptions;
 
   /// 某平台生效的默认画质:平台单独配置 > 平台默认档 > 全平台默认。
   String effectiveDefaultQuality(String site) =>
-      defaultQualityBySite[site] ??
-      platformDefaultQuality[site] ??
-      defaultQuality;
+      defaultQualityBySite[site] ?? platformDefaultQuality[site] ?? defaultQuality;
 
   /// 服务器地址默认值。
   static const String defaultServerUrl = 'http://127.0.0.1:8787';
@@ -281,8 +278,7 @@ class SettingsState {
       globalMuted: globalMuted ?? this.globalMuted,
       defaultVolume: defaultVolume ?? this.defaultVolume,
       danmakuEnabled: danmakuEnabled ?? this.danmakuEnabled,
-      videoHardwareAcceleration:
-          videoHardwareAcceleration ?? this.videoHardwareAcceleration,
+      videoHardwareAcceleration: videoHardwareAcceleration ?? this.videoHardwareAcceleration,
       chatEnabled: chatEnabled ?? this.chatEnabled,
       preferredLineFormat: preferredLineFormat ?? this.preferredLineFormat,
       serverUrl: serverUrl ?? this.serverUrl,
@@ -306,26 +302,20 @@ class SettingsController extends Notifier<SettingsState> {
   static const String _kDefaultQuality = 'zishu.settings.defaultQuality';
 
   /// 按平台默认画质,存 JSON `Map<String, String>`(site → 画质名)。
-  static const String _kDefaultQualityBySite =
-      'zishu.settings.defaultQualityBySite';
+  static const String _kDefaultQualityBySite = 'zishu.settings.defaultQualityBySite';
   static const String _kDanmakuEnabled = 'zishu.settings.danmakuEnabled';
-  static const String _kVideoHardwareAcceleration =
-      'zishu.settings.videoHardwareAcceleration';
+  static const String _kVideoHardwareAcceleration = 'zishu.settings.videoHardwareAcceleration';
   static const String _kChatEnabled = 'zishu.settings.chatEnabled';
   static const String _kChatFontSize = 'zishu.settings.chatFontSize';
   static const String _kChatOpacity = 'zishu.settings.chatOpacity';
   static const String _kChatLineSpacing = 'zishu.settings.chatLineSpacing';
   static const String _kChatSpeed = 'zishu.settings.chatSpeed';
   static const String _kChatThrottleMode = 'zishu.settings.chatThrottleMode';
-  static const String _kPreferredLineFormat =
-      'zishu.settings.preferredLineFormat';
+  static const String _kPreferredLineFormat = 'zishu.settings.preferredLineFormat';
   static const String _kServerUrl = 'zishu.settings.serverUrl';
-  static const String _kTranslationEnabled =
-      'zishu.settings.translationEnabled';
-  static const String _kTranslationEndpoint =
-      'zishu.settings.translationEndpoint';
-  static const String _kSpeechCaptionEnabled =
-      'zishu.settings.speechCaptionEnabled';
+  static const String _kTranslationEnabled = 'zishu.settings.translationEnabled';
+  static const String _kTranslationEndpoint = 'zishu.settings.translationEndpoint';
+  static const String _kSpeechCaptionEnabled = 'zishu.settings.speechCaptionEnabled';
 
   /// 每房间独立音量表,存 JSON `Map<String, double>`。
   static const String _kRoomVolumes = 'zishu.settings.roomVolumes';
@@ -340,7 +330,7 @@ class SettingsController extends Notifier<SettingsState> {
       // 桌面端产品基线为深色(见 docs/implementation-plan.md「默认深色背景 #181818」
       // 「Windows 第一轮以深色高还原为验收基线」);浅色/跟随系统是显式选择项。
       themeMode: ThemeModeChoice.dark,
-      defaultQuality: '超清',
+      defaultQuality: '最高',
       danmakuEnabled: true,
       videoHardwareAcceleration: true,
       chatEnabled: true,
@@ -359,9 +349,7 @@ class SettingsController extends Notifier<SettingsState> {
       final quality = await prefs.getString(_kDefaultQuality);
       final bySiteRaw = await prefs.getString(_kDefaultQualityBySite);
       final danmaku = await prefs.getBool(_kDanmakuEnabled);
-      final videoHardwareAcceleration = await prefs.getBool(
-        _kVideoHardwareAcceleration,
-      );
+      final videoHardwareAcceleration = await prefs.getBool(_kVideoHardwareAcceleration);
       final chat = await prefs.getBool(_kChatEnabled);
       final chatFontSize = await prefs.getInt(_kChatFontSize);
       final chatOpacity = await prefs.getInt(_kChatOpacity);
@@ -377,40 +365,21 @@ class SettingsController extends Notifier<SettingsState> {
       final defaultVolume = await prefs.getDouble(_kDefaultVolume);
       state = state.copyWith(
         themeMode: mode == null ? null : ThemeModeChoice.fromName(mode),
-        defaultQuality:
-            quality != null && SettingsState.qualityOptions.contains(quality)
-            ? quality
-            : null,
+        defaultQuality: quality != null && SettingsState.qualityOptions.contains(quality) ? quality : null,
         defaultQualityBySite: _decodeQualityBySite(bySiteRaw),
         roomVolumes: _decodeRoomVolumes(roomVolumesRaw),
         globalMuted: globalMuted,
-        defaultVolume: defaultVolume
-            ?.clamp(SettingsState.volumeMin, SettingsState.volumeMax)
-            .toDouble(),
+        defaultVolume: defaultVolume?.clamp(SettingsState.volumeMin, SettingsState.volumeMax).toDouble(),
         danmakuEnabled: danmaku,
         videoHardwareAcceleration: videoHardwareAcceleration,
         chatEnabled: chat,
-        chatFontSize: chatFontSize
-            ?.clamp(
-              SettingsState.chatFontSizeMin,
-              SettingsState.chatFontSizeMax,
-            )
-            .toInt(),
-        chatOpacity: chatOpacity
-            ?.clamp(SettingsState.chatOpacityMin, SettingsState.chatOpacityMax)
-            .toInt(),
+        chatFontSize: chatFontSize?.clamp(SettingsState.chatFontSizeMin, SettingsState.chatFontSizeMax).toInt(),
+        chatOpacity: chatOpacity?.clamp(SettingsState.chatOpacityMin, SettingsState.chatOpacityMax).toInt(),
         chatLineSpacing: chatLineSpacing
-            ?.clamp(
-              SettingsState.chatLineSpacingMin,
-              SettingsState.chatLineSpacingMax,
-            )
+            ?.clamp(SettingsState.chatLineSpacingMin, SettingsState.chatLineSpacingMax)
             .toInt(),
-        chatSpeed: chatSpeed
-            ?.clamp(SettingsState.chatSpeedMin, SettingsState.chatSpeedMax)
-            .toInt(),
-        chatThrottleMode: chatThrottleModeRaw == null
-            ? null
-            : ChatThrottleMode.fromValue(chatThrottleModeRaw),
+        chatSpeed: chatSpeed?.clamp(SettingsState.chatSpeedMin, SettingsState.chatSpeedMax).toInt(),
+        chatThrottleMode: chatThrottleModeRaw == null ? null : ChatThrottleMode.fromValue(chatThrottleModeRaw),
         preferredLineFormat: PreferredLineFormat.fromValue(format),
         serverUrl: server != null && server.isNotEmpty ? server : null,
         translationEnabled: translation,
@@ -445,8 +414,7 @@ class SettingsController extends Notifier<SettingsState> {
 
   /// 设置某平台的默认画质并持久化;传 null 清除该平台覆盖,回落平台默认档。
   Future<void> setDefaultQualityForSite(String site, String? quality) async {
-    if (quality != null &&
-        !SettingsState.qualityOptionsForSite(site).contains(quality)) {
+    if (quality != null && !SettingsState.qualityOptionsForSite(site).contains(quality)) {
       return;
     }
     final next = Map<String, String>.of(state.defaultQualityBySite);
@@ -457,10 +425,7 @@ class SettingsController extends Notifier<SettingsState> {
     }
     state = state.copyWith(defaultQualityBySite: next);
     try {
-      await SharedPreferencesAsync().setString(
-        _kDefaultQualityBySite,
-        jsonEncode(next),
-      );
+      await SharedPreferencesAsync().setString(_kDefaultQualityBySite, jsonEncode(next));
     } catch (_) {
       // 写盘失败:内存态仍生效,下次启动回退旧值。
     }
@@ -508,10 +473,7 @@ class SettingsController extends Notifier<SettingsState> {
   Future<void> setVideoHardwareAcceleration(bool enabled) async {
     state = state.copyWith(videoHardwareAcceleration: enabled);
     try {
-      await SharedPreferencesAsync().setBool(
-        _kVideoHardwareAcceleration,
-        enabled,
-      );
+      await SharedPreferencesAsync().setBool(_kVideoHardwareAcceleration, enabled);
     } catch (_) {}
   }
 
@@ -525,9 +487,7 @@ class SettingsController extends Notifier<SettingsState> {
 
   /// 设置侧栏聊天消息字号并持久化;越界值钳制到合法区间(12-24)。
   Future<void> setChatFontSize(int size) async {
-    final clamped = size
-        .clamp(SettingsState.chatFontSizeMin, SettingsState.chatFontSizeMax)
-        .toInt();
+    final clamped = size.clamp(SettingsState.chatFontSizeMin, SettingsState.chatFontSizeMax).toInt();
     state = state.copyWith(chatFontSize: clamped);
     try {
       await SharedPreferencesAsync().setInt(_kChatFontSize, clamped);
@@ -536,9 +496,7 @@ class SettingsController extends Notifier<SettingsState> {
 
   /// 设置侧栏聊天不透明度(%)并持久化;越界值钳制到合法区间(10-100)。
   Future<void> setChatOpacity(int opacity) async {
-    final clamped = opacity
-        .clamp(SettingsState.chatOpacityMin, SettingsState.chatOpacityMax)
-        .toInt();
+    final clamped = opacity.clamp(SettingsState.chatOpacityMin, SettingsState.chatOpacityMax).toInt();
     state = state.copyWith(chatOpacity: clamped);
     try {
       await SharedPreferencesAsync().setInt(_kChatOpacity, clamped);
@@ -547,12 +505,7 @@ class SettingsController extends Notifier<SettingsState> {
 
   /// 设置侧栏聊天消息行间距(px)并持久化;越界值钳制到合法区间(0-16)。
   Future<void> setChatLineSpacing(int spacing) async {
-    final clamped = spacing
-        .clamp(
-          SettingsState.chatLineSpacingMin,
-          SettingsState.chatLineSpacingMax,
-        )
-        .toInt();
+    final clamped = spacing.clamp(SettingsState.chatLineSpacingMin, SettingsState.chatLineSpacingMax).toInt();
     state = state.copyWith(chatLineSpacing: clamped);
     try {
       await SharedPreferencesAsync().setInt(_kChatLineSpacing, clamped);
@@ -561,9 +514,7 @@ class SettingsController extends Notifier<SettingsState> {
 
   /// 设置侧栏聊天节流间隔(秒/条)并持久化;越界值钳制到合法区间(1-10)。
   Future<void> setChatSpeed(int speed) async {
-    final clamped = speed
-        .clamp(SettingsState.chatSpeedMin, SettingsState.chatSpeedMax)
-        .toInt();
+    final clamped = speed.clamp(SettingsState.chatSpeedMin, SettingsState.chatSpeedMax).toInt();
     state = state.copyWith(chatSpeed: clamped);
     try {
       await SharedPreferencesAsync().setInt(_kChatSpeed, clamped);
@@ -582,10 +533,7 @@ class SettingsController extends Notifier<SettingsState> {
   Future<void> setPreferredLineFormat(PreferredLineFormat format) async {
     state = state.copyWith(preferredLineFormat: format);
     try {
-      await SharedPreferencesAsync().setString(
-        _kPreferredLineFormat,
-        format.value,
-      );
+      await SharedPreferencesAsync().setString(_kPreferredLineFormat, format.value);
     } catch (_) {}
   }
 
@@ -623,16 +571,11 @@ class SettingsController extends Notifier<SettingsState> {
   Future<void> setRoomVolumes(Map<String, double> volumes) async {
     final sanitized = <String, double>{
       for (final entry in volumes.entries)
-        entry.key: entry.value
-            .clamp(SettingsState.volumeMin, SettingsState.volumeMax)
-            .toDouble(),
+        entry.key: entry.value.clamp(SettingsState.volumeMin, SettingsState.volumeMax).toDouble(),
     };
     state = state.copyWith(roomVolumes: sanitized);
     try {
-      await SharedPreferencesAsync().setString(
-        _kRoomVolumes,
-        jsonEncode(sanitized),
-      );
+      await SharedPreferencesAsync().setString(_kRoomVolumes, jsonEncode(sanitized));
     } catch (_) {}
   }
 
@@ -646,9 +589,7 @@ class SettingsController extends Notifier<SettingsState> {
 
   /// 设置默认音量(0-100)并持久化;越界值钳制到合法区间。
   Future<void> setDefaultVolume(double volume) async {
-    final clamped = volume
-        .clamp(SettingsState.volumeMin, SettingsState.volumeMax)
-        .toDouble();
+    final clamped = volume.clamp(SettingsState.volumeMin, SettingsState.volumeMax).toDouble();
     state = state.copyWith(defaultVolume: clamped);
     try {
       await SharedPreferencesAsync().setDouble(_kDefaultVolume, clamped);
@@ -667,10 +608,7 @@ class SettingsController extends Notifier<SettingsState> {
         final key = entry.key;
         final value = entry.value;
         if (key is String && key.isNotEmpty && value is num) {
-          result[key] = value
-              .toDouble()
-              .clamp(SettingsState.volumeMin, SettingsState.volumeMax)
-              .toDouble();
+          result[key] = value.toDouble().clamp(SettingsState.volumeMin, SettingsState.volumeMax).toDouble();
         }
       }
       return result;
@@ -681,6 +619,4 @@ class SettingsController extends Notifier<SettingsState> {
 }
 
 /// 设置 provider(应用级)。
-final settingsProvider = NotifierProvider<SettingsController, SettingsState>(
-  SettingsController.new,
-);
+final settingsProvider = NotifierProvider<SettingsController, SettingsState>(SettingsController.new);
