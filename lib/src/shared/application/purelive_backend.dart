@@ -23,6 +23,7 @@ import 'package:pure_live/common/models/live_message.dart';
 import 'package:pure_live/common/models/live_room.dart';
 
 import 'purelive_audience.dart';
+import 'purelive_line_format.dart';
 
 /// live_parser 站点 id(契约侧)→ pure_live 站点 id(lib/core 侧)。
 const Map<String, String> kPureLiveSiteMap = {
@@ -191,12 +192,7 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
           rate: (qualities.length - chosenIndex) * 100,
           lines: [
             for (var i = 0; i < urls.length; i++)
-              StreamLine(
-                name: '线路${i + 1}',
-                format: urls[i].toLowerCase().endsWith('.m3u8') ? 'hls' : 'flv',
-                url: urls[i],
-                headers: headers,
-              ),
+              StreamLine(name: '线路${i + 1}', format: pureLiveLineFormat(urls[i]), url: urls[i], headers: headers),
           ],
         ),
       ],

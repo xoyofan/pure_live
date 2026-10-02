@@ -26,6 +26,11 @@ import 'package:pure_live/common/services/settings/room_card_settings_controller
 class SettingsService extends GetxService {
   static SettingsService get to => Get.find<SettingsService>();
 
+  /// 未注册 GetX 运行时的宿主(zishu 播放链/sidecar/单测)安全访问:
+  /// 返回 null,调用方按 douyu 既有模式降级(cookie 视为空、代理直连)。
+  /// 已注册时行为与 [to] 完全一致。
+  static SettingsService? get maybe => Get.isRegistered<SettingsService>() ? Get.find<SettingsService>() : null;
+
   AppSettingsController get app => Get.find<AppSettingsController>();
   ExitSettingsController get exit => Get.find<ExitSettingsController>();
   StartupController get startup => Get.find<StartupController>();

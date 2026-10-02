@@ -55,7 +55,7 @@ class TwitchSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomR
     // /integrity endpoint (matching Twitch's web flow and Streamlink).
     headers['Device-Id'] = _deviceId;
     headers.remove('X-Device-Id');
-    final cookie = SettingsService.to.cookieManager.twitchCookie.v.trim();
+    final cookie = SettingsService.maybe?.cookieManager.twitchCookie.v.trim() ?? '';
     if (cookie.isNotEmpty && !_bypassStoredSessionForIntegrity) {
       headers['Cookie'] = cookie;
       final authToken = extractAuthToken(cookie);
@@ -175,7 +175,7 @@ class TwitchSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomR
     // Chromium as the final transport, rather than minting a browser token and
     // replaying it through the already-rejected native socket stack.
     if (TwitchWebIntegrityProvider.isSupported) {
-      final proxy = SettingsService.to.proxy;
+      final proxy = SettingsService.maybe?.proxy;
       Object? browserError;
       StackTrace? browserStackTrace;
       try {
@@ -186,8 +186,8 @@ class TwitchSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomR
           userAgent: headers['User-Agent']!,
           integrityToken: _usableIntegrityToken,
           onIntegrityToken: _applyBrowserIntegrityToken,
-          proxyHost: proxy.enableAppProxy.v ? proxy.appProxyHost.v : null,
-          proxyPort: proxy.enableAppProxy.v ? proxy.appProxyPort.v : null,
+          proxyHost: (proxy?.enableAppProxy.v ?? false) ? proxy!.appProxyHost.v : null,
+          proxyPort: (proxy?.enableAppProxy.v ?? false) ? proxy!.appProxyPort.v : null,
         );
         if (browserResponse != null && !hasIntegrityError(browserResponse)) {
           return browserResponse;
@@ -220,13 +220,13 @@ class TwitchSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomR
   }
 
   Future<dynamic> _postAndroidSystemGql(String liveGpl) {
-    final proxy = SettingsService.to.proxy;
+    final proxy = SettingsService.maybe?.proxy;
     return AndroidNativeHttp.postTwitchJson(
       url: gplApiUrl,
       headers: _gqlRequestHeaders(),
       body: liveGpl,
-      proxyHost: proxy.enableAppProxy.v ? proxy.appProxyHost.v : null,
-      proxyPort: proxy.enableAppProxy.v ? proxy.appProxyPort.v : null,
+      proxyHost: (proxy?.enableAppProxy.v ?? false) ? proxy!.appProxyHost.v : null,
+      proxyPort: (proxy?.enableAppProxy.v ?? false) ? proxy!.appProxyPort.v : null,
     );
   }
 
@@ -266,14 +266,14 @@ class TwitchSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomR
 
   Future<void> _refreshIntegrityToken() async {
     if (TwitchWebIntegrityProvider.isSupported) {
-      final proxy = SettingsService.to.proxy;
+      final proxy = SettingsService.maybe?.proxy;
       try {
         final browserToken = await TwitchWebIntegrityProvider.acquire(
           clientId: headers['Client-ID']!,
           deviceId: _deviceId,
           userAgent: headers['User-Agent']!,
-          proxyHost: proxy.enableAppProxy.v ? proxy.appProxyHost.v : null,
-          proxyPort: proxy.enableAppProxy.v ? proxy.appProxyPort.v : null,
+          proxyHost: (proxy?.enableAppProxy.v ?? false) ? proxy!.appProxyHost.v : null,
+          proxyPort: (proxy?.enableAppProxy.v ?? false) ? proxy!.appProxyPort.v : null,
         );
         if (browserToken != null) {
           _applyBrowserIntegrityToken(browserToken);

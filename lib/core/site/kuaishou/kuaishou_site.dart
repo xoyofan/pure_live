@@ -495,12 +495,12 @@ class KuaishowSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
   }
 
   String get _effectiveCookie {
-    final configuredCookie = SettingsService.to.cookieManager.kuaishouCookie.v.trim();
+    final configuredCookie = SettingsService.maybe?.cookieManager.kuaishouCookie.v.trim() ?? '';
     return configuredCookie.isNotEmpty ? configuredCookie : cookie;
   }
 
   Future<void> _ensureSession(String url) async {
-    if (SettingsService.to.cookieManager.kuaishouCookie.v.trim().isNotEmpty) return;
+    if ((SettingsService.maybe?.cookieManager.kuaishouCookie.v.trim() ?? '').isNotEmpty) return;
     final updatedAt = _sessionUpdatedAt;
     if (cookie.isNotEmpty && updatedAt != null && DateTime.now().difference(updatedAt) < _sessionLifetime) return;
     final pending = _sessionBootstrap;

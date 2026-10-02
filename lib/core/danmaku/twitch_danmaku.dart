@@ -74,7 +74,7 @@ class TwitchDanmaku implements LiveDanmaku {
   }
 
   void joinRoom(String roomId) {
-    final cookie = SettingsService.to.cookieManager.twitchCookie.v;
+    final cookie = SettingsService.maybe?.cookieManager.twitchCookie.v ?? '';
     final cookieValues = _parseCookie(cookie);
     final token = cookieValues['auth-token']?.trim() ?? '';
     final login = cookieValues['login']?.trim().toLowerCase() ?? '';

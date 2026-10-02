@@ -200,6 +200,27 @@
 - 探针入库:`tool/probes/quality_switch_probe_test.dart`(`PURELIVE_QUALITY_SWITCH_PROBE=1`,环境变量与全站探针同款)
 - 备注:B 站匿名 qn 回落/斗鱼匿名降档(第四节通用待修复)是服务端行为,与本缺陷无关,切档请求路径本就正常
 
+### 迭代 14(2026-10-02)✅ 多平台起播修复:HLS 带签名被误判 flv 入 FLV 代理 + GetX 设置依赖四平台解析必挂
+
+用户报告猫耳 `fm.missevan.com/live/868888435` 无法解析,并称"很多平台直播间无法解析"。真机日志(`%APPDATA%\zishu_flutter\logs\playback.log`)定位出**两类独立根因**,合计波及约 10 个平台:
+
+**根因一:purelive_backend 线路格式误判 → HLS 线必然起播失败**(猫耳/Twitcasting/虎牙 HLS 线/抖音 HLS 线/17LIVE RTMP)
+
+- `resolveRoom` 的 format 判定用整串 `endsWith('.m3u8')`,而签名直链(猫耳 `…m3u8?cdn=…&sign=…`、虎牙 `…flv?wsSecret=…`)恒为 false → HLS 被标成 flv → 被包进 **FLV 专用本地流代理**(`media_kit_live_player._wrapLineWithProxy` 只放行 `format=='flv'`)
+- 失败形态(日志确证):代理把 359 字节 m3u8 文本当 FLV 喂 mpv(`Reading plaintext playlist`)→ mpv 把 ts 分片名拼到 `http://127.0.0.1:PORT/maoer_….ts` 请求 → 代理按 `pathSegments.first` 解析 session id 非数字 → **全部 404** → `source_open_failure`×6 → `give_up`,播放器空转至用户退出
+- 波及面(日志 host 统计):猫耳 HLS ×15、Twitcasting ×8、抖音 HLS ×3、17LIVE RTMP ×3、虎牙 HLS ×1;同 host 的 FLV 线正常(昨天 23:32 猫耳 HLS 挂/FLV 线活,同因)
+- 修复:新纯函数 `pureLiveLineFormat`(`lib/src/shared/application/purelive_line_format.dart`,独立文件可单测):按 **URI path 后缀**判 hls/flv,`rtmp(s)://` 单独归 `rtmp`(代理护栏天然放行直连);`purelive_backend.resolveRoom` 接入
+
+**根因二:twitch/kuaishou/soop/yy 适配器无条件访问 GetX `SettingsService.to` → zishu 运行时解析必挂**
+
+- zishu(riverpod)不初始化旧 UI 的 GetX 服务栈(`Get.put(SettingsService)` 只在旧 UI `initial_services.dart`);真机日志实锤 `resolve_fail site=twitch reason="SettingsService" not found` ×11(jinnytty 房)。douyu 因 `_persistCookie` 容错(host 未注册即跳过)幸存
+- 探针盲区:全站探针 setUpAll 手动 `Get.put(SettingsService)`,与真机 zishu 链路的**关键环境差异**,故探针 28/29 全绿而真机四平台必挂
+- 修复:`SettingsService.maybe` 安全访问器(`Get.isRegistered` 守卫,已注册时与 `to` 等价);twitch 站 4 处(cookie+3 处 proxy)、twitch 弹幕 1 处、kuaishou 2 处、soop 1 处、yy 1 处改 `maybe` 降级(cookie 空=游客态可解析——探针空 Hive 下 media-ok 即证;代理 null=直连)。`playback_header_resolver`/douyu 本就容错不动;`sites.availableSites`/iptv 不在 zishu 链路不动
+
+**验证**:新增 3 套单测 11 用例全过(`purelive_line_format_test` 6 / `settings_service_maybe_test` 2 / `site_settings_fallback_test` 3:twitch 匿名头、soop/yy 空 Cookie 降级、maybe null/等价契约)。全仓 analyze 与 backend 编译级验证待并行的十七live弹幕工作收敛后补跑(其半成品 `seventeen_danmaku.dart` 拉全图编译不过,与本修复无关)。真机 Windows 起播猫耳 HLS 复验待构建窗口。
+
+**备注**:当日真机日志另见 bigo `schema`×4(owned-input 播放配方,非缺陷)、chzzk `mediaUnavailable`(房间未播)、douyu 超时/握手失败×4(15:24-15:34 出口网络抖动,后续恢复)。
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:

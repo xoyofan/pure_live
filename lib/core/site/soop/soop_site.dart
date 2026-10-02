@@ -190,7 +190,7 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
       'Sec-Fetch-Mode': 'cors',
       'Sec-Fetch-Site': 'same-site',
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-      "Cookie": SettingsService.to.cookieManager.soopCookie.value,
+      "Cookie": SettingsService.maybe?.cookieManager.soopCookie.value ?? '',
     };
   }
 

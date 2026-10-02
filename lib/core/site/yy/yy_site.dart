@@ -31,7 +31,7 @@ class YYSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResol
   /// ============================================================
 
   Map<String, String> getHeaders() {
-    final cookie = SettingsService.to.cookieManager.yyCookie.v.trim();
+    final cookie = SettingsService.maybe?.cookieManager.yyCookie.v.trim() ?? '';
     return {
       'Accept': '*/*',
       'Origin': 'https://www.yy.com',
