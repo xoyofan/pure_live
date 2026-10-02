@@ -221,6 +221,16 @@
 
 **备注**:当日真机日志另见 bigo `schema`×4(owned-input 播放配方,非缺陷)、chzzk `mediaUnavailable`(房间未播)、douyu 超时/握手失败×4(15:24-15:34 出口网络抖动,后续恢复)。
 
+### 迭代 15(2026-10-02)✅ 首页巡检:猫耳 meta/data 灰度改版适配 + 分类探针环境修正
+
+用户报告"部分平台首页错误 soop yy 等等"。全站分类探针(`tool/probes/all_sites_categories_probe_test.dart`,走 zishu 浏览同一入口 `getCategores(1,100)`)真实网络巡检 34 站:
+
+- **探针环境修正**:flutter test 绑定对所有请求返回假 HTTP 400(替代响应),此前 12/34 的"失败"全是环境假象;仿播放探针补 `HttpOverrides.runWithHttpOverrides(_RealNetwork())` 包装后真实基线 **26/34**,空目录站(小红书/TikTok/YouTube/17live/LiveMe 等)与审计表"结构性无首页"结论一致,xhs 为凭证门控,非缺陷
+- **soop/yy 定级:非代码缺陷**。两站分类+推荐端点 curl/适配层全通(yy 3 组 18 项、soop 543 项);真机首页错误即**迭代14 根因二**(GetX 设置依赖),已由 6061d77c 修复。`live.sooplive.co.kr` 当日 17:5x 曾短暂 TLS 超时(出口瞬态,与迭代14 douyu 抖动同性质),19:0x 自愈,不改代码
+- **SHOWROOM 单次 schema 报错为瞬态**,复测 19 组全通,不改代码
+- **猫耳(唯一真缺陷)**:`fm.missevan.com` 灰度改版,`meta/data` 的 `info.tabs` 沦为纯展示键(无 type/id),旧解析必抛 schema → 首页错误。改版后可过滤 id 在 `info.catalogs[]`;实测 `chatroom/open/list` 只认**顶层 catalog_id**(sub_catalogs/custom_tag_groups 的 id 过滤恒空 count=0)。修复 `MissevanApi.categories`:`tabs`→`catalogs` 映射,瓦片只暴露顶层目录(配音/音乐/情感/放松/古风 5 项),不虚构子分类
+- **验证**:新增 `test/missevan_categories_test.dart` 3 用例(新 schema 映射/旧 schema 拒绝/服务错误透传)全过;missevan 站回归(danmaku 8/8);分类探针复验 missevan categories-ok 5 项、kuaishou 831/showroom 18/soop 543/yy 3×18 全绿;范围化 analyze 零问题(全仓 analyze 仍随并行弹幕批次收敛后统一跑)
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:

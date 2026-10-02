@@ -158,26 +158,31 @@ class MissevanApi {
 
   Future<List<LiveArea>> categories({CancelToken? cancel}) async {
     final info = await _get('meta/data', cancel: cancel);
-    final tabs = info['tabs'];
-    if (tabs is! List || tabs.isEmpty || tabs.length > 100) throw const MissevanException(MissevanFailure.schema);
+    // 2026-10 灰度改版:`info.tabs` 变成纯展示键(无 type/id,不可过滤),
+    // 可过滤的分类 id 移到 `info.catalogs[]`。实测 `chatroom/open/list` 只认
+    // 顶层 catalog_id(`sub_catalogs`/`custom_tag_groups` 的 id 过滤恒空),
+    // 因此瓦片只暴露顶层目录,不做虚构的子分类。
+    final catalogs = info['catalogs'];
+    if (catalogs is! List || catalogs.isEmpty || catalogs.length > 100) {
+      throw const MissevanException(MissevanFailure.schema);
+    }
     final result = <String, LiveArea>{};
-    for (final raw in tabs) {
-      final tab = _object(raw);
-      final type = _text(tab['type']);
-      final id = _integer(tab['${type}_id']);
-      final name = _text(tab['name']);
-      if (!{'catalog', 'tag'}.contains(type) || id == null || id <= 0 || name.isEmpty) {
+    for (final raw in catalogs) {
+      final catalog = _object(raw);
+      final id = _integer(catalog['catalog_id']);
+      final name = _text(catalog['catalog_name']);
+      if (id == null || id <= 0 || name.isEmpty) {
         throw const MissevanException(MissevanFailure.schema);
       }
-      final key = '$type:$id';
+      final key = 'catalog:$id';
       if (result.containsKey(key)) throw const MissevanException(MissevanFailure.schema);
       result[key] = LiveArea(
         platform: 'missevan',
-        areaType: type,
+        areaType: 'catalog',
         areaId: '$id',
         areaName: name,
         typeName: '猫耳 FM',
-        areaPic: _picture(tab['icon_url']),
+        areaPic: _picture(catalog['icon_url']),
       );
     }
     return List.unmodifiable(result.values);
