@@ -307,3 +307,9 @@ ffmpeg_kit_extended_config:
   type: base
   gpl: false
   small: false
+  # windows 原生包指向本地预取文件(prefetch_android_native.ps1 已按
+  # e616... pin 校验后播进 hook 缓存):hook 对 remote override 仍会拿
+  # akashskypatel 官方 digest 校验同名文件(e616≠ac4f 必败, 实测竞态——
+  # digest API 失败时跳过校验可过), local override 则完全绕开网络哈希,
+  # 完整性由 prefetch 的 pin 与 build_local_release 的复核共同保证。
+  windows: ../native-cache/ffmpeg-kit/bundle-base-windows-x86_64-shared-lgpl.zip
