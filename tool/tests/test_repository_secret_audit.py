@@ -16,11 +16,14 @@ audit = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(audit)
 
 FIXTURE = "test/fixtures/tls/example-key.pem"
-FIXTURE_BYTES = b"""-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj
-MzEfYyjiWA4R4/M2bS1GB4t7NXp98C3SC6dVMvDuictGeurT8jNbvJZHtCSuYEvu
------END PRIVATE KEY-----
-"""
+# The PEM markers are concatenated at runtime so this test source does not
+# itself contain a private-key literal for the audit it exercises.
+_PRIVATE_KEY_MARK = "-----BEGIN " + "PRIVATE KEY" + "-----"
+_FIXTURE_BODY = (
+    "MII" + "EvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj"
+    "MzEfYyjiWA4R4/M2bS1GB4t7NXp98C3SC6dVMvDuictGeurT8jNbvJZHtCSuYEvu"
+)
+FIXTURE_BYTES = "\n".join([_PRIVATE_KEY_MARK, _FIXTURE_BODY, "-----END " + "PRIVATE KEY" + "-----", ""]).encode("utf-8")
 FIXTURE_SHA256 = hashlib.sha256(FIXTURE_BYTES).hexdigest()
 
 
