@@ -42,6 +42,7 @@
   <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
   <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
   <application
+        android:enableOnBackInvokedCallback="true"
 
     <!-- ColorOS 14 (Android 14) predictive back + GetX RouterDelegate 死锁规避:
          全面屏手势返回会触发 OnBackInvokedCallback 预测路径, 与 GetX 的
