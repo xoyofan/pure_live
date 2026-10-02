@@ -17,9 +17,10 @@ class CCInterfaceProbeTest(TestCase):
         with patch.object(probe, "request_json", side_effect=responses) as request:
             probe.cc_category_rooms_probe()
         self.assertEqual(request.call_count, 2)
-        self.assertEqual([c.args[0] for c in request.call_args_list], ["https://cc.163.com/api/category/3/"] * 2)
-        self.assertEqual([c.args[1]["start"] for c in request.call_args_list], [0, 2])
-        self.assertEqual([c.args[1]["size"] for c in request.call_args_list], [2, 2])
+        # call.args attribute access is 3.8+; positional indexing works everywhere.
+        self.assertEqual([c[0][0] for c in request.call_args_list], ["https://cc.163.com/api/category/3/"] * 2)
+        self.assertEqual([c[0][1]["start"] for c in request.call_args_list], [0, 2])
+        self.assertEqual([c[0][1]["size"] for c in request.call_args_list], [2, 2])
 
     def test_html_legacy_catalogue_and_mismatched_game_fail(self):
         for response in ("<html>official migration</html>", {"game_list": []}, {"gametype": 4, "lives": []}):
