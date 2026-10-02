@@ -14,7 +14,9 @@ library;
 import 'dart:async';
 
 import 'package:live_parser/live_parser.dart' hide LiveSite;
+
 import 'browse_source.dart';
+
 import 'package:pure_live/core/contracts/live_input_recipe.dart';
 import 'package:pure_live/core/contracts/live_site.dart';
 import 'package:pure_live/platforms/sites.dart';
@@ -151,7 +153,20 @@ RoomRecord pureliveStatsRecord(LiveRoom room, String site) {
 }
 
 /// 把 pure_live LiveRoom 映射为 live_parser RoomPayload(不含流)。
-Future<RoomPayload> _roomToPayload(LiveRoom room, String site) async {
+///
+/// soop 分类契约:LiveRoom 无分类号字段,解析层把 CHANNEL `CATE` 放进
+/// `data['cateNo']`;payload.cid 承载房间号(soop 无二级分类 id,zishu
+/// live_parser 同构),真实分类号走 [RoomPayload.cateNo]——播放页收藏星/
+/// 分类跳转按 cateNo,不得拿 cid 冒充。其余平台拿不到分类上下文,cid
+/// 维持空串(与既有行为一致)。
+RoomPayload pureliveRoomToPayload(
+  LiveRoom room,
+  String site, {
+  List<StreamQuality> streams = const <StreamQuality>[],
+  List<QualityOption> availableQualities = const <QualityOption>[],
+}) {
+  final data = room.data;
+  final cateNo = data is Map ? (data['cateNo']?.toString().trim() ?? '') : '';
   return RoomPayload(
     site: site,
     roomId: room.roomId ?? '',
@@ -161,10 +176,11 @@ Future<RoomPayload> _roomToPayload(LiveRoom room, String site) async {
     cover: room.cover ?? '',
     avatar: room.avatar ?? '',
     category: room.area ?? '',
-    cid: '',
+    cid: site == Sites.soopSite ? (room.roomId ?? '') : '',
+    cateNo: cateNo,
     roomState: _stateOf(room),
-    streams: const <StreamQuality>[],
-    availableQualities: const <QualityOption>[],
+    streams: streams,
+    availableQualities: availableQualities,
     source: 'purelive/$site',
     fetchedAt: DateTime.now(),
   );
@@ -185,13 +201,13 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
 
     // 离线/未开播:无流可给,只返回元信息。
     if (detail.liveStatus != LiveStatus.live) {
-      return _roomToPayload(detail, site);
+      return pureliveRoomToPayload(detail, site);
     }
 
     // 画质档位。
     final qualities = await coreSite.getPlayQualites(liveroom: detail);
     if (qualities.isEmpty) {
-      return _roomToPayload(detail, site);
+      return pureliveRoomToPayload(detail, site);
     }
 
     // 选档:preferredQuality 名称/ID 匹配,否则默认第一档(最高)。
@@ -210,18 +226,9 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
     final headers = _playbackHeaders(site, request.roomIdOrUrl);
     final chosenIndex = qualities.indexOf(chosen);
 
-    final payload = await _roomToPayload(detail, site);
-    return RoomPayload(
-      site: payload.site,
-      roomId: payload.roomId,
-      sourceUrl: payload.sourceUrl,
-      anchorName: payload.anchorName,
-      title: payload.title,
-      cover: payload.cover,
-      avatar: payload.avatar,
-      category: payload.category,
-      cid: payload.cid,
-      roomState: payload.roomState,
+    return pureliveRoomToPayload(
+      detail,
+      site,
       streams: [
         StreamQuality(
           name: chosen.quality,
@@ -233,20 +240,17 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
         ),
       ],
       availableQualities: [for (final q in qualities) QualityOption(name: q.quality, rate: 0)],
-      source: payload.source,
-      fetchedAt: payload.fetchedAt,
     );
   }
 
   @override
   Future<RoomPayload> recoverRoom(RoomRequest request) => resolveRoom(request);
 
-
   @override
   Future<RoomRecord> refreshRoomSummary(RoomRequest request) async {
     final coreSite = _siteInstanceOf(site);
     final detail = await coreSite.getRoomDetail(LiveRoom(roomId: request.roomIdOrUrl, platform: site));
-    final payload = await _roomToPayload(detail, site);
+    final payload = pureliveRoomToPayload(detail, site);
     // 统计快照(2026-10-02 用户口径: 直播页观看/贵宾/超粉/钻粉要解析显示):
     // pure_live LiveRoom 只有观看/粉丝测量值,vip/svip 无数据源留空
     // (数据诚实性: 不伪造);native 覆盖平台由注册层委托原生解析器补全。
@@ -281,8 +285,9 @@ class PureLiveBrowseRepository implements BrowseRepository {
           ],
         ),
     ];
-    // soop 目录中文化走展示层(displayCategoryName → remap/补充表),数据层
-    // 保持上游英文本名(Accept-Language 口径见 SoopSite.getHeaders)。
+    // soop 目录/房间分类中文化:目录预热(SoopSite.getSubCategores)填充
+    // 「分类号→中文名」进程表,房间条目按 broad_cate_no 反查后 area 直接
+    // 是中文展示名;展示层 displayCategoryName 仍作兜底二次映射。
     return CategoryResult(site: site, groups: groups);
   }
 
@@ -293,43 +298,18 @@ class PureLiveBrowseRepository implements BrowseRepository {
     final summaries = <RoomSummary>[];
 
     if (cid.isEmpty) {
-      // 推荐流。
+      // 推荐流:无分类上下文,cid 留空(zishu browse._toResult 同口径)。
       final rooms = await coreSite.getRecommendRooms(page: request.page, pageSize: request.limit);
       for (final room in rooms) {
-        summaries.add(
-          RoomSummary(
-            site: site,
-            roomId: room.roomId ?? '',
-            title: room.title ?? '',
-            anchorName: room.nick ?? '',
-            cid: room.area ?? '',
-            category: room.area ?? '',
-            online: audienceDisplayOf(room),
-            cover: room.cover ?? '',
-            avatar: room.avatar ?? '',
-            roomState: room.liveStatus == LiveStatus.live ? RoomState.live : RoomState.offline,
-          ),
-        );
+        summaries.add(pureliveBrowseSummary(room, site, cid: ''));
       }
     } else {
-      // 分类房间:cid 即 LiveArea.areaId。
+      // 分类房间:cid 即 LiveArea.areaId(soop 分类号)。areaName 传占位,
+      // soop 房间分类名由解析层按条目 broad_cate_no 自查,不再沿用此值。
       final area = LiveArea(platform: site, areaId: cid, areaName: cid);
       final rooms = await coreSite.getCategoryRooms(area, page: request.page, pageSize: request.limit);
       for (final room in rooms) {
-        summaries.add(
-          RoomSummary(
-            site: site,
-            roomId: room.roomId ?? '',
-            title: room.title ?? '',
-            anchorName: room.nick ?? '',
-            cid: room.area ?? '',
-            category: room.area ?? '',
-            online: audienceDisplayOf(room),
-            cover: room.cover ?? '',
-            avatar: room.avatar ?? '',
-            roomState: room.liveStatus == LiveStatus.live ? RoomState.live : RoomState.offline,
-          ),
-        );
+        summaries.add(pureliveBrowseSummary(room, site, cid: cid));
       }
     }
 
@@ -339,6 +319,24 @@ class PureLiveBrowseRepository implements BrowseRepository {
       hasMore: summaries.length >= request.limit,
     );
   }
+}
+
+/// 浏览列表条目 → RoomSummary:cid 用请求的分类号(卡片分类反查/我的分类
+/// 判重按分类号;推荐流无分类上下文为空),category 用解析层已反查的
+/// 展示名(soop 为中文,其余平台为上游原名)。
+RoomSummary pureliveBrowseSummary(LiveRoom room, String site, {required String cid}) {
+  return RoomSummary(
+    site: site,
+    roomId: room.roomId ?? '',
+    title: room.title ?? '',
+    anchorName: room.nick ?? '',
+    cid: cid,
+    category: room.area ?? '',
+    online: audienceDisplayOf(room),
+    cover: room.cover ?? '',
+    avatar: room.avatar ?? '',
+    roomState: room.liveStatus == LiveStatus.live ? RoomState.live : RoomState.offline,
+  );
 }
 
 /// ── 搜索:searchRooms → SearchResult(hits) ──

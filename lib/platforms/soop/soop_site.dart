@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:live_parser/live_parser.dart' show remapCategoryName, rememberSoopZhCategory, soopZhCategoryName;
+
 import 'package:pure_live/core/index.dart';
 import 'package:pure_live/core/models/live_category.dart';
 import 'package:pure_live/core/logging/core_log.dart';
@@ -107,6 +109,19 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
     return explicitZero ?? '';
   }
 
+  /// 房间列表条目 → 展示分类名:分类号(`broad_cate_no`,推荐流带前导零、
+  /// 分类流不带)反查 zh_CN 分类进程表,未命中回落 `category_name` + remap
+  /// 归一(zishu live_parser soop browse `_toResult` 同构)。注意
+  /// categoryContentsList 条目没有 `category_name` 键,反查未命中返回
+  /// 空串,角标按空分类隐藏。
+  @visibleForTesting
+  static String soopRoomArea(Map<dynamic, dynamic> item) {
+    final cateNo = (item['broad_cate_no'] ?? item['category_no'])?.toString().trim() ?? '';
+    final zh = cateNo.isNotEmpty ? soopZhCategoryName(cateNo) : null;
+    if (zh != null && zh.isNotEmpty) return zh;
+    return remapCategoryName('soop', item['category_name']?.toString() ?? '');
+  }
+
   final Map<String, dynamic> headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2049.0 Safari/537.36',
     'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
@@ -152,16 +167,25 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
         "nListCnt": pageSize,
         "nOffset": "0",
         "szPlatform": "pc",
+        // 上游 zh_CN 本地化半撤:带 lang=zh_CN + zh-CN Accept-Language 仍能
+        // 对部分目录直出中文(实测 2026-10-03 「我的世界」),纯 en-US 全英文;
+        // 未直出的条目靠 remap 表归一(zishu live_parser soop browse 同口径)。
+        "lang": "zh_CN",
       },
-      header: getHeaders(),
+      header: {...getHeaders(), 'Accept-Language': 'zh-CN,zh;q=0.9'},
     );
     var result = decode(resultText);
 
     List<LiveArea> subs = [];
     for (var item in result["data"]["list"] ?? []) {
+      final displayName = remapCategoryName('soop', item["category_name"]?.toString() ?? '');
+      // 分类树拉取即填充「分类号→中文显示名」进程表:房间列表的
+      // broad_cate_no 与播放详情的 CHANNEL CATE 都按它反查中文名
+      // (browse warmup 启动即拉本接口,预热先行)。
+      rememberSoopZhCategory(item["category_no"]?.toString() ?? '', displayName);
       var subCategory = LiveArea(
         areaId: item["category_no"],
-        areaName: item["category_name"],
+        areaName: displayName,
         areaType: liveCategory.id,
         platform: Sites.soopSite,
         areaPic: item["cate_img"],
@@ -184,8 +208,10 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
   Map<String, String> getHeaders() {
     return {
       'Accept': '*/*',
-      // 上游 2026-10 已撤 lang=zh_CN 本地化,仅保留 ko/en(Accept-Language);
-      // 统一取英文目录名,展示层经 remap/补充表中文化(迭代17 口径)。
+      // 上游 zh_CN 本地化半撤,常规请求统一取英文本名,展示层经 remap/补充
+      // 表/分类进程表中文化(迭代17 口径)。唯一例外是 getSubCategores 目录
+      // 预热:lang=zh_CN + zh-CN 头仍能对部分目录直出中文,用于填充
+      // 「分类号→中文名」进程表(zishu live_parser soop browse 同口径)。
       'Accept-Language': 'en-US',
       'Origin': 'https://www.sooplive.co.kr',
       'Referer': 'https://www.sooplive.co.kr/',
@@ -226,7 +252,7 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
         onlineViewers: viewerCount,
         audienceMetricType: AudienceMetricType.onlineViewers,
         avatar: validImgUrl(item["user_profile_img"]),
-        area: category.areaName,
+        area: soopRoomArea(item),
         liveStatus: LiveStatus.live,
         status: true,
         platform: Sites.soopSite,
@@ -337,7 +363,7 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
         onlineViewers: viewerCount,
         audienceMetricType: AudienceMetricType.onlineViewers,
         avatar: getAvatarUrlByRoomId(roomId),
-        area: item["category_name"],
+        area: soopRoomArea(item),
         liveStatus: LiveStatus.live,
         status: true,
         platform: Sites.soopSite,
@@ -358,16 +384,20 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
       Map<dynamic, dynamic> playerLiveApiFuture = await getPlayerLiveApiData(roomId: roomId);
       var danmakuFuture = geDanmakuArgs(playerLiveApiFuture, roomId);
       final room = await getLiveRoomByApi(playerLiveApiFuture, danmakuFuture, roomId);
-      final currentRoom = LiveCurrentRoomContext.provider
-          ?.currentRoomMatching(platform: Sites.soopSite, roomId: roomId);
+      final currentRoom = LiveCurrentRoomContext.provider?.currentRoomMatching(
+        platform: Sites.soopSite,
+        roomId: roomId,
+      );
       if (currentRoom != null) {
         return room.withAudienceFallbackFrom(currentRoom);
       }
       return room;
     } catch (e) {
       CoreLog.error(e);
-      final fallbackRoom = LiveCurrentRoomContext.provider
-          ?.currentRoomMatching(platform: Sites.soopSite, roomId: roomId);
+      final fallbackRoom = LiveCurrentRoomContext.provider?.currentRoomMatching(
+        platform: Sites.soopSite,
+        roomId: roomId,
+      );
       if (fallbackRoom != null) {
         return fallbackRoom.getLiveRoomWithError();
       }
@@ -440,8 +470,10 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
     // 业务码：1成功，-6需要登录，0无直播，‑2屏蔽
     if (resultCode != 1) {
       CoreLog.w("soop channel result code=$resultCode");
-      final fallbackRoom = LiveCurrentRoomContext.provider
-          ?.currentRoomMatching(platform: Sites.soopSite, roomId: roomId);
+      final fallbackRoom = LiveCurrentRoomContext.provider?.currentRoomMatching(
+        platform: Sites.soopSite,
+        roomId: roomId,
+      );
       if (fallbackRoom != null) {
         return fallbackRoom.getLiveRoomWithError();
       }
@@ -454,11 +486,15 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
     var cdn = jsonObj["CDN"]?.toString() ?? "";
 
     var jsonObj2 = jsonObj["CATEGORY_TAGS"];
-    var area = "";
-    if (jsonObj2 != null) {
+    // 详情接口的 CATEGORY_TAGS 不随 Accept-Language 本地化(仍韩文);
+    // 按 CHANNEL CATE 分类号反查 zh_CN 进程表,未命中回落原名 + remap
+    // (zishu live_parser soop room_api.parseSoopRoomDetail 同口径)。
+    final cateNo = jsonObj["CATE"]?.toString().trim() ?? '';
+    var area = soopZhCategoryName(cateNo) ?? '';
+    if (area.isEmpty && jsonObj2 != null) {
       var sList = (jsonObj2 as List);
       if (sList.isNotEmpty) {
-        area = sList[0];
+        area = remapCategoryName('soop', sList[0]?.toString() ?? '');
       }
     }
     var sRoomId = jsonObj["BJID"].toString();
@@ -469,7 +505,15 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
     var isLiving = jsonObj["VIEWPRESET"] != null;
     final viewerCount = parseOnlineViewers(Map<dynamic, dynamic>.from(jsonObj as Map));
 
-    var data = {"viewpreset": jsonObj["VIEWPRESET"], "bno": bno, "rmd": rmd, "cdn": cdn};
+    var data = {
+      "viewpreset": jsonObj["VIEWPRESET"],
+      "bno": bno,
+      "rmd": rmd,
+      "cdn": cdn,
+      // LiveRoom 无分类号字段,解析桥(purelive_backend)从这里取
+      // cateNo 供播放页收藏星/分类跳转使用。
+      "cateNo": cateNo,
+    };
     return LiveRoom(
       cover: cover,
       watching: viewerCount,

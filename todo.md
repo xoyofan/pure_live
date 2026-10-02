@@ -26,7 +26,7 @@
 | 快手 | ✅ | ✅ | ✅ | ✅ | 真数据 | ⚠️ 仅主播搜索,观看留空(上游#881,结构性) | ✅ HTTP轮询 | 无可修缺口 |
 | 网易CC | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅ 迭代2:观看徽标不再显示粉丝数(接口无观看数) | ❌ | 口径已修 |
 | Twitch | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅ | ✅ IRC | 推荐=just-chatting 目录 |
-| SOOP | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅ | ✅ WS | 基准组 |
+| SOOP | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅ | ✅ WS | 基准组;迭代27 分类角标中文化(分类号反查进程表,修复卡片直出 0010333 数字) |
 | YY | ✅ | ✅ 迭代2 预热 | ✅ | ✅ | 真数据 | ✅ 迭代2 预热 | ✅ WS | 已对齐 |
 | AcFun | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(结果卡无观看,结构性) | ✅ 迭代10 link-sdk WS | 弹幕已线级验证 |
 | Picarto | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(搜索无观看,结构性) | ✅ 迭代12 匿名 WS | 弹幕已全链路验收 |
@@ -403,6 +403,14 @@
 - 补漏:chzzk WARDOGS/워독스 双键入表(战犬);期间引入的 const map 重复键即时修复
 
 **验证**:analyze 0 error;**133/133 全过**;audit 0 error。三探针与合并前基线完全一致——上游合并+优化轮+迭代21-25 全部修复在新布局上运行时零回归
+
+### 迭代 27(2026-10-03)✅ soop 分类中文化补链(卡片数字角标修复) + 播放页⭐我的分类点亮
+
+- [x] **卡片数字根因**:purelive 桥 `PureLiveBrowseRepository.fetchRooms` 分类流伪造 `LiveArea(areaName: cid)` 把分类号当名字下发、推荐流 `cid/category` 同取 `room.area`(韩文),且 fork 数据链从未像 zishu live_parser 那样用分类目录预热 `rememberSoopZhCategory` 进程表 → soop 卡片角标直出 `0010333` 式分类号(分类流)或韩文(推荐流)
+- [x] **解析层照 zishu 移植**(packages/live_parser soop browse/room_api 同构):`SoopSite.getSubCategores` 改 `lang=zh_CN` + zh-CN 头拉目录(实测 zh_CN 半撤仍对部分目录直出中文「我的世界」,纯 en-US 全英文),逐条 `rememberSoopZhCategory(category_no, remap(name))` 预热(browse warmup 启动即拉);`getCategoryRooms`/`getRecommendRooms` 按条目 `broad_cate_no`(前导零经 soopCateNoKey 归一)反查进程表,回落 `category_name`+remap(实测 categoryContentsList 条目**没有** category_name 键、broad_cate_no 无前导零);播放详情按 CHANNEL `CATE` 反查,cateNo 存 `LiveRoom.data`
+- [x] **桥接层补数**:`pureliveRoomToPayload` 填 `payload.cateNo`(soop CHANNEL CATE)、soop `payload.cid`=房间号(zishu 同构契约:cid 非空才渲染收藏星,真实分类号走 cateNo);`pureliveBrowseSummary` cid 改用请求分类号、推荐流留空(原 `cid=room.area` 把韩文名/中文名当分类号,污染我的分类判重与跨平台反查)
+- [x] **播放页⭐零改动点亮**:play_view `_RoomHeader` 的分类徽标+⭐逻辑与 zishu 逐字节一致,只差 payload.cateNo/cid 为空——桥接补数即亮;⭐点击 toggleForCategory 按 cateNo 判重,徽标本体可点进 `/soop/category/<cateNo>`
+- 验证:analyze 改动文件 0 告警;新增 `test/soop_category_zh_bridge_test.dart` 10 用例 + 受影响 5 文件共 **36 测试全过**;curl 实测三接口字段(categoryList zh_CN 直出/`broad_cate_no` 在列/详情 CATE)与进程表键归一闭环
 
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
