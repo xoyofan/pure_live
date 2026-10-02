@@ -26,8 +26,12 @@ LINUX_LIBRARY_ENTRY = 'bundle-base-linux-x86_64-shared-lgpl/lib/libffmpegkit.so'
 
 
 def digest(path: Path) -> str:
+    # hashlib.file_digest is 3.11+; chunked read keeps the gate portable.
+    accumulator = hashlib.sha256()
     with path.open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            accumulator.update(chunk)
+    return accumulator.hexdigest()
 
 
 def stage_linux_runtime(bundle: Path, archive: Path) -> Path:

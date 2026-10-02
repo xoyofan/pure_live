@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MATRIX = ROOT / "docs" / "ACCEPTANCE_MATRIX_3_1_0.md"
 STATUS = ROOT / "docs" / "ACCEPTANCE_STATUS_3_2_0.md"
-SITES = ROOT / "lib" / "core" / "sites.dart"
+SITES = ROOT / "lib" / "core" / "common" / "site_ids.dart"
 EXPANSION = ROOT / "docs" / "PLATFORM_EXPANSION_AUDIT_2026_09_07.md"
 FEATURE_PLAN = ROOT / "docs" / "FEATURE_EXPANSION_3_2_0.md"
 
