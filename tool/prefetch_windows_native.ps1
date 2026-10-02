@@ -13,7 +13,10 @@ if (-not (Test-Path -LiteralPath $packageConfigPath -PathType Leaf)) {
 $packageConfig = Get-Content -LiteralPath $packageConfigPath -Raw | ConvertFrom-Json
 $firebasePackage = @($packageConfig.packages | Where-Object name -eq 'firebase_core') | Select-Object -First 1
 if (-not $firebasePackage) {
-    throw 'firebase_core is missing from .dart_tool/package_config.json.'
+    # The login stack (and firebase_core with it) was removed from the app;
+    # Windows CMake no longer consumes FIREBASE_CPP_SDK_DIR. Nothing to prefetch.
+    Write-Host 'firebase_core is not a dependency anymore; skipping Firebase C++ SDK prefetch.'
+    exit 0
 }
 
 $firebaseRootUri = [Uri]$firebasePackage.rootUri
