@@ -29,14 +29,14 @@
 | SOOP | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅ | ✅ WS | 基准组 |
 | YY | ✅ | ✅ 迭代2 预热 | ✅ | ✅ | 真数据 | ✅ 迭代2 预热 | ✅ WS | 已对齐 |
 | AcFun | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(结果卡无观看,结构性) | ✅ 迭代10 link-sdk WS | 弹幕已线级验证 |
-| Picarto | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(搜索无观看,结构性) | ❌ | 无缺口 |
+| Picarto | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(搜索无观看,结构性) | ✅ 迭代12 匿名 WS | 弹幕已全链路验收 |
 | TwitCasting | ✅ | ✅ 迭代1 | ✅ | ✅ 迭代1 | 真实(HTML) | ✅(搜索无观看,结构性) | ✅ 迭代6 WS(pubsub) | 弹幕已全链路验收 |
-| 猫耳FM | ✅(热度) | ✅ | ✅ | ✅ | 真数据 | ✅ | ❌(契约未验证) | 完整参照实现 |
+| 猫耳FM | ✅(热度) | ✅ | ✅ | ✅ | 真数据 | ✅ | ✅ 迭代12 im网关 WS | 弹幕已全链路验收 |
 | CHZZK | ✅ 迭代1 透出 | ✅ | ✅ 迭代1 透出 | ✅ | 伪目录(仅popular) | ✅(仅频道卡) | ❌ | 已修 |
 | niconico | ✅ 迭代1 透出(累计观看口径) | 🚫 recent 行无分类 | ✅ 迭代1 透出 | ✅ 迭代1 | 硬编码7 tab | ✅ | ❌ | 已修 |
 | SHOWROOM | ✅ | ✅ | ✅ | ✅ | 真数据 | ✅(本地快照过滤) | ✅ 迭代4 WS(SUB/MSG) | 弹幕已全链路验收 |
-| Bigo | ✅ | ⚠️ 硬编码站名(列表API无分类键) | ✅ | ⚠️ | 硬编码单 | ✅(ID+本地过滤) | ❌ | 结构性 |
-| FC2 | ✅ | ✅ | ✅ | ✅ | 硬编码6官方 | ✅(快照内) | ❌ | 无缺口 |
+| Bigo | ✅ | ⚠️ 硬编码站名(列表API无分类键) | ✅ | ⚠️ | 硬编码单 | ✅(ID+本地过滤) | ✅ 迭代12 游客WS | 注册/进房已验证 |
+| FC2 | ✅ | ✅ | ✅ | ✅ | 硬编码6官方 | ✅(快照内) | ✅ 迭代12 控制seat | 弹幕已全链路验收 |
 | Steam | ✅ | ✅(游戏名) | ✅ | ✅ | 硬编码单 | ✅(单页本地) | ❌ | 无缺口 |
 | 映客 | 🚫 探针:行无观看键 | ❌ 推荐行无分组名 | 🚫 | ✅ 迭代1(分组名) | 真实(精选) | ✅(本地昵称) | ❌ | 观看数结构性无 |
 | KilaKila | ✅ 迭代1(watchNumber) | ❌ 接口无分类 | ✅ 迭代1 | ❌ | 硬编码2 | ✅ | ❌ | 分类结构性无 |
@@ -135,6 +135,17 @@
 - [x] 单测 5 用例(封帧往返/坏帧拒绝/AES 往返/评论信号解析)全过;analyze 零问题
 - [x] **线级验证**:真实房间 Register ack(instanceId+sessKey)→ EnterRoom ack → Push 流解析出 `UserEnterRoom`/`Like` 信号与 `RecentComment` 真实评论(`崎路人: 发现了`),评论 schema 线级确认
 - [x] 矩阵探针扩展 acfun 平台,`result: passed`(会话保持;评论帧因观察时段房间静默未触发 requireChat,解析路径由线级 RecentComment + 单测覆盖)
+
+### 迭代 12(2026-10-02)✅ 弹幕专项五:四平台批量落地(并行调研档案驱动)
+
+- [x] 三路并行调研(海外+特殊组完成,国内组 fetch failed 待重试):产出 13 平台协议档案;**猫耳"网络封锁"系误判**(聊天在 im.missevan.com 观看端通道,非被墙的 chat 子域)
+- [x] 猫耳FM:`wss://im.missevan.com/ws?room_id=` + 匿名 cookie(任意 base)+ join 帧 + ❤️ 30s 心跳;矩阵探针 **passed**
+- [x] Picarto:`wss://chat.picarto.tv/chat/token=`(空 token 匿名可读)+ init 帧 + `__ping__` 50s + 按频道 rn 过滤;探针 **passed**
+- [x] FC2:复用 `controlGrant` 开独立控制 seat,`comment` 批次帧 + heartbeat 30s;探针 **passed**
+- [x] Bigo:getWebSocketLink 游客会话 → eid 帧(challenge 256→MD5 应答 79108→login 512279→enter 1304)→ 2584 base64 载荷;调试探针验证**注册+进房成功**(chat=0 系该时段房间安静;矩阵探针败于房间发现阶段——12 间房 10 间 BigoException,属站点目录噪声)
+- [x] CHZZK:access-token 端点确证并实测 200(参数名 `channelId`),协议链验证至 token;9 台聊天主机本机 dart+ALPN 仍全部握手失败(子代理 openssl"成功"为误读),维持待网络;探针脚本已更新到现役 cmd 帧协议
+- [x] 新增单测 19 用例(4 套全过);弹幕矩阵探针扩至 10 平台;analyze 零问题
+- 现役弹幕平台总计:**7**(SHOWROOM/TwitCasting/AcFun/猫耳/Picarto/FC2/Bigo) + 头部 8 家此前已有
 
 ### 迭代 11(2026-10-02)✅ 全站播放检测: purelive 解析层零失效
 
