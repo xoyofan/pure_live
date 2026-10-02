@@ -134,7 +134,7 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
   for (final listed in rooms.where((r) => (r.roomId ?? '').trim().isNotEmpty).take(_roomsScanned)) {
     final roomId = listed.roomId!.trim();
     try {
-      final candidate = await site.getRoomDetail(roomId: roomId, platform: id);
+      final candidate = await site.getRoomDetail(LiveRoom(roomId: roomId, platform: id));
       if (candidate.liveStatus != LiveStatus.live) {
         attempts.add('not-live');
         continue;
@@ -162,7 +162,7 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
     return;
   }
 
-  final baseline = await site.resolvePlayUrls(detail: detail, quality: qualities.first);
+  final baseline = await site.resolvePlayUrls(liveroom: detail, quality: qualities.first);
   result['stage'] = 'switch';
   final baselineUrls = baseline.urls;
   result['baselineLines'] = baselineUrls.length;
@@ -184,8 +184,8 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
     final row = <String, Object?>{'quality': quality.quality, 'requestedIndex': requestedIndex};
     try {
       final resolution = usesRecoveryPath
-          ? await site.resolvePlayUrlsForRecovery(detail: detail!, quality: quality)
-          : await site.resolvePlayUrls(detail: detail!, quality: quality);
+          ? await site.resolvePlayUrlsForRecovery(liveroom: detail!, quality: quality)
+          : await site.resolvePlayUrls(liveroom: detail!, quality: quality);
       if (!resolution.hasSources) {
         row['verdict'] = 'rejected-empty';
         rejected++;

@@ -41,7 +41,7 @@ void main() {
           final child = await TwitcastingApi().read(Uri.parse(urls.first));
           expect(child.trimLeft(), startsWith('#EXTM3U'));
           expect(child, contains('#EXTINF:'));
-          final recovered = await site.resolvePlayUrlsForRecovery(detail: room, quality: qualities.first);
+          final recovered = await site.resolvePlayUrlsForRecovery(liveroom: room, quality: qualities.first);
           expect(recovered.urls, isNotEmpty);
           expect(recovered.appliedQualityData, qualities.first.selectionId);
           final recorded = await StreamResolverService(siteResolver: (_) => site)

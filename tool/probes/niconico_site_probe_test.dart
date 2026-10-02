@@ -63,7 +63,7 @@ void main() {
           final choices = await site.getPlayQualites(liveroom: room);
           expect(choices, isNotEmpty);
           for (final quality in choices) {
-            final result = await site.resolvePlayUrls(detail: room, quality: quality);
+            final result = await site.resolvePlayUrls(liveroom: room, quality: quality);
             expect(result.inputRecipe, isNotNull);
             expect(result.urls, isEmpty);
             expect(result.appliedQualityData, quality.selectionId);

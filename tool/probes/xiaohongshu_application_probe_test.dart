@@ -50,13 +50,13 @@ void main() {
         try {
           final site = Sites.of('xiaohongshu').liveSite;
           expect(site, isA<XiaohongshuSite>());
-          final room = await site.getRoomDetail(roomId: id, platform: 'xiaohongshu');
+          final room = await site.getRoomDetail(LiveRoom(roomId: id, platform: 'xiaohongshu'));
           expect(room.roomId, id);
           expect(room.isLiveNow, true);
           final qualities = await site.getPlayQualites(liveroom: room);
           expect(qualities, isNotEmpty);
           final quality = qualities.first;
-          final play = await site.resolvePlayUrls(detail: room, quality: quality);
+          final play = await site.resolvePlayUrls(liveroom: room, quality: quality);
           expect(play.urls, isNotEmpty);
           report.addAll({
             'stage': 'recording-source',

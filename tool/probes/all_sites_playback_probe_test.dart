@@ -129,7 +129,7 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
     LiveRoom? restrictedCandidate;
     try {
       result['stage'] = 'detail';
-      final detail = await site.getRoomDetail(roomId: roomId, platform: id);
+      final detail = await site.getRoomDetail(LiveRoom(roomId: roomId, platform: id));
       if (detail.liveStatus != LiveStatus.live) {
         attempts.add('not-live(${detail.liveStatus?.name})');
         continue;
@@ -147,7 +147,7 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
       result['qualities'] = qualities.map((q) => q.quality).toList();
       result['stage'] = 'urls';
       // Same entry point as the player: owned inputs carry no exportable URL.
-      final resolution = await site.resolvePlayUrls(detail: detail, quality: qualities.first);
+      final resolution = await site.resolvePlayUrls(liveroom: detail, quality: qualities.first);
       if (resolution.inputRecipe != null) {
         result['verdict'] = 'owned-input';
         return;
@@ -173,7 +173,7 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
         final perQuality = <String, String>{};
         for (final quality in qualities) {
           try {
-            final other = await site.resolvePlayUrls(detail: detail, quality: quality);
+            final other = await site.resolvePlayUrls(liveroom: detail, quality: quality);
             final otherUri = other.urls.isEmpty ? null : Uri.tryParse(other.urls.first);
             perQuality[quality.quality] = otherUri == null ? 'no-url' : await _checkMedia(otherUri, headers);
           } catch (error) {

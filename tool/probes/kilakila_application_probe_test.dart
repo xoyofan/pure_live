@@ -32,12 +32,12 @@ void main() {
           final metadata = await site.getRoomDetailForRefresh(roomId: uid, platform: site.id);
           expect(metadata.roomId, uid);
           expect(metadata.data, isNull);
-          final detail = await site.getRoomDetail(roomId: uid, platform: site.id);
+          final detail = await site.getRoomDetail(LiveRoom(roomId: uid, platform: site.id));
           final qualities = await site.getPlayQualites(liveroom: detail);
           expect(qualities, isNotEmpty);
-          final resolution = await site.resolvePlayUrls(detail: detail, quality: qualities.first);
+          final resolution = await site.resolvePlayUrls(liveroom: detail, quality: qualities.first);
           expect(resolution.urls, isNotEmpty);
-          final renewal = await site.resolvePlayUrlsForRecovery(detail: detail, quality: qualities.first);
+          final renewal = await site.resolvePlayUrlsForRecovery(liveroom: detail, quality: qualities.first);
           expect(renewal.urls, isNotEmpty);
           final recorded = await StreamResolverService().resolveStream(
             roomId: uid,

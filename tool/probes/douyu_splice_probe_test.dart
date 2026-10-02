@@ -43,9 +43,9 @@ void main() {
         final site = Sites.of('douyu').liveSite;
 
         Future<Uri> resolve() async {
-          final detail = await site.getRoomDetail(roomId: room, platform: 'douyu');
+          final detail = await site.getRoomDetail(LiveRoom(roomId: room, platform: 'douyu'));
           final qualities = await site.discoverPlayQualities(detail: detail);
-          final resolution = await site.resolvePlayUrls(detail: detail, quality: qualities.first);
+          final resolution = await site.resolvePlayUrls(liveroom: detail, quality: qualities.first);
           return Uri.parse(resolution.urls.first);
         }
 

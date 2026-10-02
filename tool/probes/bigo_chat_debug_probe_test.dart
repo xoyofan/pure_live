@@ -43,7 +43,7 @@ void main() {
         BigoDanmakuArgs? args;
         for (final room in rooms) {
           try {
-            final detail = await site.getRoomDetail(roomId: room.normalizedRoomId, platform: 'bigo');
+            final detail = await site.getRoomDetail(LiveRoom(roomId: room.normalizedRoomId, platform: 'bigo'));
             // ignore: avoid_print
             print(
               '[detail] ${room.normalizedRoomId} live=${detail.isLiveNow} danmakuArgs=${detail.danmakuData?.runtimeType}',

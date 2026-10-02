@@ -37,7 +37,7 @@ void main() {
           expect(detail.isLiveNow, isTrue);
           final qualities = await site.getPlayQualites(liveroom: detail);
           expect(qualities, isNotEmpty);
-          final resolved = await site.resolvePlayUrlsForRecovery(detail: detail, quality: qualities.first);
+          final resolved = await site.resolvePlayUrlsForRecovery(liveroom: detail, quality: qualities.first);
           expect(resolved.appliedQualityData, qualities.first.selectionId);
           expect(Uri.parse(resolved.urls.single).scheme, 'https');
           expect(site.getPlayUrlInvalidAt(resolved.urls.single), isNotNull);
@@ -49,7 +49,7 @@ void main() {
           expect(record.qualityCursorId, 'hls');
           expect(record.invalidAt, isNotNull);
           await expectLater(
-            site.getRoomDetail(roomId: '1', platform: 'missevan'),
+            site.getRoomDetail(LiveRoom(roomId: '1', platform: 'missevan')),
             throwsA(isA<MissevanException>().having((error) => error.kind, 'kind', MissevanFailure.notFound)),
           );
           final result = {

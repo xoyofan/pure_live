@@ -193,7 +193,7 @@ Future<LiveRoom> _findCurrentRoom(LiveSite site, String platform) async {
   for (final room in candidates.where((room) => room.isLiveNow && room.normalizedRoomId.isNotEmpty).take(6)) {
     try {
       final detail = await site
-          .getRoomDetail(roomId: room.normalizedRoomId, platform: platform)
+          .getRoomDetail(LiveRoom(roomId: room.normalizedRoomId, platform: platform))
           .timeout(const Duration(seconds: 25));
       if (detail.isLiveNow && detail.danmakuData != null) return detail;
     } catch (error) {

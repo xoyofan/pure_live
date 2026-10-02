@@ -114,7 +114,7 @@ void main() {
             expect(detail.isLiveNow, true);
             final quality = (await site.getPlayQualites(liveroom: detail)).single;
             report['stage'] = 'fresh-resolution';
-            final resolution = await site.resolvePlayUrls(detail: detail, quality: quality);
+            final resolution = await site.resolvePlayUrls(liveroom: detail, quality: quality);
             expect(resolution.urls, isNotEmpty);
             expect(resolution.appliedQualityData, 'original');
             report['declaredMediaExtension'] = p.extension(Uri.parse(resolution.urls.first).path).toLowerCase();
