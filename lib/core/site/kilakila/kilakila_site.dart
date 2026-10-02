@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:pure_live/common/index.dart' show i18n;
 import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/core/danmaku/empty_danmaku.dart';
+import 'package:pure_live/core/danmaku/kilakila_danmaku.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/interface/live_directory.dart';
 import 'package:pure_live/core/interface/live_search.dart';
@@ -32,7 +32,7 @@ class KilakilaSite extends LiveSite
   @override
   String get directoryNoticeKey => 'kilakila_directory_scope';
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => KilakilaDanmaku();
 
   static String ownerUrl(String uid) => '${KilakilaApi.ownerOrigin}/index/roomuser/uid/${KilakilaApi.id(uid)}';
 
@@ -45,6 +45,8 @@ class KilakilaSite extends LiveSite
     cover: snapshot.cover,
     avatar: snapshot.avatar,
     link: ownerUrl(snapshot.userId),
+    // latestQuery 弹幕轮询用的是 liveRoomId( roomIdStr ),不是 UID。
+    danmakuData: snapshot.roomId.isEmpty ? null : KilakilaDanmakuArgs(roomId: snapshot.roomId),
     // watchNumber 是平台自身的观看数(并发/累计语义未验证),原样透出展示。
     watching: snapshot.watchNumber != null && snapshot.watchNumber! > 0 ? '${snapshot.watchNumber}' : '',
     audienceMetricType: AudienceMetricType.unknown,
