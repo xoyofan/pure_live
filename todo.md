@@ -307,6 +307,15 @@
 
 **验证**:单测 **51 用例全过**(直达识别 +17live 3 形态/域名 hint +17live/zh 回落 3/搜索门槛 3/展示层 10/retry 2/missevan 3/site_settings 2/audience/prefetch 8);改动 12 文件 analyze 零问题;17live 对齐探针 live+公告中文("17LIVE 要求观看者年满 18 周岁。");bigo 登录墙房 unknown+中文公告语义正确。新探针入库 `resolve_room_diag_probe_test.dart`(单房间端到端)/`home_play_alignment_probe_test.dart`(首页↔直播页字段对齐)
 
+### 迭代 19(2026-10-02)✅ twitcasting 频道链接直达:/mel___t 从"打不开"到任意档直达
+
+用户报告 `https://twitcasting.tv/mel___t` 打不开。诊断(pure_live 解析层本就支持频道 URL,纯 UI 直达链缺口):
+
+- **解析层健康**(探针 `resolve_room_diag`):pure_live `TwitcastingApi.searchLives` 早有频道根 URL 分支(`channelFromUri` → `detail(channel)`,频道页抓元数据 + `streamserver.php` 拿当前场次),探针实测 URL → searchRooms 1 hit → detail live(めりのきゃすー) → 3 档(HLS high/medium/low) → 流地址全通;`detail` 的 roomId 即频道名,播放页 `/twitcasting/play/mel___t` 与 resolve 链一致
+- **缺口在 UI 入口**(与迭代18 17live 同款):`siteHintFromInput` 表无 twitcasting.tv(默认档/`--room` 启动参数推不出平台),`resolveSearchDirect` 无该域直达(非 twitcasting 档粘贴链接不出"进直播间"直达项,只在恰好选中 twitcasting 档时靠 searchRooms 频道分支命中)
+- **修复**:`siteHintFromInput` 补 `twitcasting.tv`(host 白名单正则不吞 `search.twitcasting.tv` 子域);`resolveSearchDirect` 补 `_twitcastingChannelRoot`(Uri 解析:host 白名单 + 单段 path + 频道名形状 `[a-zA-Z0-9_]{1,80}`,与 `TwitcastingApi.channelFromUri` 同口径)——**movie/回放链接(两段 path)不直达**,保持 pure_live「不静默替换旧场次」原则
+- **验证**:`search_direct_resolve_test` +twitcasting 用例(频道根 3 形态直达任意档/movie 链接不识别/裸 host 不识别)、`startup_url_hint_test` +twitcasting 域名推断,12/12 过;analyze 零问题。期间撞并行会话 owned-input 接入在途编辑的幻影编译错(play_provider/browse_source/purelive_backend 中间态),等待收敛后复跑全绿,非本改动引入
+
 
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 

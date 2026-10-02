@@ -20,6 +20,7 @@ void main() {
       expect(siteHintFromInput('https://live.bilibili.com/1'), 'bilibili');
       expect(siteHintFromInput('https://www.twitch.tv/jinnytty'), 'twitch');
       expect(siteHintFromInput('https://17.live/en/live/29725277'), '17live');
+      expect(siteHintFromInput('https://twitcasting.tv/mel___t'), 'twitcasting');
     });
 
     test('纯房间号/未知域名返回空串(不做联网探测)', () {

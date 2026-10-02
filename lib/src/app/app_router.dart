@@ -410,4 +410,5 @@ final List<(String, RegExp)> _kUrlSiteHints = [
   ('missevan', RegExp(r'(?:^|/)fm\.missevan\.com/', caseSensitive: false)),
   ('niconico', RegExp(r'(?:^|/)live\.nicovideo\.jp/', caseSensitive: false)),
   ('17live', RegExp(r'(?:^|/)(?:www\.)?17\.live/', caseSensitive: false)),
+  ('twitcasting', RegExp(r'(?:^|/)(?:www\.)?twitcasting\.tv/', caseSensitive: false)),
 ];

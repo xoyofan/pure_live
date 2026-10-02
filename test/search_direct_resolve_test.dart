@@ -50,6 +50,22 @@ void main() {
       expect(resolveSearchDirect('douyu', 'https://17.live/en/profile/r/29725277'), isNull);
     });
 
+    test('twitcasting 频道根 URL → 链接直达(任意平台档下识别)', () {
+      for (final url in [
+        'https://twitcasting.tv/mel___t',
+        'https://www.twitcasting.tv/mel___t/',
+        'https://twitcasting.tv/mel___t?ref=share',
+      ]) {
+        final target = resolveSearchDirect('douyu', url);
+        expect(target?.kind, DirectKind.link, reason: url);
+        expect(target?.roomId, 'mel___t', reason: url);
+      }
+      // 电影/回放链接不直达(与 pure_live「不静默替换旧场次」口径一致)。
+      expect(resolveSearchDirect('douyu', 'https://twitcasting.tv/mel___t/movie/841737342'), isNull);
+      // 非频道名形状不识别。
+      expect(resolveSearchDirect('douyu', 'https://twitcasting.tv/'), isNull);
+    });
+
     test('非法 lv 形态不识别(与 validateProgramId 同口径)', () {
       expect(resolveSearchDirect('niconico', 'lv0'), isNull);
       expect(resolveSearchDirect('niconico', 'lv'), isNull);
