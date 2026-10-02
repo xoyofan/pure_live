@@ -6,8 +6,11 @@ library;
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:live_parser/live_parser.dart';
+import 'package:pure_live/player/core/live_input_playback_binding.dart';
+import 'package:pure_live/player/core/playback_source_transport.dart';
 
 import '../../../platforms/common/playback/idle_releasing_live_player.dart';
 import '../../../platforms/common/playback/live_player.dart';
@@ -132,6 +135,61 @@ class PlayController extends AsyncNotifier<PlayState> {
   final PlayParams params;
 
   int _generation = 0;
+
+  /// owned-input 播放配方开出的活座位(niconico 等)。同一时刻至多一个:
+  /// 新座位接管前先 close 旧座位;provider 离场经 [ref.onDispose] 兜底释放,
+  /// 防止座位(websocket keepalive/本地中继)泄漏。
+  PlaybackInputLease? _ownedLease;
+  bool _ownedLeaseDisposerInstalled = false;
+
+  /// 开 owned-input 座位并把本地中继地址包装成可开线路。返回 null 表示
+  /// 配方不可得/代际已过期——调用方回落 open_skip。
+  Future<StreamLine?> _openOwnedInput(OwnedInputResolver? resolver, String? preferredQuality, int generation) async {
+    if (resolver == null) return null;
+    if (!_ownedLeaseDisposerInstalled) {
+      _ownedLeaseDisposerInstalled = true;
+      ref.onDispose(() {
+        final lease = _ownedLease;
+        _ownedLease = null;
+        unawaited(lease?.close());
+      });
+    }
+    try {
+      final recipe = await resolver
+          .resolveOwnedInputRecipe(
+            site: params.site,
+            roomIdOrUrl: params.roomId,
+            preferredQuality: preferredQuality,
+          )
+          .timeout(const Duration(seconds: 45));
+      if (recipe == null || !ref.mounted || generation != _generation) return null;
+      // 播放策略 = purelive 绑定:配方 → OwnedPlaybackSource → 座位/本地中继。
+      final lease = await bindLiveInputForPlayback(recipe)
+          .createInput(CancelToken())
+          .timeout(const Duration(seconds: 30));
+      if (!ref.mounted || generation != _generation) {
+        unawaited(lease.close());
+        return null;
+      }
+      final previous = _ownedLease;
+      _ownedLease = lease;
+      unawaited(previous?.close());
+      PlaybackLog.write('owned_seat_open', {
+        'site': params.site,
+        'room': params.roomId,
+        'recipe': recipe.identity,
+        'uri_host': lease.uri.host,
+      });
+      return StreamLine(name: '配方线路', format: 'hls', url: lease.uri.toString(), headers: const {});
+    } catch (error) {
+      PlaybackLog.write('owned_seat_fail', {
+        'site': params.site,
+        'room': params.roomId,
+        'reason': '$error'.substring(0, '$error'.length > 120 ? 120 : '$error'.length),
+      });
+      return null;
+    }
+  }
 
   /// 用户手动切档后的偏好覆盖(懒取流):切换到的档位若未预取线路,以此档
   /// 重新解析,解析侧只取该档,避免整房全档取流。
@@ -303,15 +361,23 @@ class PlayController extends AsyncNotifier<PlayState> {
       // 1~3s 是最敏感窗口,此刻并发补档会与它抢带宽,表现为「打开很慢」。
       unawaited(_prefetchAfterFirstFrame(payload, source, prefetchToken));
     } else if (!next.isFixture) {
-      // 解析成功但选不出可开线路(owned-input 平台如 niconico/bigo/fc2:
-      // getPlayUrls 有意返回空,取流走专属配方):此前完全静默,真机只能
-      // 靠「连 open 事件都没有」反推。落一条 skip 供诊断归因。
-      PlaybackLog.write('open_skip', {
-        'site': params.site,
-        'room': params.roomId,
-        'qualities': payload.availableQualities.length,
-        'streams': payload.streams.length,
-      });
+      // 解析成功但选不出可开线路:owned-input 平台(niconico/bigo/fc2)的
+      // getPlayUrls 有意返回空,取流走 purelive 播放绑定(配方→座位→本地
+      // 中继,2026-10-02 用户口径「播放策略用 purelive 的」)。配方不可得时
+      // 落 open_skip 供诊断归因(此前完全静默)。
+      final ownedLine = await _openOwnedInput(ref.watch(ownedInputProvider), preferredQuality, generation);
+      if (ownedLine != null && !next.isFixture && generation == _generation && ref.mounted) {
+        // owned 输入无并行回退线路(单座位);断流走既有恢复链 → 重解析 →
+        // 本分支重开新座位。预取对配方平台无意义(档位无 URL),不触发。
+        _open(ownedLine, const []);
+      } else if (generation == _generation) {
+        PlaybackLog.write('open_skip', {
+          'site': params.site,
+          'room': params.roomId,
+          'qualities': payload.availableQualities.length,
+          'streams': payload.streams.length,
+        });
+      }
     }
     return next;
   }

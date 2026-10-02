@@ -61,6 +61,13 @@ final browseSourceProvider = Provider<BrowseSource>((ref) {
   );
 });
 
+/// owned-input 播放配方解析源(niconico 等配方平台):fixture 源不具备 →
+/// null,播放页据此回落「无线路」路径。见 [OwnedInputResolver]。
+final ownedInputProvider = Provider<OwnedInputResolver?>((ref) {
+  if (!useRealParser) return null;
+  return const PureLiveOwnedInputResolver();
+});
+
 /// 房间解析数据源(播放页)。
 final roomSourceProvider = Provider<RoomSource>((ref) {
   if (!useRealParser) return const FixtureRoomSource();

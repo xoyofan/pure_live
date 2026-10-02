@@ -317,6 +317,20 @@
 - **验证**:`search_direct_resolve_test` +twitcasting 用例(频道根 3 形态直达任意档/movie 链接不识别/裸 host 不识别)、`startup_url_hint_test` +twitcasting 域名推断,12/12 过;analyze 零问题。期间撞并行会话 owned-input 接入在途编辑的幻影编译错(play_provider/browse_source/purelive_backend 中间态),等待收敛后复跑全绿,非本改动引入
 
 
+### 迭代 18(2026-10-02)✅ niconico 播放落地:purelive owned-input 配方接入 zishu 播放链(「播放策略用 purelive 的」)
+
+用户立项接续 17B:「播放策略用 purelive 的」。purelive 播放体系已有完整配方链(`NiconicoInputRecipe` 公共参数 → `bindLiveInputForPlayback` 播放绑定 → `NiconicoPlaybackInput.open` 开座位会话(`NiconicoSession` websocket+keepalive)→ `FFmpegHlsInputRelay` 本地 HLS 中继 → `PlaybackInputLease(uri, close)`),此前仅旧 UI 消费。接入三件:
+
+- **`OwnedInputResolver` 能力接口**(browse_source):`resolveOwnedInputRecipe(site, roomId, preferredQuality)`;独立接口不继承 RoomSource——live_parser `RoomResolver`(位置参 resolveRoom)与 zishu `RoomSource`(命名参 resolveRoom)签名互斥,不能同挂一个类(首次实现即撞 invalid_override)
+- **backend**:`PureLiveOwnedInputResolver`(独立类)→ `resolvePureLiveOwnedInputRecipe`:详情→档位→按名选档(口径同 resolveRoom)→`resolvePlayUrlsRaw`→`pureLiveOwnedRecipeOf`(仅 owned 无直链时返配方)
+- **play_provider**:开流点空线路时走 owned 路径——配方→绑定→开座位→本地中继 URI 包装成 `StreamLine(format:'hls')` 喂 mpv;lease 单活(`_ownedLease`,新开前 close 旧,`ref.onDispose` 兜底),generation 围栏防跨代泄漏;断流走既有恢复链→重解析→本分支自然重开新座位。日志 `owned_seat_open`/`owned_seat_fail`(cat=line)
+
+**Dart 3.13 语言坑(2026-10-02 最小 repro 实锤)**:receiver 静态类型与检查接口**无子类型关系**时(`LiveSite is LivePlayUrlResolver`),`is` 被分析器判恒假→后续视作死代码、提升失效(undefined_method 误导性报错);`as` 与 `Object is X`(有 subtype 关系)均正常。绕过:provider 直取零 cast + backend 体内 `as`。
+
+**真机复验(Windows Release 21:22,lv351393299 振り返り上映会)**:`--room` URL 直达→`resolve_ms=1654` 三档→`owned_seat_open recipe=niconico:lv351393299:800x450:1080800 uri_host=127.0.0.1`→mpv 开本地中继→**首帧 1.9s**→持续播放 85s+ 缓存满/d3d11va 硬解/零解码丢帧/本次会话 source_open_failure 零新增。**niconico 在 zishu 桌面端首次真正可播**。bigo/fc2 配方接入同框架待续(binding 已支持,backend 泛化即可)。
+
+**验证**:播放/搜索回归 20 用例全过;analyze 10 条全预存在零新增。
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:

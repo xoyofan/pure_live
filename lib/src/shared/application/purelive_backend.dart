@@ -14,6 +14,8 @@ library;
 import 'dart:async';
 
 import 'package:live_parser/live_parser.dart' hide LiveSite;
+import 'browse_source.dart';
+import 'package:pure_live/core/interface/live_input_recipe.dart';
 import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/core/sites.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
@@ -84,6 +86,40 @@ Map<String, String> _playbackHeaders(String site, String roomId) {
       };
   }
   return {'user-agent': _desktopUserAgent};
+}
+
+/// owned-input 配方提取:仅当适配器声明「真源但无导出 URL」时返回配方,
+/// 通用 URL 平台(带直链)返回 null——后者由 resolveRoom 的 streams 常规承载。
+LiveInputRecipe? pureLiveOwnedRecipeOf(LivePlayUrlResolution resolution) {
+  if (resolution.urls.isNotEmpty) return null;
+  return resolution.inputRecipe;
+}
+
+/// owned-input 配方解析:详情 → 档位 → 按名选档(口径同 resolveRoom)→
+/// 原始解析取配方。房间不可播/无档/通用 URL 平台一律返回 null(不是错误)。
+Future<LiveInputRecipe?> resolvePureLiveOwnedInputRecipe(
+  LiveSite coreSite, {
+  required String roomIdOrUrl,
+  String? preferredQuality,
+}) async {
+  // Dart 3.13:LiveSite 与 LivePlayUrlResolver 无子类型关系时 `is` 被判恒假
+  // (提升失效),`as` 是合法的(2026-10-02 最小 repro 实测)。
+  final resolver = coreSite as LivePlayUrlResolver;
+  final detail = await coreSite.getRoomDetail(platform: coreSite.id, roomId: roomIdOrUrl);
+  if (!detail.isLiveNow) return null;
+  final qualities = await coreSite.getPlayQualites(detail: detail);
+  if (qualities.isEmpty) return null;
+  var chosen = qualities.first;
+  if (preferredQuality != null && preferredQuality.isNotEmpty) {
+    for (final q in qualities) {
+      if (q.quality == preferredQuality || '${q.selectionId}' == preferredQuality) {
+        chosen = q;
+        break;
+      }
+    }
+  }
+  final resolution = await resolver.resolvePlayUrlsRaw(detail: detail, quality: chosen);
+  return pureLiveOwnedRecipeOf(resolution);
 }
 
 RoomState _stateOf(LiveRoom room) {
@@ -205,6 +241,7 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
   @override
   Future<RoomPayload> recoverRoom(RoomRequest request) => resolveRoom(request);
 
+
   @override
   Future<RoomRecord> refreshRoomSummary(RoomRequest request) async {
     final coreSite = _siteInstanceOf(site);
@@ -305,6 +342,25 @@ class PureLiveBrowseRepository implements BrowseRepository {
 }
 
 /// ── 搜索:searchRooms → SearchResult(hits) ──
+/// owned-input 配方解析源(2026-10-02 用户口径「播放策略用 purelive 的」):
+/// niconico/bigo/fc2 等配方平台经 purelive 适配器取配方,座位由播放侧经
+/// purelive 播放绑定开合。独立于 PureLiveRoomResolver——两类契约家族
+/// (live_parser RoomResolver 与 zishu RoomSource)的 resolveRoom 签名互斥,
+/// 不能同挂一个类。
+class PureLiveOwnedInputResolver implements OwnedInputResolver {
+  const PureLiveOwnedInputResolver();
+
+  @override
+  Future<LiveInputRecipe?> resolveOwnedInputRecipe({
+    required String site,
+    required String roomIdOrUrl,
+    String? preferredQuality,
+  }) {
+    final coreSite = _siteInstanceOf(site);
+    return resolvePureLiveOwnedInputRecipe(coreSite, roomIdOrUrl: roomIdOrUrl, preferredQuality: preferredQuality);
+  }
+}
+
 class PureLiveSearchRepository implements SearchRepository {
   PureLiveSearchRepository(this.site);
 

@@ -2,6 +2,7 @@
 library;
 
 import 'package:live_parser/live_parser.dart';
+import 'package:pure_live/core/interface/live_input_recipe.dart';
 
 /// 栏目浏览数据源。
 abstract interface class BrowseSource {
@@ -25,6 +26,25 @@ abstract interface class RoomSource {
   /// [preferredQuality] 为生效的默认画质(平台级设置);解析侧可据此只取该档
   /// 流地址(懒取流),其余档位以占位线路返回,由播放页切换时按需重解析。
   Future<RoomPayload> resolveRoom({
+    required String site,
+    required String roomIdOrUrl,
+    String? preferredQuality,
+  });
+}
+
+/// owned-input 播放配方解析能力(可选)。
+///
+/// pure_live 的部分平台(niconico/bigo/fc2)取流不是导出 URL,而是「配方」:
+/// 解析层只给出重建取流所需的公共参数(节目号/清晰度),播放侧按配方自建
+/// 座位会话与本地中继(播放策略 = purelive 绑定,[2026-10-02 用户口径])。
+/// 这类平台 [RoomSource.resolveRoom] 的 streams 为空线路——播放页探测到本
+/// 能力后按需取配方开座位;fixture 源与普通 URL 平台不实现(返回路径不可达)。
+///
+/// 返回 null:平台无 owned 配方(通用 URL 平台)或房间不可播;调用方回落
+/// 既有「解析成功但无线路」处理。配方不含路由/凭据/活会话,座位由调用方
+/// 经 purelive 播放绑定自行开合。
+abstract interface class OwnedInputResolver {
+  Future<LiveInputRecipe?> resolveOwnedInputRecipe({
     required String site,
     required String roomIdOrUrl,
     String? preferredQuality,

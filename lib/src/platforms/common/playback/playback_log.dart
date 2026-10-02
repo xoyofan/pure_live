@@ -133,6 +133,7 @@ class PlaybackLog {
         // 线路:开流选线/死节点避让。
         for (final e in [
           'open', 'open_queue_wait', 'open_superseded', 'open_skip',
+          'owned_seat_open', 'owned_seat_fail',
           'ad_filter_wrap',
           'mpv_proxy', 'cdn_failover_order',
           'host_avoid_recorded', 'host_avoid_applied',
