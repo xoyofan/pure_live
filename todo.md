@@ -374,6 +374,18 @@
 
 **结论**:上游合并(cf47156c)+优化轮后的解析层在新布局/新契约上运行时行为与合并前完全一致,零回归。
 
+
+### 迭代 24(2026-10-03)✅ owned-input 播放打通:niconico/fc2 黑屏终结 + bigo 复用链就绪
+
+迭代17B 记录的"niconico resolve 成功后静默黑屏"与本轮盘点的"剩下问题"同根:**`bindLiveInputForPlayback` 是空壳 throw**,而录制侧 bigo/fc2/niconico 三个 HLS 输入开座设施(`BigoHlsInput`/`Fc2HlsInput`/`NiconicoHlsInput`)早已现成。本轮打通:
+
+- **播放绑定三分支**(`live_input_playback_binder.dart`):Bigo/Fc2/Niconico 配方各自分支,经 `features_bridge.dart`(`player/core`,经 openInput 函数注入解耦 features/,测试可覆写)以 **`recording: false` 口径**复用录制输入——不落盘、不 drain 尾部;座位(WebSocket keepalive/本地中继)生命周期归播放器,`PlaybackInputLease` 包本地中继 URI,离场 `close` 兜底(play_provider 既有 `_ownedLease` 链)
+- **niconico 开座**:`NiconicoApi().room` 观察页解析 → `NiconicoHlsInput.open`(座位/心跳会话,path-scope cookie)——与录制同源,同一节目多开互踢风险口径不变(座位由播放器独占)
+- **探针复核**:`niconico owned-input` / `fc2live owned-input`(此前 niconico=failed 黑屏、fc2 从未进过 owned 路径),**bigo 维持上游匿名门**(studio API 匿名 needLogin 恒真,迭代18 定档结构性;binding 就绪,门开即用)
+- **新增单测**:`owned_input_playback_binder_test.dart` 5 用例(三分派/lease 语义/未知配方契约),零网络
+
+**验证**:analyze lib tool **0 error**;全套件 **133/133 过**;audit **0 error**;三站播放探针如上。剩 CHZZK 弹幕验收(聊天边缘对数据中心 IP 封锁,迭代8 定论待住宅网络)与 B 站/斗鱼匿名降档(服务端行为,需用户 Cookie,非代码缺陷)——台账既有项,无新增暂缓
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:
