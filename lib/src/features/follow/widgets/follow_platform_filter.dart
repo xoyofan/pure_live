@@ -5,6 +5,10 @@
 /// `FollowPlatformFilter.vue`):侧栏窄容器传 [compact] + [columns],chips
 /// 等宽分列铺排,放不下自动换到第二排(对齐 web `follow-tab-toolbar--stretch`
 /// 的 6 列等宽网格);页面默认按内容自适应 Wrap。
+///
+/// [leading] 可选前置元素(如侧栏的视图切换按钮):分列网格下占**第一个
+/// 格子**,排在「全平台」chip 之前、与 chips 同高等宽(用户口径 2026-10-02);
+/// Wrap 模式下作为首项自然排布,调用方自带尺寸。
 library;
 
 import 'package:flutter/material.dart';
@@ -22,6 +26,7 @@ class FollowPlatformFilter extends StatelessWidget {
     this.compact = false,
     this.columns,
     this.chipKey,
+    this.leading,
   });
 
   final String value;
@@ -37,6 +42,9 @@ class FollowPlatformFilter extends StatelessWidget {
   /// 条目锚点工厂(测试用),如 `(id) => Key('play-side-follow-site-$id')`。
   final Key? Function(String siteId)? chipKey;
 
+  /// 前置元素(如视图切换按钮):见类头注释 —— 分列网格占首格,Wrap 为首项。
+  final Widget? leading;
+
   double _gap() => compact ? AppSpacing.xs : AppSpacing.sm;
 
   @override
@@ -51,11 +59,7 @@ class FollowPlatformFilter extends StatelessWidget {
           }
           final cellWidth = (maxWidth - gap * (columns! - 1)) / columns!;
           // 紧凑 chip:字号 11 * 1.25 + 上下 2 padding ≈ 18,取 24 留呼吸。
-          return _buildWrap(
-            context,
-            cellWidth: cellWidth,
-            cellHeight: compact ? 24.0 : 28.0,
-          );
+          return _buildWrap(context, cellWidth: cellWidth, cellHeight: compact ? 24.0 : 28.0);
         },
       );
     }
@@ -63,17 +67,25 @@ class FollowPlatformFilter extends StatelessWidget {
   }
 
   /// chips 铺排:给了 [cellWidth] 就等宽定高(分列网格),否则按内容 Wrap。
-  Widget _buildWrap(
-    BuildContext context, {
-    required double? cellWidth,
-    required double? cellHeight,
-  }) {
+  Widget _buildWrap(BuildContext context, {required double? cellWidth, required double? cellHeight}) {
     final gap = _gap();
+    // 局部变量承接字段:Dart 对实例字段不做空提升,集合字面量里需要
+    // 提升为非空类型才能进 List<Widget>。
+    final lead = leading;
     return Wrap(
       spacing: gap,
       runSpacing: compact ? AppSpacing.xs : AppSpacing.sm,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
+        if (lead != null)
+          if (cellWidth != null && cellHeight != null)
+            SizedBox(
+              width: cellWidth,
+              height: cellHeight,
+              child: Center(child: lead),
+            )
+          else
+            lead,
         for (final brand in PlatformBrandCatalog.navigationPlatforms)
           if (cellWidth != null && cellHeight != null)
             SizedBox(
@@ -137,9 +149,7 @@ class _PlatformChip extends StatelessWidget {
       // 状态反馈(全部走 token):未选中 hover 抬亮到 surfaceRaised;
       // 已选中的底本身就是 accent 淡底,hover 用 accent 低 alpha 加深而非盖掉选中色。
       // splash/highlight/focus 统一取本 chip 的 accent(全平台/平台品牌色)。
-      hoverColor: selected
-          ? accent.withValues(alpha: 0.12)
-          : tokens.surfaceRaised,
+      hoverColor: selected ? accent.withValues(alpha: 0.12) : tokens.surfaceRaised,
       splashColor: AppStateLayer.splashOf(accent),
       highlightColor: AppStateLayer.pressedOf(accent),
       focusColor: AppStateLayer.focusOf(accent),
@@ -148,10 +158,7 @@ class _PlatformChip extends StatelessWidget {
         curve: AppMotion.curve,
         width: stretch ? double.infinity : null,
         height: stretch ? double.infinity : null,
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 4 : AppSpacing.md,
-          vertical: compact ? 2 : AppSpacing.xs,
-        ),
+        padding: EdgeInsets.symmetric(horizontal: compact ? 4 : AppSpacing.md, vertical: compact ? 2 : AppSpacing.xs),
         alignment: stretch ? Alignment.center : null,
         decoration: BoxDecoration(
           color: selected ? accent.withValues(alpha: 0.18) : tokens.surface,
@@ -168,10 +175,7 @@ class _PlatformChip extends StatelessWidget {
               Container(
                 width: 8,
                 height: 8,
-                decoration: BoxDecoration(
-                  color: accent,
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
               ),
               const SizedBox(width: 5),
             ],
@@ -182,9 +186,7 @@ class _PlatformChip extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: context.textBody.copyWith(
-                    fontSize: compact
-                        ? AppFontSize.label
-                        : AppFontSize.bodySecondary,
+                    fontSize: compact ? AppFontSize.label : AppFontSize.bodySecondary,
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
                     color: selected ? tokens.textPrimary : tokens.textSecondary,
                   ),
@@ -196,9 +198,7 @@ class _PlatformChip extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: context.textBody.copyWith(
-                  fontSize: compact
-                      ? AppFontSize.label
-                      : AppFontSize.bodySecondary,
+                  fontSize: compact ? AppFontSize.label : AppFontSize.bodySecondary,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
                   color: selected ? tokens.textPrimary : tokens.textSecondary,
                 ),

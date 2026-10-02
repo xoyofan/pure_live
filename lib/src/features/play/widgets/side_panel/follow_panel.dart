@@ -16,12 +16,10 @@ class _FollowPanelState extends ConsumerState<_FollowPanel> {
   /// 是一行」);web 真源默认封面预览(`previewCover: true`),此处有意偏离。
   /// 取值与变更都会写进会话级偏好 —— 切房重建后不丢。
   bool get _grid => ref.watch(playSidePanelPrefsProvider).followGrid;
-  set _grid(bool value) =>
-      ref.read(playSidePanelPrefsProvider.notifier).update(followGrid: value);
+  set _grid(bool value) => ref.read(playSidePanelPrefsProvider.notifier).update(followGrid: value);
 
   String get _siteFilter => ref.watch(playSidePanelPrefsProvider).followSite;
-  set _siteFilter(String value) =>
-      ref.read(playSidePanelPrefsProvider.notifier).update(followSite: value);
+  set _siteFilter(String value) => ref.read(playSidePanelPrefsProvider.notifier).update(followSite: value);
 
   /// 已展示条数(分页窗口)。对齐 web `PLAY_FOLLOW_PAGE_SIZE = 48`:
   /// 首屏只放 48 条,滚到底再放一页,底部提示「向下滚动加载更多…」。
@@ -50,16 +48,12 @@ class _FollowPanelState extends ConsumerState<_FollowPanel> {
       final added = await ref.read(followProvider.notifier).syncFollows();
       messenger.showSnackBar(
         SnackBar(
-          content: Text(
-            added == 0 ? '没有新增抖音关注,已刷新全部状态' : '已导入 $added 个抖音关注并刷新全部状态',
-          ),
+          content: Text(added == 0 ? '没有新增抖音关注,已刷新全部状态' : '已导入 $added 个抖音关注并刷新全部状态'),
           duration: const Duration(seconds: 2),
         ),
       );
     } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('同步失败,请检查抖音登录 Cookie')),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('同步失败,请检查抖音登录 Cookie')));
     } finally {
       if (mounted) setState(() => _syncing = false);
     }
@@ -72,17 +66,14 @@ class _FollowPanelState extends ConsumerState<_FollowPanel> {
   /// 口径沿革:2026-09-18 曾对齐 web `isPlayFollowVisible` 保留离线超关
   /// (当时为修「关注没显示」),随后被本口径覆盖 —— web 真源的离线超关
   /// 分支为有意偏离,见 follow_sort.dart 注释。
-  List<FollowEntry> _visible(List<FollowEntry> entries) =>
-      playSidebarFollowEntries(entries, site: _siteFilter);
+  List<FollowEntry> _visible(List<FollowEntry> entries) => playSidebarFollowEntries(entries, site: _siteFilter);
 
   /// 滚动到底附近再放一页(web 的哨兵/scroll 触发)。
   bool _onScroll(ScrollNotification notification) {
-    if (notification.metrics.axis != Axis.vertical ||
-        _visibleTotal <= _visibleCount) {
+    if (notification.metrics.axis != Axis.vertical || _visibleTotal <= _visibleCount) {
       return false;
     }
-    if (notification.metrics.maxScrollExtent - notification.metrics.pixels <=
-        _kLoadMoreTriggerExtent) {
+    if (notification.metrics.maxScrollExtent - notification.metrics.pixels <= _kLoadMoreTriggerExtent) {
       setState(() => _visibleCount += _kFollowPageSize);
     }
     return false;
@@ -100,29 +91,13 @@ class _FollowPanelState extends ConsumerState<_FollowPanel> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // 无「我的关注」标题(用户口径 2026-09-19:顶部不要标题);
-        // 视图切换按钮挪进平台筛选行,对齐 web `follow-tab-toolbar`
-        // (list 按钮 + 筛选 chips 同一行)。
+        // 视图切换按钮不再是工具行开头的独立占位,而是作为筛选行首格
+        // 排在「全平台」chip 前面(用户口径 2026-10-02),对齐 web
+        // `follow-tab-toolbar`(list 按钮 + 筛选 chips 同一行)。
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(width: AppSpacing.sm),
-            Tooltip(
-              message: _grid ? '切换为列表视图' : '切换为封面预览',
-              child: IconButton(
-                key: const Key('play-side-follow-view-toggle'),
-                onPressed: () => setState(() => _grid = !_grid),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
-                // 键盘焦点可见(Material 系走 focusColor 覆盖色,不动盒模型)。
-                focusColor: AppStateLayer.focusOf(tokens.accent),
-                icon: Icon(
-                  // 卡片态显示「列表」入口、列表态显示「网格」入口(点击即切)。
-                  _grid ? Icons.view_list_rounded : Icons.grid_view_rounded,
-                  size: 18,
-                  color: _grid ? tokens.textSecondary : tokens.accent,
-                ),
-              ),
-            ),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
@@ -139,6 +114,23 @@ class _FollowPanelState extends ConsumerState<_FollowPanel> {
                   compact: true,
                   columns: 6,
                   chipKey: (id) => Key('play-side-follow-site-$id'),
+                  leading: Tooltip(
+                    message: _grid ? '切换为列表视图' : '切换为封面预览',
+                    child: IconButton(
+                      key: const Key('play-side-follow-view-toggle'),
+                      onPressed: () => setState(() => _grid = !_grid),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+                      // 键盘焦点可见(Material 系走 focusColor 覆盖色,不动盒模型)。
+                      focusColor: AppStateLayer.focusOf(tokens.accent),
+                      icon: Icon(
+                        // 卡片态显示「列表」入口、列表态显示「网格」入口(点击即切)。
+                        _grid ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                        size: 18,
+                        color: _grid ? tokens.textSecondary : tokens.accent,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -148,37 +140,22 @@ class _FollowPanelState extends ConsumerState<_FollowPanel> {
               Padding(
                 padding: const EdgeInsets.only(right: AppSpacing.xs),
                 child: _syncing
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                     : IconButton(
                         key: const Key('play-side-follow-sync'),
                         tooltip: '导入抖音关注并刷新全部状态',
                         onPressed: _syncDouyin,
                         padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 22,
-                          minHeight: 22,
-                        ),
+                        constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
                         focusColor: AppStateLayer.focusOf(tokens.accent),
-                        icon: Icon(
-                          Icons.refresh_rounded,
-                          size: 18,
-                          color: tokens.textSecondary,
-                        ),
+                        icon: Icon(Icons.refresh_rounded, size: 18, color: tokens.textSecondary),
                       ),
               ),
           ],
         ),
         Expanded(
           child: entries.isEmpty
-              ? const _PanelHint(
-                  icon: Icons.star_border_rounded,
-                  title: '我的关注',
-                  text: '暂无在播关注',
-                )
+              ? const _PanelHint(icon: Icons.star_border_rounded, title: '我的关注', text: '暂无在播关注')
               : NotificationListener<ScrollNotification>(
                   onNotification: _onScroll,
                   // 与「我的关注」页共用同一 [FollowRoomList]:侧栏走 compact
@@ -213,11 +190,7 @@ class _FollowPanelState extends ConsumerState<_FollowPanel> {
   /// - pushReplacement：旧播放页被卸载（会话随 autoDispose 收干净），
   ///   下层浏览页保留为返回目标 —— 两者兼得。
   void _goRoom(RoomSummary room) {
-    PlaybackLog.logRoomNav(
-      source: 'play_follow_panel',
-      site: room.site,
-      roomId: room.roomId,
-    );
+    PlaybackLog.logRoomNav(source: 'play_follow_panel', site: room.site, roomId: room.roomId);
     context.pushReplacement('/${room.site}/play/${room.roomId}');
   }
 }
@@ -233,11 +206,7 @@ class _FollowMoreHint extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: Text(
-        '向下滚动加载更多…',
-        textAlign: TextAlign.center,
-        style: context.textCaption,
-      ),
+      child: Text('向下滚动加载更多…', textAlign: TextAlign.center, style: context.textCaption),
     );
   }
 }
@@ -248,11 +217,7 @@ class _FollowMoreHint extends StatelessWidget {
 /// 保留 Material Switch 的 value/onChanged/Semantics(toggled) 语义,
 /// 只是视觉收敛为侧栏密度尺寸。
 class _PanelHint extends StatelessWidget {
-  const _PanelHint({
-    required this.icon,
-    required this.title,
-    required this.text,
-  });
+  const _PanelHint({required this.icon, required this.title, required this.text});
 
   final IconData icon;
   final String title;
