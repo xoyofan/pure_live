@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/core/danmaku/empty_danmaku.dart';
+import 'package:pure_live/core/danmaku/seventeen_danmaku.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/interface/live_directory.dart';
 import 'package:pure_live/core/interface/live_search.dart';
@@ -35,7 +35,7 @@ class SeventeenLiveSite extends LiveSite
   String get directoryNoticeKey => 'seventeen_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => SeventeenDanmaku();
 
   @override
   Future<LiveDirectoryPage> getDirectoryPageAtCursor({
@@ -81,6 +81,7 @@ class SeventeenLiveSite extends LiveSite
     platform: id,
     roomId: room.roomId,
     userId: room.userId,
+    danmakuData: SeventeenDanmakuArgs(liveStreamID: room.roomId),
     nick: room.nickname,
     title: room.title,
     avatar: room.avatar,

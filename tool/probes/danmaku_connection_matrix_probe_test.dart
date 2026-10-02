@@ -120,6 +120,7 @@ const _supportedProbePlatforms = <String>{
   Sites.picartoSite,
   Sites.fc2LiveSite,
   Sites.bigoSite,
+  Sites.seventeenLiveSite,
 };
 
 Future<Map<String, Object?>> _probePlatform(
