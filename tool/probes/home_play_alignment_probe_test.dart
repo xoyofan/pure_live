@@ -106,7 +106,7 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
   // 公开在播房间为止,至多试 3 个候选)──
   final withId = rooms.where((r) => (r.roomId ?? '').trim().isNotEmpty).toList();
   for (final candidate in withId.take(3)) {
-    final detail = await site.getRoomDetail(platform: id, roomId: candidate.roomId!);
+    final detail = await site.getRoomDetail(LiveRoom(roomId: candidate.roomId!, platform: id));
     final isPublicLive = detail.liveStatus == LiveStatus.live && (detail.notice ?? '').isEmpty;
     if (result['playStatus'] == null) {
       result['playStatus'] = detail.liveStatus?.name ?? '';
@@ -123,7 +123,7 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
       result['playAudience'] = detail.audienceValue(preferRealOnline: true, platformEnabled: false);
       result['playNotice'] = detail.notice ?? '';
       // 画质名(播放页菜单直显)。
-      final qualities = await site.getPlayQualites(detail: detail);
+      final qualities = await site.getPlayQualites(liveroom: detail);
       final names = qualities.map((q) => q.quality).toList();
       result['qualities'] = names;
       for (final name in names) {

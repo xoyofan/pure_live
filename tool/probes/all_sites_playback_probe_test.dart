@@ -21,7 +21,7 @@ import 'package:pure_live/core/storage/hive_pref_util.dart';
 import 'package:pure_live/core/contracts/live_site.dart';
 import 'package:pure_live/platforms/sites.dart';
 import 'package:pure_live/get/get.dart';
-import 'package:pure_live/core/common/playback_header_resolver.dart';
+import 'package:pure_live/core/network/playback_header_resolver.dart';
 
 const _siteTimeout = Duration(seconds: 90);
 const _mediaTimeout = Duration(seconds: 15);
@@ -138,7 +138,7 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
       // A live room the platform marks with a notice (e.g. CHZZK krOnlyViewing)
       // and that yields no qualities is a platform restriction, not a failure.
       if ((detail.notice ?? '').isNotEmpty) restrictedCandidate = detail;
-      final qualities = await site.getPlayQualites(detail: detail);
+      final qualities = await site.getPlayQualites(liveroom: detail);
       restrictedCandidate = null;
       if (qualities.isEmpty) {
         attempts.add('no-qualities');

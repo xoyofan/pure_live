@@ -35,7 +35,7 @@ void main() {
           expect(pageTwo.length, lessThanOrEqualTo(100));
           final detail = await site.getRoomDetailForRecording(roomId: rooms.first.roomId!, platform: 'missevan');
           expect(detail.isLiveNow, isTrue);
-          final qualities = await site.getPlayQualites(detail: detail);
+          final qualities = await site.getPlayQualites(liveroom: detail);
           expect(qualities, isNotEmpty);
           final resolved = await site.resolvePlayUrlsForRecovery(detail: detail, quality: qualities.first);
           expect(resolved.appliedQualityData, qualities.first.selectionId);

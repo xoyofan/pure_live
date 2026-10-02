@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:pure_live/services/settings_service.dart';
-import 'package:pure_live/core/danmaku/bigo_danmaku.dart';
+import 'package:pure_live/platforms/bigo_danmaku.dart';
 import 'package:pure_live/core/models/live_message.dart';
 import 'package:pure_live/core/storage/hive_pref_util.dart';
 import 'package:pure_live/platforms/sites.dart';

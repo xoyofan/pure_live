@@ -112,7 +112,7 @@ void main() {
             final detail = await site.getRoomDetailForRecording(roomId: candidate.roomId!, platform: site.id);
             expect(detail.userId, candidate.userId);
             expect(detail.isLiveNow, true);
-            final quality = (await site.getPlayQualites(detail: detail)).single;
+            final quality = (await site.getPlayQualites(liveroom: detail)).single;
             report['stage'] = 'fresh-resolution';
             final resolution = await site.resolvePlayUrls(detail: detail, quality: quality);
             expect(resolution.urls, isNotEmpty);

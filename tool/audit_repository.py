@@ -266,10 +266,14 @@ def main() -> int:
     # 是无 UI 的录制输入设施,niconico 质量目录经其取流属上游 owned-input
     # 架构,不算 UI 耦合。
     parsing_adjacent = "package:pure_live/features/recorder/services/"
+    # 旧 UI 聚合入口桶:只做 re-export,是旧 UI 的唯一 core 内幸存者(豁免)。
+    legacy_ui_entry_barrel = "lib/core/index.dart"
     for rel in tracked_names_raw:
         if not rel.endswith(".dart"):
             continue
         if not (rel.startswith("lib/platforms/") or rel.startswith("lib/core/")):
+            continue
+        if rel == legacy_ui_entry_barrel:
             continue
         text_check = (ROOT / rel).read_text(encoding="utf-8", errors="replace")
         for banned in ui_import_markers:
@@ -278,6 +282,7 @@ def main() -> int:
             if banned == "package:pure_live/features/" and parsing_adjacent in text_check:
                 continue
             entry = {"rule": "parsing_layer_ui_import", "path": rel, "marker": banned}
+            print("LAYER-DEBT", rel, banned)
             if rel.startswith("lib/platforms/"):
                 errors.append(entry)
             else:

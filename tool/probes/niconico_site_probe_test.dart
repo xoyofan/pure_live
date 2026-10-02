@@ -60,7 +60,7 @@ void main() {
           expect(room.roomId, id);
           expect(room.isLiveNow, isTrue);
           expect(jsonEncode(room.toJson()), isNot(contains('audience_token')));
-          final choices = await site.getPlayQualites(detail: room);
+          final choices = await site.getPlayQualites(liveroom: room);
           expect(choices, isNotEmpty);
           for (final quality in choices) {
             final result = await site.resolvePlayUrls(detail: room, quality: quality);

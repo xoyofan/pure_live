@@ -139,7 +139,7 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
         attempts.add('not-live');
         continue;
       }
-      final qualities = normalizePlayQualities(await site.getPlayQualites(detail: candidate));
+      final qualities = normalizePlayQualities(await site.getPlayQualites(liveroom: candidate));
       if (qualities.isEmpty) {
         attempts.add('no-qualities');
         continue;
@@ -156,7 +156,7 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
     result['restrictedSkipped'] = restricted;
     return;
   }
-  final qualities = normalizePlayQualities(await site.getPlayQualites(detail: detail));
+  final qualities = normalizePlayQualities(await site.getPlayQualites(liveroom: detail));
   if (qualities.length < 2) {
     result['verdict'] = 'single-quality';
     return;

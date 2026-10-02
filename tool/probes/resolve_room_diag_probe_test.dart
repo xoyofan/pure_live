@@ -42,14 +42,14 @@ void main() {
           if (hits.isNotEmpty && (hits.first.roomId ?? '').isNotEmpty) roomId = hits.first.roomId!;
         } catch (_) {}
         try {
-          final detail = await liveSite.getRoomDetail(platform: site, roomId: roomId);
+          final detail = await liveSite.getRoomDetail(LiveRoom(roomId: roomId, platform: site));
           // ignore: avoid_print
           print('detail -> status=${detail.liveStatus} title=${detail.title} data=${detail.data?.runtimeType}');
-          final qualities = await liveSite.getPlayQualites(detail: detail);
+          final qualities = await liveSite.getPlayQualites(liveroom: detail);
           // ignore: avoid_print
           print('qualities -> ${qualities.map((q) => q.quality).toList()}');
           if (qualities.isNotEmpty) {
-            final urls = await liveSite.getPlayUrls(detail: detail, quality: qualities.first);
+            final urls = await liveSite.getPlayUrls(liveroom: detail, quality: qualities.first);
             // ignore: avoid_print
             print('urls -> ${urls.length} ${urls.isEmpty ? '-' : urls.first}');
           }

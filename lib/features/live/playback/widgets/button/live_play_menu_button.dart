@@ -4,7 +4,7 @@ import 'dart:developer' as developer;
 
 import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/core/index.dart';
-import 'package:pure_live/core/link/live_url_tool.dart';
+import 'package:pure_live/features/link/live_url_tool.dart';
 import 'package:pure_live/core/platform/share_command_handler.dart';
 import 'package:pure_live/features/live/playback/dialogs/play_other.dart';
 import 'package:pure_live/features/live/playback/dialogs/room_timer_dialog.dart';

@@ -53,7 +53,7 @@ void main() {
           final room = await site.getRoomDetail(roomId: id, platform: 'xiaohongshu');
           expect(room.roomId, id);
           expect(room.isLiveNow, true);
-          final qualities = await site.getPlayQualites(detail: room);
+          final qualities = await site.getPlayQualites(liveroom: room);
           expect(qualities, isNotEmpty);
           final quality = qualities.first;
           final play = await site.resolvePlayUrls(detail: room, quality: quality);

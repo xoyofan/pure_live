@@ -31,9 +31,9 @@ void main() {
           expect(rooms, isNotEmpty);
           final room = await site.getRoomDetailForRecording(roomId: rooms.first.roomId!, platform: 'picarto');
           expect(room.isPlayableNow, isTrue);
-          final qualities = await site.getPlayQualites(detail: room);
+          final qualities = await site.getPlayQualites(liveroom: room);
           expect(qualities, isNotEmpty);
-          final urls = await site.getPlayUrls(detail: room, quality: qualities.first);
+          final urls = await site.getPlayUrls(liveroom: room, quality: qualities.first);
           final child = await PicartoApi().read(Uri.parse(urls.first));
           expect(child.trimLeft(), startsWith('#EXTM3U'));
           expect(child, contains('#EXTINF:'));

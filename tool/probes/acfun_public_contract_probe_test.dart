@@ -46,12 +46,12 @@ void main() {
           final roomId = AcfunApi.text(directory.rooms.first['authorId']);
           final site = AcfunSite(api: api);
           final room = await site.getRoomDetailForRecording(roomId: roomId, platform: 'acfun');
-          final qualities = await site.getPlayQualites(detail: room);
+          final qualities = await site.getPlayQualites(liveroom: room);
           expect(qualities, isNotEmpty);
           final selected = qualities.length == 1 ? [qualities.first] : [qualities.first, qualities.last];
           final samples = <Map<String, Object?>>[];
           for (final quality in selected) {
-            final urls = await site.getPlayUrls(detail: room, quality: quality);
+            final urls = await site.getPlayUrls(liveroom: room, quality: quality);
             expect(urls, isNotEmpty);
             final request = await client.getUrl(Uri.parse(urls.first));
             AcfunApi.playHeaders.forEach(request.headers.set);
@@ -81,7 +81,7 @@ void main() {
               'flv': true,
             });
           }
-          final fresh = await site.resolvePlayUrlsForRecoveryRaw(detail: room, quality: qualities.first);
+          final fresh = await site.resolvePlayUrlsForRecoveryRaw(liveroom: room, quality: qualities.first);
           expect(fresh.urls, isNotEmpty);
           expect(fresh.appliedQualityData, qualities.first.selectionId);
           // ignore: avoid_print

@@ -17,7 +17,7 @@ import 'package:pure_live/app/bootstrap/initial_services.dart';
 import 'package:pure_live/features/recorder/ffmpeg/ffmpeg_manager.dart';
 import 'package:windows_single_instance/windows_single_instance.dart';
 import 'package:pure_live/core/platform/mobile_manager.dart';
-import 'package:pure_live/core/platform/desktop_manager.dart';
+import 'package:pure_live/app/desktop/desktop_manager.dart';
 import 'package:pure_live/features/recorder/services/recorder_proxy_routing.dart';
 import 'package:pure_live/services/settings/backup_controller.dart';
 import 'package:pure_live/player/kernel/player_kernel_service.dart';

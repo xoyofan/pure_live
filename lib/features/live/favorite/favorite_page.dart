@@ -2,7 +2,7 @@ import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/core/index.dart';
 import 'package:pure_live/features/live/tags/live_tag.dart';
 import 'package:pure_live/features/live/favorite/room_grid_view.dart';
-import 'package:pure_live/core/widgets/common_appbar_actions.dart';
+import 'package:pure_live/features/shared/widgets/common_appbar_actions.dart';
 import 'package:pure_live/features/live/tags/tag_management_controller.dart';
 
 

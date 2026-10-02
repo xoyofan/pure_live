@@ -33,7 +33,7 @@ void main() {
           expect(metadata.roomId, uid);
           expect(metadata.data, isNull);
           final detail = await site.getRoomDetail(roomId: uid, platform: site.id);
-          final qualities = await site.getPlayQualites(detail: detail);
+          final qualities = await site.getPlayQualites(liveroom: detail);
           expect(qualities, isNotEmpty);
           final resolution = await site.resolvePlayUrls(detail: detail, quality: qualities.first);
           expect(resolution.urls, isNotEmpty);
