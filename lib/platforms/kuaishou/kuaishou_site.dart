@@ -13,7 +13,7 @@ import 'package:pure_live/core/contracts/live_site.dart';
 import 'package:pure_live/platforms/kuaishou/kuaishou_danmaku.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:pure_live/core/contracts/live_danmaku.dart';
-import 'package:pure_live/features/live/playback/controllers/player_controller.dart';
+import 'package:pure_live/core/contracts/live_room_context.dart';
 import 'package:pure_live/core/utils/live_quality_label.dart';
 
 class KuaishouSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResolver {
@@ -427,12 +427,11 @@ class KuaishouSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
   }
 
   LiveRoom? _matchingCurrentRoom({required LiveRoom liveroom}) {
+    // 解析层不依赖 UI(原则 2026-10-02):UI 当前房间经 LiveCurrentRoomContext
+    // 契约注入,旧 UI 启动时注册 bridge,zishu 运行时未注册即跳过回退。
     final roomId = liveroom.roomId ?? '';
     final platform = liveroom.platform ?? '';
-    if (!Get.isRegistered<PlayerController>()) return null;
-    final current = Get.find<PlayerController>().currentRoom;
-    if (current?.hasSameIdentity(LiveRoom(roomId: roomId, platform: platform)) == true) return current;
-    return null;
+    return LiveCurrentRoomContext.provider?.currentRoomMatching(platform: platform, roomId: roomId);
   }
 
   @override

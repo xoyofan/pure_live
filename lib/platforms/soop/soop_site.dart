@@ -8,7 +8,7 @@ import 'package:pure_live/core/models/live_play_quality.dart';
 import 'package:pure_live/core/contracts/live_site.dart';
 import 'package:pure_live/platforms/soop/soop_danmaku.dart';
 import 'package:pure_live/core/contracts/live_danmaku.dart';
-import 'package:pure_live/features/live/playback/controllers/player_controller.dart';
+import 'package:pure_live/core/contracts/live_room_context.dart';
 import 'package:pure_live/core/utils/live_quality_label.dart';
 
 class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecordRoomResolver {
@@ -358,21 +358,18 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
       Map<dynamic, dynamic> playerLiveApiFuture = await getPlayerLiveApiData(roomId: roomId);
       var danmakuFuture = geDanmakuArgs(playerLiveApiFuture, roomId);
       final room = await getLiveRoomByApi(playerLiveApiFuture, danmakuFuture, roomId);
-      if (Get.isRegistered<PlayerController>()) {
-        final currentRoom = Get.find<PlayerController>().currentRoom;
-        if (currentRoom?.hasSameIdentity(LiveRoom(roomId: roomId, platform: Sites.soopSite)) == true) {
-          return room.withAudienceFallbackFrom(currentRoom!);
-        }
+      final currentRoom = LiveCurrentRoomContext.provider
+          ?.currentRoomMatching(platform: Sites.soopSite, roomId: roomId);
+      if (currentRoom != null) {
+        return room.withAudienceFallbackFrom(currentRoom);
       }
       return room;
     } catch (e) {
       CoreLog.error(e);
-      if (Get.isRegistered<PlayerController>()) {
-        final PlayerController playerController = Get.find<PlayerController>();
-        final currentRoom = playerController.currentRoom;
-        if (currentRoom?.hasSameIdentity(LiveRoom(roomId: roomId, platform: Sites.soopSite)) == true) {
-          return currentRoom!.getLiveRoomWithError();
-        }
+      final fallbackRoom = LiveCurrentRoomContext.provider
+          ?.currentRoomMatching(platform: Sites.soopSite, roomId: roomId);
+      if (fallbackRoom != null) {
+        return fallbackRoom.getLiveRoomWithError();
       }
       return LiveRoom(roomId: roomId, platform: Sites.soopSite).getLiveRoomWithError();
     }
@@ -443,12 +440,10 @@ class SoopSite extends LiveSite implements LiveSiteRoomRefresher, LiveSiteRecord
     // 业务码：1成功，-6需要登录，0无直播，‑2屏蔽
     if (resultCode != 1) {
       CoreLog.w("soop channel result code=$resultCode");
-      if (Get.isRegistered<PlayerController>()) {
-        final PlayerController playerController = Get.find<PlayerController>();
-        final currentRoom = playerController.currentRoom;
-        if (currentRoom?.hasSameIdentity(LiveRoom(roomId: roomId, platform: Sites.soopSite)) == true) {
-          return currentRoom!.getLiveRoomWithError();
-        }
+      final fallbackRoom = LiveCurrentRoomContext.provider
+          ?.currentRoomMatching(platform: Sites.soopSite, roomId: roomId);
+      if (fallbackRoom != null) {
+        return fallbackRoom.getLiveRoomWithError();
       }
       return LiveRoom(roomId: roomId, platform: Sites.soopSite).getLiveRoomWithError();
     }
