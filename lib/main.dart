@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:live_parser/live_parser.dart' show UpstreamProxy;
 import 'package:media_kit/media_kit.dart';
-import 'package:pure_live/plugins/locale_helper.dart' show ensureZhTextFallback;
+import 'package:pure_live/core/utils/i18n.dart' show ensureZhTextFallback;
 import 'package:window_manager/window_manager.dart';
 
 import 'src/app/app_router.dart';

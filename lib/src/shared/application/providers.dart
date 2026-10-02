@@ -9,7 +9,7 @@ import 'browse_source.dart';
 import 'fixture_sources.dart';
 
 import 'package:live_parser/live_parser.dart' show buildSiteRegistry;
-import 'package:pure_live/core/sites.dart';
+import 'package:pure_live/platforms/sites.dart';
 
 import 'parser_sources.dart';
 import 'purelive_backend.dart';

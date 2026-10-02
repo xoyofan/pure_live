@@ -11,15 +11,15 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
-import 'package:pure_live/common/models/live_message.dart';
-import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/common/services/settings_service.dart';
-import 'package:pure_live/common/utils/hive_pref_util.dart';
-import 'package:pure_live/core/common/http_client.dart';
-import 'package:pure_live/core/common/web_socket_util.dart';
-import 'package:pure_live/core/interface/live_danmaku.dart';
-import 'package:pure_live/core/interface/live_site.dart';
-import 'package:pure_live/core/sites.dart';
+import 'package:pure_live/core/models/live_message.dart';
+import 'package:pure_live/core/models/live_room.dart';
+import 'package:pure_live/services/settings_service.dart';
+import 'package:pure_live/core/storage/hive_pref_util.dart';
+import 'package:pure_live/core/network/http_client.dart';
+import 'package:pure_live/core/network/web_socket_util.dart';
+import 'package:pure_live/core/contracts/live_danmaku.dart';
+import 'package:pure_live/core/contracts/live_site.dart';
+import 'package:pure_live/platforms/sites.dart';
 import 'package:pure_live/get/get.dart';
 
 void main() {

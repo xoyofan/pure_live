@@ -1,4 +1,4 @@
-import 'package:pure_live/core/interface/live_quality_discovery.dart';
+import 'package:pure_live/core/contracts/live_quality_discovery.dart';
 
 // Opt-in Windows native recording through the production RecorderController.
 // Preserve stopped TS before the normal MP4 finalizer removes it, so container
@@ -10,27 +10,27 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:path/path.dart' as p;
-import 'package:pure_live/common/services/settings/log_controller.dart';
-import 'package:pure_live/common/utils/hive_pref_util.dart';
-import 'package:pure_live/core/common/hls_source_query_policy.dart';
-import 'package:pure_live/core/site/huya/huya_site.dart';
-import 'package:pure_live/core/site/huya/huya_transport_policy.dart';
+import 'package:pure_live/services/settings/log_controller.dart';
+import 'package:pure_live/core/storage/hive_pref_util.dart';
+import 'package:pure_live/core/stream/hls_source_query_policy.dart';
+import 'package:pure_live/platforms/huya/huya_site.dart';
+import 'package:pure_live/platforms/huya/huya_transport_policy.dart';
 import 'package:pure_live/get/get.dart';
-import 'package:pure_live/model/live_play_quality.dart';
-import 'package:pure_live/recorder/ffmpeg/ffmpeg_event.dart';
-import 'package:pure_live/recorder/ffmpeg/ffmpeg_manager.dart';
-import 'package:pure_live/recorder/ffmpeg/ffmpeg_scheduler.dart';
-import 'package:pure_live/recorder/ffmpeg/ffmpeg_types.dart';
-import 'package:pure_live/recorder/models/live_record_task.dart';
-import 'package:pure_live/recorder/models/record_status.dart';
-import 'package:pure_live/recorder/pages/record_settings/record_settings_controller.dart';
-import 'package:pure_live/recorder/pages/recorder/recorder_controller.dart';
-import 'package:pure_live/recorder/services/cache_service.dart';
-import 'package:pure_live/recorder/services/ffmpeg_flv_input_relay.dart';
-import 'package:pure_live/recorder/services/ffmpeg_service.dart';
-import 'package:pure_live/recorder/services/ffmpeg_hls_input_relay.dart';
-import 'package:pure_live/recorder/services/stream_resolver_service.dart';
-import 'package:pure_live/recorder/services/video_processor_service.dart';
+import 'package:pure_live/core/models/live_play_quality.dart';
+import 'package:pure_live/features/recorder/ffmpeg/ffmpeg_event.dart';
+import 'package:pure_live/features/recorder/ffmpeg/ffmpeg_manager.dart';
+import 'package:pure_live/features/recorder/ffmpeg/ffmpeg_scheduler.dart';
+import 'package:pure_live/features/recorder/ffmpeg/ffmpeg_types.dart';
+import 'package:pure_live/features/recorder/models/live_record_task.dart';
+import 'package:pure_live/features/recorder/models/record_status.dart';
+import 'package:pure_live/features/recorder/pages/record_settings/record_settings_controller.dart';
+import 'package:pure_live/features/recorder/pages/recorder/recorder_controller.dart';
+import 'package:pure_live/features/recorder/services/cache_service.dart';
+import 'package:pure_live/features/recorder/services/ffmpeg_flv_input_relay.dart';
+import 'package:pure_live/features/recorder/services/ffmpeg_service.dart';
+import 'package:pure_live/features/recorder/services/ffmpeg_hls_input_relay.dart';
+import 'package:pure_live/features/recorder/services/stream_resolver_service.dart';
+import 'package:pure_live/features/recorder/services/video_processor_service.dart';
 
 void main() {
   test(

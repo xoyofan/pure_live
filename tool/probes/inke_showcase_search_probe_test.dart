@@ -5,10 +5,10 @@ import 'dart:io' as io;
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/core/common/http_client.dart';
-import 'package:pure_live/core/site/inke/inke_api.dart';
-import 'package:pure_live/core/site/inke/inke_site.dart';
-import 'package:pure_live/core/sites.dart';
+import 'package:pure_live/core/network/http_client.dart';
+import 'package:pure_live/platforms/inke/inke_api.dart';
+import 'package:pure_live/platforms/inke/inke_site.dart';
+import 'package:pure_live/platforms/sites.dart';
 
 void main() {
   test(

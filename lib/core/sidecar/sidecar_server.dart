@@ -15,22 +15,22 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:pure_live/core/common/convert_helper.dart';
-import 'package:pure_live/core/common/parser_config.dart';
-import 'package:pure_live/core/common/site_ids.dart';
-import 'package:pure_live/core/site/bilibili/bilibili_site.dart';
-import 'package:pure_live/core/site/douyin/douyin_site.dart';
-import 'package:pure_live/core/site/huya/huya_site.dart';
-import 'package:pure_live/core/site/douyu/douyu_site.dart';
-import 'package:pure_live/core/danmaku/douyin_danmaku.dart';
-import 'package:pure_live/core/danmaku/huya_danmaku.dart';
-import 'package:pure_live/core/danmaku/douyu_danmaku.dart';
-import 'package:pure_live/core/interface/live_danmaku.dart';
-import 'package:pure_live/core/interface/live_site.dart';
-import 'package:pure_live/model/live_play_quality.dart';
-import 'package:pure_live/common/models/live_area.dart';
-import 'package:pure_live/common/models/live_message.dart';
-import 'package:pure_live/common/models/live_room.dart';
+import 'package:pure_live/core/utils/type_cast.dart';
+import 'package:pure_live/core/network/parser_config.dart';
+import 'package:pure_live/core/network/site_ids.dart';
+import 'package:pure_live/platforms/bilibili/bilibili_site.dart';
+import 'package:pure_live/platforms/douyin/douyin_site.dart';
+import 'package:pure_live/platforms/huya/huya_site.dart';
+import 'package:pure_live/platforms/douyu/douyu_site.dart';
+import 'package:pure_live/platforms/douyin/douyin_danmaku.dart';
+import 'package:pure_live/platforms/huya/huya_danmaku.dart';
+import 'package:pure_live/platforms/douyu/douyu_danmaku.dart';
+import 'package:pure_live/core/contracts/live_danmaku.dart';
+import 'package:pure_live/core/contracts/live_site.dart';
+import 'package:pure_live/core/models/live_play_quality.dart';
+import 'package:pure_live/core/models/live_area.dart';
+import 'package:pure_live/core/models/live_message.dart';
+import 'package:pure_live/core/models/live_room.dart';
 
 /// Page-size ceiling shared by every list method (api.md 4.6).
 const int _maxPageSize = 50;
@@ -63,12 +63,14 @@ String _isoTs(DateTime? at) => (at ?? DateTime.now()).toUtc().toIso8601String();
 
 void _pushDanmakuFrame(String sessionKey, Map<String, dynamic> frame) {
   final separator = sessionKey.indexOf(':');
-  stdout.writeln(jsonEncode({
-    'push': 'danmaku',
-    'platform': sessionKey.substring(0, separator),
-    'roomId': sessionKey.substring(separator + 1),
-    'frame': frame,
-  }));
+  stdout.writeln(
+    jsonEncode({
+      'push': 'danmaku',
+      'platform': sessionKey.substring(0, separator),
+      'roomId': sessionKey.substring(separator + 1),
+      'frame': frame,
+    }),
+  );
 }
 
 void _stopDanmakuSession(String platform, String roomId) {
@@ -107,7 +109,7 @@ Future<Object?> _startDanmakuSession(String platform, String roomId) async {
   if (site == null) {
     throw _RpcError('PLATFORM_UNSUPPORTED', 'platform "$platform" is not built into this sidecar');
   }
-  final room = await site.getRoomDetail(platform: platform, roomId: roomId);
+  final room = await site.getRoomDetail(LiveRoom(roomId: roomId, platform: platform));
   final session = _danmakuFor(platform, room.danmakuData);
 
   session.onMessage = (message) {
@@ -208,10 +210,9 @@ Future<Object?> _dispatch(String method, Map<String, dynamic> params) async {
   }
 
   switch (method) {
-
     case 'resolve':
       if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');
-      final room = await site.getRoomDetail(platform: platform, roomId: roomId);
+      final room = await site.getRoomDetail(LiveRoom(roomId: roomId, platform: platform));
       return {'room': _roomToJson(room)};
 
     case 'liveStatus':
@@ -219,27 +220,26 @@ Future<Object?> _dispatch(String method, Map<String, dynamic> params) async {
       // shape failure reads as offline instead of surfacing a transport error.
       if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');
       try {
-        final live = await site.getLiveStatus(platform: platform, roomId: roomId);
-        return {'live': live};
+        final detail = await site.getRoomDetail(LiveRoom(roomId: roomId, platform: platform));
+        return {'live': detail.liveStatus == LiveStatus.live};
       } catch (_) {
         return {'live': false};
       }
 
     case 'qualities':
       if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');
-      final room = await site.getRoomDetail(platform: platform, roomId: roomId);
-      final qualities = await site.getPlayQualites(detail: room);
+      final room = await site.getRoomDetail(LiveRoom(roomId: roomId, platform: platform));
+      final qualities = await site.getPlayQualites(liveroom: room);
       return {
         'qualities': [
-          for (final q in qualities)
-            {'selectionId': '${q.selectionId}', 'label': q.quality},
+          for (final q in qualities) {'selectionId': '${q.selectionId}', 'label': q.quality},
         ],
       };
 
     case 'playUrls':
       if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');
-      final room = await site.getRoomDetail(platform: platform, roomId: roomId);
-      final qualities = await site.getPlayQualites(detail: room);
+      final room = await site.getRoomDetail(LiveRoom(roomId: roomId, platform: platform));
+      final qualities = await site.getPlayQualites(liveroom: room);
       final requested = asT<String?>(params['quality']);
       LivePlayQuality? chosen;
       if (requested != null && requested.isNotEmpty) {
@@ -252,74 +252,76 @@ Future<Object?> _dispatch(String method, Map<String, dynamic> params) async {
       if (chosen == null) {
         throw _RpcError('ROOM_CLOSED', 'room has no playable qualities (offline?)');
       }
-      final urls = await site.getPlayUrls(detail: room, quality: chosen);
-      return {
-        'quality': chosen.quality,
-        'qualityId': '${chosen.selectionId}',
-        'urls': urls,
-      };
+      final urls = await site.getPlayUrls(liveroom: room, quality: chosen);
+      return {'quality': chosen.quality, 'qualityId': '${chosen.selectionId}', 'urls': urls};
 
-    case 'categories': {
-      final page = _pageOf(params);
-      final pageSize = _pageSizeOf(params);
-      final categories = await site.getCategores(page, pageSize);
-      return {
-        'categories': [
-          for (final category in categories)
-            {
-              'id': category.id,
-              'name': category.name,
-              'children': [for (final area in category.children) area.toJson()],
-            },
-        ],
-      };
-    }
+    case 'categories':
+      {
+        final page = _pageOf(params);
+        final pageSize = _pageSizeOf(params);
+        final categories = await site.getCategores(page, pageSize);
+        return {
+          'categories': [
+            for (final category in categories)
+              {
+                'id': category.id,
+                'name': category.name,
+                'children': [for (final area in category.children) area.toJson()],
+              },
+          ],
+        };
+      }
 
-    case 'categoryRooms': {
-      final page = _pageOf(params);
-      final pageSize = _pageSizeOf(params);
-      final areaId = asT<String?>(params['areaId']) ?? '';
-      if (areaId.isEmpty) throw _RpcError('BAD_REQUEST', 'areaId is required');
-      final area = LiveArea(
-        platform: platform,
-        areaType: asT<String?>(params['areaType']),
-        typeName: asT<String?>(params['typeName']),
-        areaId: areaId,
-        areaName: asT<String?>(params['areaName']),
-      );
-      final rooms = await site.getCategoryRooms(area, page: page, pageSize: pageSize);
-      return _roomListResult(rooms, page, pageSize);
-    }
+    case 'categoryRooms':
+      {
+        final page = _pageOf(params);
+        final pageSize = _pageSizeOf(params);
+        final areaId = asT<String?>(params['areaId']) ?? '';
+        if (areaId.isEmpty) throw _RpcError('BAD_REQUEST', 'areaId is required');
+        final area = LiveArea(
+          platform: platform,
+          areaType: asT<String?>(params['areaType']),
+          typeName: asT<String?>(params['typeName']),
+          areaId: areaId,
+          areaName: asT<String?>(params['areaName']),
+        );
+        final rooms = await site.getCategoryRooms(area, page: page, pageSize: pageSize);
+        return _roomListResult(rooms, page, pageSize);
+      }
 
-    case 'recommendRooms': {
-      final page = _pageOf(params);
-      final pageSize = _pageSizeOf(params);
-      final rooms = await site.getRecommendRooms(page: page, pageSize: pageSize);
-      return _roomListResult(rooms, page, pageSize);
-    }
+    case 'recommendRooms':
+      {
+        final page = _pageOf(params);
+        final pageSize = _pageSizeOf(params);
+        final rooms = await site.getRecommendRooms(page: page, pageSize: pageSize);
+        return _roomListResult(rooms, page, pageSize);
+      }
 
-    case 'searchRooms': {
-      final page = _pageOf(params);
-      final pageSize = _pageSizeOf(params);
-      final keyword = asT<String?>(params['keyword']) ?? '';
-      if (keyword.trim().isEmpty) throw _RpcError('BAD_REQUEST', 'keyword is required');
-      final rooms = await site.searchRooms(keyword.trim(), page: page, pageSize: pageSize);
-      return _roomListResult(rooms, page, pageSize);
-    }
+    case 'searchRooms':
+      {
+        final page = _pageOf(params);
+        final pageSize = _pageSizeOf(params);
+        final keyword = asT<String?>(params['keyword']) ?? '';
+        if (keyword.trim().isEmpty) throw _RpcError('BAD_REQUEST', 'keyword is required');
+        final rooms = await site.searchRooms(keyword.trim(), page: page, pageSize: pageSize);
+        return _roomListResult(rooms, page, pageSize);
+      }
 
-    case 'danmakuStart': {
-      // Douyin/huya/douyu danmaku run on the SAME lib/core implementations as
-      // the app; frames flow back as stdout push envelopes. Bilibili stays a
-      // host-side TS source (contracts/api.md section 5 is unchanged).
-      if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');
-      return await _startDanmakuSession(platform, roomId);
-    }
+    case 'danmakuStart':
+      {
+        // Douyin/huya/douyu danmaku run on the SAME lib/core implementations as
+        // the app; frames flow back as stdout push envelopes. Bilibili stays a
+        // host-side TS source (contracts/api.md section 5 is unchanged).
+        if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');
+        return await _startDanmakuSession(platform, roomId);
+      }
 
-    case 'danmakuStop': {
-      if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');
-      _stopDanmakuSession(platform, roomId);
-      return {'stopped': true, 'roomId': roomId};
-    }
+    case 'danmakuStop':
+      {
+        if (roomId.isEmpty) throw _RpcError('BAD_REQUEST', 'roomId is required');
+        _stopDanmakuSession(platform, roomId);
+        return {'stopped': true, 'roomId': roomId};
+      }
 
     default:
       throw _RpcError('BAD_REQUEST', 'unknown method "$method"');
@@ -343,9 +345,7 @@ Future<void> runSidecar(List<String> args) async {
 
   stdout.writeln(jsonEncode({'ok': true, 'started': true, 'platforms': _sites.keys.toList(growable: false)}));
 
-  final lineStream = stdin
-      .transform(const Utf8Decoder(allowMalformed: true))
-      .transform(const LineSplitter());
+  final lineStream = stdin.transform(const Utf8Decoder(allowMalformed: true)).transform(const LineSplitter());
 
   await for (final line in lineStream) {
     final trimmed = line.trim();
@@ -363,17 +363,21 @@ Future<void> runSidecar(List<String> args) async {
       );
       stdout.writeln(jsonEncode({'id': id, 'ok': true, 'result': result}));
     } on _RpcError catch (error) {
-      stdout.writeln(jsonEncode({
-        'id': id,
-        'ok': false,
-        'error': {'code': error.code, 'message': error.message},
-      }));
+      stdout.writeln(
+        jsonEncode({
+          'id': id,
+          'ok': false,
+          'error': {'code': error.code, 'message': error.message},
+        }),
+      );
     } catch (error) {
-      stdout.writeln(jsonEncode({
-        'id': id,
-        'ok': false,
-        'error': {'code': 'UPSTREAM_ERROR', 'message': error.toString()},
-      }));
+      stdout.writeln(
+        jsonEncode({
+          'id': id,
+          'ok': false,
+          'error': {'code': 'UPSTREAM_ERROR', 'message': error.toString()},
+        }),
+      );
     }
   }
 }

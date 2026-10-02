@@ -1,26 +1,17 @@
 import 'dart:developer';
 
-import 'package:flutter/foundation.dart';
-
-import 'core/player_manager.dart';
-import 'models/player_engine.dart';
-import 'core/line_fallback_manager.dart';
-import 'core/engine_fallback_manager.dart';
-import 'core/live_audio_service.dart';
-import 'core/playback_lifecycle_coordinator.dart';
-
-import 'package:pure_live/common/global/platform_utils.dart';
-import 'package:pure_live/common/services/settings_service.dart';
-import 'package:pure_live/player/utils/mpv_platform_profile.dart';
+import 'package:pure_live/player/kernel/floating_playback.dart';
+import 'package:pure_live/player/kernel/live_player_facade.dart';
+import 'package:pure_live/player/models/player_engine.dart';
 
 class GlobalPlayerService {
   GlobalPlayerService._();
 
   static final GlobalPlayerService instance = GlobalPlayerService._();
 
-  late final PlayerManager playerManager;
-  late final PlaybackLifecycleCoordinator playbackLifecycle;
-  PlayerManager get player => playerManager;
+  late final LivePlayerFacade playerManager;
+  late final FloatingPlayback floating;
+  LivePlayerFacade get player => playerManager;
   bool _initialized = false;
   Future<void>? _initializationFuture;
 
@@ -44,53 +35,16 @@ class GlobalPlayerService {
   }
 
   Future<void> _initialize(PlayerEngine defaultEngine) async {
-    // 1. Instantiate the Orchestrator with all its specialized managers
-    playerManager = PlayerManager(
-      fallbackManager: EngineFallbackManager(
-        defaultEngine: defaultEngine,
-        // Desktop keeps a single engine (the one the user chose) so a failure
-        // never switches engines behind the user's back, as before fvp.
-        supportedEngines: PlatformUtils.isMobile ? PlayerEngine.values : [defaultEngine],
-      ),
-      lineManager: LineFallbackManager(),
-      suppressAutomaticFallbackAudio: () => isMpvAudioOutputDisabledForPlatform(
-        customOutput: SettingsService.to.player.customPlayerOutput.value,
-        configuredDriver: SettingsService.to.player.audioOutputDriver.value,
-        platform: defaultTargetPlatform,
-      ),
-    );
-    LiveAudioService.configurePlaybackCommands(
-      play: playerManager.resume,
-      pause: playerManager.pause,
-      stop: playerManager.stop,
-      pauseForInterruption: playerManager.pauseForAudioInterruption,
-      resumeFromInterruption: playerManager.resumeFromAudioInterruption,
-    );
-
-    // 2. Keep native decoders, network workers and textures cold until the
-    // first room is opened. This avoids paying hundreds of MiB and background
-    // CPU merely for browsing the home/settings UI.
-    playerManager.configureDefaultEngine(defaultEngine);
-    playbackLifecycle = PlaybackLifecycleCoordinator(
-      pauseForLifecycle: playerManager.pauseForLifecycle,
-      resumeFromLifecycle: playerManager.resumeFromLifecycle,
-      // PiP/app-floating is still a visible playback presentation even though
-      // Android may report the hosting Activity as hidden during transition.
-      shouldContinueInBackground: () =>
-          LiveAudioService.shouldContinueInBackground || playerManager.isCompactModeActive,
-      isAudioOnly: () => playerManager.isAudioOnlyMode,
-      isSleepSessionActive: () => LiveAudioService.isSleepSessionActive,
-      commitAudioOnlyPowerSaving: playerManager.commitAudioOnlyPowerSaving,
-      prepareAudioOnlyVideoRestore: playerManager.prepareAudioOnlyVideoRestore,
-    )..start();
+    playerManager = LivePlayerFacade(defaultEngine: defaultEngine);
+    floating = FloatingPlayback(facade: playerManager);
+    playerManager.floating = floating;
     _initialized = true;
-    log("GlobalPlayerService: Ready for lazy player initialization.", name: "GlobalPlayerService");
+    log("GlobalPlayerService: kernel facade ready.", name: "GlobalPlayerService");
   }
 
-  /// Global dispose - Call this only when the app is being destroyed
   Future<void> dispose() async {
     if (!_initialized) return;
-    await playbackLifecycle.dispose();
+    await floating.closeAppFloating();
     await playerManager.dispose();
     _initialized = false;
     log("GlobalPlayerService: Disposed.", name: "GlobalPlayerService");

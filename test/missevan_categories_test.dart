@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/core/site/missevan/missevan_api.dart';
+import 'package:pure_live/platforms/missevan/missevan_api.dart';
 
 /// 2026-10 灰度改版后的真实 `meta/data` 骨架:`tabs` 沦为纯展示键(无 type/id),
 /// 可过滤的分类 id 在 `catalogs[]`;sub_catalogs 的 id 实测过滤 chatroom/open/list

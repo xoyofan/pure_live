@@ -10,11 +10,11 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
-import 'package:pure_live/common/services/settings_service.dart';
-import 'package:pure_live/common/utils/hive_pref_util.dart';
-import 'package:pure_live/core/interface/live_quality_discovery.dart';
-import 'package:pure_live/core/interface/live_site.dart';
-import 'package:pure_live/core/sites.dart';
+import 'package:pure_live/services/settings_service.dart';
+import 'package:pure_live/core/storage/hive_pref_util.dart';
+import 'package:pure_live/core/contracts/live_quality_discovery.dart';
+import 'package:pure_live/core/contracts/live_site.dart';
+import 'package:pure_live/platforms/sites.dart';
 import 'package:pure_live/get/get.dart';
 import 'package:pure_live/player/core/flv_splice_relay.dart';
 

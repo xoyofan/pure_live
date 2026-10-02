@@ -8,7 +8,7 @@
 /// 零变化,仅补齐缺口。
 library;
 
-import 'package:pure_live/common/models/live_room.dart';
+import 'package:pure_live/core/models/live_room.dart';
 
 /// 首页/搜索卡片徽标用的观看数字符串;平台无任何测量值时返回空串。
 String audienceDisplayOf(LiveRoom room) {

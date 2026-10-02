@@ -14,11 +14,11 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
-import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/common/services/settings_service.dart';
-import 'package:pure_live/common/utils/hive_pref_util.dart';
-import 'package:pure_live/core/sites.dart';
-import 'package:pure_live/plugins/locale_helper.dart';
+import 'package:pure_live/core/models/live_room.dart';
+import 'package:pure_live/services/settings_service.dart';
+import 'package:pure_live/core/storage/hive_pref_util.dart';
+import 'package:pure_live/platforms/sites.dart';
+import 'package:pure_live/core/utils/i18n.dart';
 import 'package:pure_live/get/get.dart';
 
 const _siteTimeout = Duration(seconds: 90);

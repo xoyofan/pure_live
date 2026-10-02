@@ -9,16 +9,16 @@ import 'package:pure_live/core/iptv/models/channel.dart' as model;
 import 'playlist_channel_reconciler.dart';
 
 import 'package:drift/drift.dart' as drift;
-import 'package:pure_live/common/index.dart';
+import 'package:pure_live/core/index.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:synchronized/synchronized.dart';
-import 'package:pure_live/plugins/file_utils.dart';
-import 'package:pure_live/plugins/db_service.dart';
-import 'package:pure_live/core/common/http_client.dart';
+import 'package:pure_live/core/platform/file_utils.dart';
+import 'package:pure_live/core/iptv/local/db_service.dart';
+import 'package:pure_live/core/network/http_client.dart';
 import 'package:charset_converter/charset_converter.dart';
 import 'package:pure_live/core/iptv/parsers/m3u_parser.dart';
 import 'package:pure_live/core/iptv/parsers/txt_parser.dart';
-import 'package:pure_live/common/global/app_path_manager.dart';
+import 'package:pure_live/core/platform/app_path_manager.dart';
 import 'package:pure_live/core/iptv/local/database.dart' as database;
 
 class IptvImportManager {

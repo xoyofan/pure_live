@@ -15,14 +15,14 @@ import 'dart:async';
 
 import 'package:live_parser/live_parser.dart' hide LiveSite;
 import 'browse_source.dart';
-import 'package:pure_live/core/interface/live_input_recipe.dart';
-import 'package:pure_live/core/interface/live_site.dart';
-import 'package:pure_live/core/sites.dart';
-import 'package:pure_live/core/interface/live_danmaku.dart';
-import 'package:pure_live/core/site/douyin/douyin_site.dart';
-import 'package:pure_live/common/models/live_area.dart';
-import 'package:pure_live/common/models/live_message.dart';
-import 'package:pure_live/common/models/live_room.dart';
+import 'package:pure_live/core/contracts/live_input_recipe.dart';
+import 'package:pure_live/core/contracts/live_site.dart';
+import 'package:pure_live/platforms/sites.dart';
+import 'package:pure_live/core/contracts/live_danmaku.dart';
+import 'package:pure_live/platforms/douyin/douyin_site.dart';
+import 'package:pure_live/core/models/live_area.dart';
+import 'package:pure_live/core/models/live_message.dart';
+import 'package:pure_live/core/models/live_room.dart';
 
 import 'purelive_audience.dart';
 import 'purelive_line_format.dart';
@@ -105,9 +105,9 @@ Future<LiveInputRecipe?> resolvePureLiveOwnedInputRecipe(
   // Dart 3.13:LiveSite 与 LivePlayUrlResolver 无子类型关系时 `is` 被判恒假
   // (提升失效),`as` 是合法的(2026-10-02 最小 repro 实测)。
   final resolver = coreSite as LivePlayUrlResolver;
-  final detail = await coreSite.getRoomDetail(platform: coreSite.id, roomId: roomIdOrUrl);
+  final detail = await coreSite.getRoomDetail(LiveRoom(roomId: roomIdOrUrl, platform: coreSite.id));
   if (!detail.isLiveNow) return null;
-  final qualities = await coreSite.getPlayQualites(detail: detail);
+  final qualities = await coreSite.getPlayQualites(liveroom: detail);
   if (qualities.isEmpty) return null;
   var chosen = qualities.first;
   if (preferredQuality != null && preferredQuality.isNotEmpty) {
@@ -118,7 +118,7 @@ Future<LiveInputRecipe?> resolvePureLiveOwnedInputRecipe(
       }
     }
   }
-  final resolution = await resolver.resolvePlayUrlsRaw(detail: detail, quality: chosen);
+  final resolution = await resolver.resolvePlayUrlsRaw(liveroom: detail, quality: chosen);
   return pureLiveOwnedRecipeOf(resolution);
 }
 
@@ -181,7 +181,7 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
   @override
   Future<RoomPayload> resolveRoom(RoomRequest request) async {
     final coreSite = _siteInstanceOf(site);
-    final detail = await coreSite.getRoomDetail(platform: site, roomId: request.roomIdOrUrl);
+    final detail = await coreSite.getRoomDetail(LiveRoom(roomId: request.roomIdOrUrl, platform: site));
 
     // 离线/未开播:无流可给,只返回元信息。
     if (detail.liveStatus != LiveStatus.live) {
@@ -189,7 +189,7 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
     }
 
     // 画质档位。
-    final qualities = await coreSite.getPlayQualites(detail: detail);
+    final qualities = await coreSite.getPlayQualites(liveroom: detail);
     if (qualities.isEmpty) {
       return _roomToPayload(detail, site);
     }
@@ -206,7 +206,7 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
     }
 
     // 取流:该档位下全部线路。
-    final urls = await coreSite.getPlayUrls(detail: detail, quality: chosen);
+    final urls = await coreSite.getPlayUrls(liveroom: detail, quality: chosen);
     final headers = _playbackHeaders(site, request.roomIdOrUrl);
     final chosenIndex = qualities.indexOf(chosen);
 
@@ -245,7 +245,7 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
   @override
   Future<RoomRecord> refreshRoomSummary(RoomRequest request) async {
     final coreSite = _siteInstanceOf(site);
-    final detail = await coreSite.getRoomDetail(platform: site, roomId: request.roomIdOrUrl);
+    final detail = await coreSite.getRoomDetail(LiveRoom(roomId: request.roomIdOrUrl, platform: site));
     final payload = await _roomToPayload(detail, site);
     // 统计快照(2026-10-02 用户口径: 直播页观看/贵宾/超粉/钻粉要解析显示):
     // pure_live LiveRoom 只有观看/粉丝测量值,vip/svip 无数据源留空
@@ -421,7 +421,7 @@ class _PureLiveDanmakuSession implements DanmakuSession {
   Future<void> _start() async {
     final coreSite = _siteInstanceOf(site);
     try {
-      final room = await coreSite.getRoomDetail(platform: site, roomId: roomId);
+      final room = await coreSite.getRoomDetail(LiveRoom(roomId: roomId, platform: site));
       final args = room.danmakuData;
       final danmaku = coreSite.getDanmaku();
       danmaku.onMessage = (message) {

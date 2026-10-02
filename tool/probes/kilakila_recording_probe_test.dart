@@ -7,26 +7,26 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
-import 'package:pure_live/core/common/http_client.dart' as app_http;
-import 'package:pure_live/core/sites.dart';
+import 'package:pure_live/core/network/http_client.dart' as app_http;
+import 'package:pure_live/platforms/sites.dart';
 
 import 'package:ffmpeg_kit_extended_flutter/ffmpeg_kit_extended_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:path/path.dart' as p;
-import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/common/services/settings/log_controller.dart';
-import 'package:pure_live/common/utils/hive_pref_util.dart';
-import 'package:pure_live/core/site/kilakila/kilakila_site.dart';
+import 'package:pure_live/core/models/live_room.dart';
+import 'package:pure_live/services/settings/log_controller.dart';
+import 'package:pure_live/core/storage/hive_pref_util.dart';
+import 'package:pure_live/platforms/kilakila/kilakila_site.dart';
 import 'package:pure_live/get/get.dart';
-import 'package:pure_live/recorder/ffmpeg/ffmpeg_command_builder.dart';
-import 'package:pure_live/recorder/ffmpeg/ffmpeg_manager.dart';
-import 'package:pure_live/recorder/ffmpeg/ffmpeg_types.dart';
-import 'package:pure_live/recorder/models/live_record_task.dart';
-import 'package:pure_live/recorder/services/ffmpeg_header_factory.dart';
-import 'package:pure_live/recorder/services/recording_output_metrics.dart';
-import 'package:pure_live/recorder/services/stream_resolver_service.dart';
-import 'package:pure_live/recorder/services/video_processor_service.dart';
+import 'package:pure_live/features/recorder/ffmpeg/ffmpeg_command_builder.dart';
+import 'package:pure_live/features/recorder/ffmpeg/ffmpeg_manager.dart';
+import 'package:pure_live/features/recorder/ffmpeg/ffmpeg_types.dart';
+import 'package:pure_live/features/recorder/models/live_record_task.dart';
+import 'package:pure_live/features/recorder/services/ffmpeg_header_factory.dart';
+import 'package:pure_live/features/recorder/services/recording_output_metrics.dart';
+import 'package:pure_live/features/recorder/services/stream_resolver_service.dart';
+import 'package:pure_live/features/recorder/services/video_processor_service.dart';
 
 void main() {
   test(

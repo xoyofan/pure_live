@@ -4,7 +4,7 @@
 // 111 处 i18n() 字段(分类名/画质名/公告)由此漏原始 key。启动时载入打包
 // zh.json 回落,文案真源仍是 pure_live 自己的翻译文件。
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/plugins/locale_helper.dart';
+import 'package:pure_live/core/utils/i18n.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

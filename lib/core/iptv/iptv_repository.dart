@@ -1,10 +1,10 @@
 import 'dart:developer';
 
 import 'package:pure_live/get/get.dart' hide Value;
-import 'package:pure_live/plugins/db_service.dart';
+import 'package:pure_live/core/iptv/local/db_service.dart';
 import 'package:pure_live/core/iptv/models/channel.dart' as models;
 import 'package:pure_live/core/iptv/local/database.dart' as database;
-import 'package:pure_live/core/common/http_header_policy.dart';
+import 'package:pure_live/core/network/http_header_policy.dart';
 
 class IptvRepository extends GetxService {
   Future<IptvRepository> init() async {

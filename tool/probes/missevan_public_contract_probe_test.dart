@@ -6,12 +6,12 @@ import 'dart:io' as io;
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/core/common/http_client.dart';
-import 'package:pure_live/core/interface/live_site.dart';
-import 'package:pure_live/core/site/missevan/missevan_api.dart';
-import 'package:pure_live/core/site/missevan/missevan_site.dart';
-import 'package:pure_live/core/sites.dart';
-import 'package:pure_live/recorder/services/stream_resolver_service.dart';
+import 'package:pure_live/core/network/http_client.dart';
+import 'package:pure_live/core/contracts/live_site.dart';
+import 'package:pure_live/platforms/missevan/missevan_api.dart';
+import 'package:pure_live/platforms/missevan/missevan_site.dart';
+import 'package:pure_live/platforms/sites.dart';
+import 'package:pure_live/features/recorder/services/stream_resolver_service.dart';
 
 void main() {
   test(

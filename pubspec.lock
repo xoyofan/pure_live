@@ -98,13 +98,21 @@ packages:
     source: hosted
     version: "2.13.1"
   audio_service:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: audio_service
       sha256: "95f3267f3449eb5cf71c8fcf1d556f57af1e898e2dc5815fb168d1843653edb7"
       url: "https://pub.dev"
     source: hosted
     version: "0.18.19"
+  audio_service_mpris:
+    dependency: transitive
+    description:
+      name: audio_service_mpris
+      sha256: "8cb2ff2237f4cd2fd27f16451ed35b3aedc12df8a384435327c67a9f4d557ef4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.1"
   audio_service_platform_interface:
     dependency: transitive
     description:
@@ -122,7 +130,7 @@ packages:
     source: hosted
     version: "0.1.4"
   audio_service_win:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: audio_service_win
       sha256: "677e25f447d3d49f537ea6f4fd36e9511acdc0badc6534c9cb92a205566ba12a"
@@ -130,7 +138,7 @@ packages:
     source: hosted
     version: "0.0.3"
   audio_session:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: audio_session
       sha256: f9e7711a0e24ca8b40f5d7ac374c3c6e55016f3157912badd18199cdbbca5c4d
@@ -162,12 +170,13 @@ packages:
     source: hosted
     version: "1.4.0"
   better_player_plus:
-    dependency: "direct main"
+    dependency: transitive
     description:
-      path: "plugins/built_in_kotlin/better_player_plus"
-      relative: true
-    source: path
-    version: "1.3.5"
+      name: better_player_plus
+      sha256: "49c02ec4d975cf0da3f55c3bf07a4eb3eeab2b417790d8fa3e29a77947cb02f1"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.4.1"
   bonsoir:
     dependency: "direct main"
     description:
@@ -224,14 +233,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.2"
-  bordered_text:
-    dependency: "direct main"
-    description:
-      name: bordered_text
-      sha256: "5c0599064a1787a5fd3257c9d097bfb99cad7cf2299d0593ed1493699c8529a0"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.0.2"
   brotli:
     dependency: "direct main"
     description:
@@ -472,14 +473,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.2"
-  cupertino_icons:
-    dependency: transitive
-    description:
-      name: cupertino_icons
-      sha256: "41e005c33bd814be4d3096aff55b1908d419fde52ca656c8c47719ec745873cd"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.9"
   cupertino_ui:
     dependency: transitive
     description:
@@ -748,10 +741,10 @@ packages:
     dependency: "direct main"
     description:
       name: flame_barrage
-      sha256: "704a7eeacee75ceb4dd1ab006bf7b0de97e5cf00174e27d2001ba65191d751e8"
+      sha256: "7e590e42f225f134bf05e222de3199b6e1692f3898aa4c0396bb7bd6d79bcc58"
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.7"
+    version: "0.0.8"
   flex_color_picker:
     dependency: "direct main"
     description:
@@ -769,11 +762,12 @@ packages:
     source: hosted
     version: "5.0.1"
   floating:
-    dependency: "direct main"
+    dependency: transitive
     description:
-      path: "plugins/built_in_kotlin/floating"
-      relative: true
-    source: path
+      name: floating
+      sha256: e51ce1dbcab3ea83da0ad1b07f2091b99c0e8680184c780a000567f41234d454
+      url: "https://pub.dev"
+    source: hosted
     version: "6.0.0"
   flutter:
     dependency: "direct main"
@@ -816,14 +810,6 @@ packages:
       relative: true
     source: path
     version: "2.1.2"
-  flutter_floating:
-    dependency: "direct main"
-    description:
-      name: flutter_floating
-      sha256: "3cd7b8df24992d745fea274f3c37f9a7d4bb5a17712478af063382b70936f3cb"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.2"
   flutter_highlight:
     dependency: transitive
     description:
@@ -989,11 +975,13 @@ packages:
     source: hosted
     version: "0.17.4"
   flv_lzc:
-    dependency: "direct main"
+    dependency: transitive
     description:
-      path: "plugins/flv_lzc"
-      relative: true
-    source: path
+      path: "."
+      ref: HEAD
+      resolved-ref: "162030d642857109048a8e6858d502b8d73c754a"
+      url: "https://github.com/liuchuancong/flv_lzc.git"
+    source: git
     version: "1.0.4+purelive.2"
   font_awesome_flutter:
     dependency: "direct main"
@@ -1003,6 +991,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "11.0.0"
+  freezed_annotation:
+    dependency: transitive
+    description:
+      name: freezed_annotation
+      sha256: "7294967ff0a6d98638e7acb774aac3af2550777accd8149c90af5b014e6d44d8"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.1.0"
   fuchsia_remote_debug_protocol:
     dependency: transitive
     description: flutter
@@ -1016,13 +1012,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.2.0"
-  fvp:
-    dependency: "direct main"
-    description:
-      path: "third_party/fvp"
-      relative: true
-    source: path
-    version: "0.38.1"
   get:
     dependency: "direct main"
     description:
@@ -1374,93 +1363,132 @@ packages:
   media_core:
     dependency: "direct main"
     description:
-      path: "D:/media_core/packages/media_core"
+      path: "F:/media_core/packages/media_core"
       relative: false
     source: path
-    version: "0.0.0"
+    version: "0.1.0"
   media_core_better_player:
     dependency: "direct main"
     description:
-      path: "D:/media_core/packages/media_core_better_player"
+      path: "F:/media_core/packages/media_core_better_player"
       relative: false
     source: path
-    version: "0.0.0"
+    version: "0.1.0"
+  media_core_danmaku:
+    dependency: "direct main"
+    description:
+      path: "F:/media_core/packages/media_core_danmaku"
+      relative: false
+    source: path
+    version: "0.1.0"
   media_core_floating:
     dependency: "direct main"
     description:
-      path: "D:/media_core/packages/media_core_floating"
+      path: "F:/media_core/packages/media_core_floating"
       relative: false
     source: path
-    version: "0.0.0"
+    version: "0.1.0"
   media_core_fullscreen:
     dependency: "direct main"
     description:
-      path: "D:/media_core/packages/media_core_fullscreen"
+      path: "F:/media_core/packages/media_core_fullscreen"
       relative: false
     source: path
-    version: "0.0.0"
-  media_core_fvp:
-    dependency: "direct main"
-    description:
-      path: "D:/media_core/packages/media_core_fvp"
-      relative: false
-    source: path
-    version: "0.0.0"
+    version: "0.1.0"
   media_core_ijk_player:
     dependency: "direct main"
     description:
-      path: "D:/media_core/packages/media_core_ijk_player"
+      path: "F:/media_core/packages/media_core_ijk_player"
       relative: false
     source: path
-    version: "0.0.0"
+    version: "0.1.0"
+  media_core_live:
+    dependency: "direct main"
+    description:
+      path: "F:/media_core/packages/media_core_live"
+      relative: false
+    source: path
+    version: "0.1.0"
+  media_core_logging:
+    dependency: "direct main"
+    description:
+      path: "F:/media_core/packages/media_core_logging"
+      relative: false
+    source: path
+    version: "0.1.0"
   media_core_media_kit:
     dependency: "direct main"
     description:
-      path: "D:/media_core/packages/media_core_media_kit"
+      path: "F:/media_core/packages/media_core_media_kit"
       relative: false
     source: path
-    version: "0.0.0"
+    version: "0.1.0"
+  media_core_mediasession:
+    dependency: "direct main"
+    description:
+      path: "F:/media_core/packages/media_core_mediasession"
+      relative: false
+    source: path
+    version: "0.1.0"
+  media_core_memory:
+    dependency: transitive
+    description:
+      path: "../../media_core/packages/media_core_memory"
+      relative: true
+    source: path
+    version: "0.1.0"
   media_core_multiview:
     dependency: "direct main"
     description:
-      path: "D:/media_core/packages/media_core_multiview"
+      path: "F:/media_core/packages/media_core_multiview"
       relative: false
     source: path
-    version: "0.0.0"
+    version: "0.1.0"
   media_core_pip:
     dependency: "direct main"
     description:
-      path: "D:/media_core/packages/media_core_pip"
+      path: "F:/media_core/packages/media_core_pip"
       relative: false
     source: path
-    version: "0.0.0"
+    version: "0.1.0"
   media_core_presentation:
     dependency: "direct main"
     description:
-      path: "D:/media_core/packages/media_core_presentation"
+      path: "F:/media_core/packages/media_core_presentation"
       relative: false
     source: path
-    version: "0.0.0"
+    version: "0.1.0"
   media_core_ui:
     dependency: "direct main"
     description:
-      path: "D:/media_core/packages/media_core_ui"
+      path: "F:/media_core/packages/media_core_ui"
       relative: false
     source: path
-    version: "0.0.0"
-  media_kit:
-    dependency: "direct main"
+    version: "0.1.0"
+  media_core_win32:
+    dependency: transitive
     description:
-      path: "third_party/media_kit"
+      path: "../../media_core/packages/media_core_win32"
       relative: true
     source: path
+    version: "0.1.0"
+  media_kit:
+    dependency: transitive
+    description:
+      path: media_kit
+      ref: "803c4a27912091db6f839d48d1b984a0d9f588c7"
+      resolved-ref: "803c4a27912091db6f839d48d1b984a0d9f588c7"
+      url: "https://github.com/Predidit/media-kit.git"
+    source: git
     version: "1.1.11"
   media_kit_video:
-    dependency: "direct main"
+    dependency: transitive
     description:
-      path: "third_party/media_kit_video"
-      relative: true
-    source: path
+      path: media_kit_video
+      ref: "803c4a27912091db6f839d48d1b984a0d9f588c7"
+      resolved-ref: "803c4a27912091db6f839d48d1b984a0d9f588c7"
+      url: "https://github.com/Predidit/media-kit.git"
+    source: git
     version: "1.2.5"
   meta:
     dependency: "direct main"
@@ -1904,12 +1932,11 @@ packages:
   screen_retriever:
     dependency: "direct main"
     description:
-      path: "packages/screen_retriever"
-      ref: b246b3963738d6cc159c921764c194c73dbdf2ad
-      resolved-ref: b246b3963738d6cc159c921764c194c73dbdf2ad
-      url: "https://github.com/liuchuancong/screen_retriever.git"
-    source: git
-    version: "0.2.0"
+      name: screen_retriever
+      sha256: ace919117a7520c13a50a6259e60c4a0d4cbe98809468792a91b5c5adada2aa6
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.2"
   screen_retriever_linux:
     dependency: transitive
     description:
@@ -2589,10 +2616,10 @@ packages:
     dependency: "direct main"
     description:
       name: wakelock_plus
-      sha256: "22b3e7e937721de70e63c85e7139f4ac781dc22863b9262431a53ac030eb074b"
+      sha256: "9a91139ee876c24a9ebe1484e4b9b7923b07d368566a5e0b2301870b0f5029c8"
       url: "https://pub.dev"
     source: hosted
-    version: "1.8.0"
+    version: "1.8.1"
   wakelock_plus_ohos:
     dependency: transitive
     description:

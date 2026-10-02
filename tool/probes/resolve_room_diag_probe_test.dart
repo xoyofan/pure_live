@@ -8,7 +8,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/core/sites.dart';
+import 'package:pure_live/platforms/sites.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

@@ -3,8 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/common/models/live_message.dart';
-import 'package:pure_live/core/danmaku/seventeen_danmaku.dart';
+import 'package:pure_live/core/models/live_message.dart';
+import 'package:pure_live/platforms/seventeenlive/seventeen_danmaku.dart';
 
 void main() {
   group('SeventeenDanmaku.parseFrame(Ably action15 信封)', () {

@@ -11,7 +11,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pure_live/core/sites.dart';
+import 'package:pure_live/platforms/sites.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../presentation/platform_brands.dart';

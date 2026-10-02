@@ -2,7 +2,7 @@
 library;
 
 import 'package:live_parser/live_parser.dart';
-import 'package:pure_live/core/interface/live_input_recipe.dart';
+import 'package:pure_live/core/contracts/live_input_recipe.dart';
 
 /// 栏目浏览数据源。
 abstract interface class BrowseSource {

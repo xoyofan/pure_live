@@ -4,12 +4,12 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:pure_live/get/get.dart';
-import 'package:pure_live/plugins/db_service.dart';
-import 'package:pure_live/plugins/file_utils.dart';
-import 'package:pure_live/plugins/locale_helper.dart';
-import 'package:pure_live/common/utils/toast_util.dart';
-import 'package:pure_live/core/common/http_client.dart';
-import 'package:pure_live/common/global/app_path_manager.dart';
+import 'package:pure_live/core/iptv/local/db_service.dart';
+import 'package:pure_live/core/platform/file_utils.dart';
+import 'package:pure_live/core/utils/i18n.dart';
+import 'package:pure_live/core/widgets/toast_util.dart';
+import 'package:pure_live/core/network/http_client.dart';
+import 'package:pure_live/core/platform/app_path_manager.dart';
 import 'package:pure_live/core/iptv/local/database.dart' as database;
 import 'package:pure_live/core/iptv/services/epg_import_manager.dart';
 

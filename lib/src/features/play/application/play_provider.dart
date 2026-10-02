@@ -9,7 +9,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:live_parser/live_parser.dart';
-import 'package:pure_live/player/core/live_input_playback_binding.dart';
+import 'package:pure_live/player/core/live_input_playback_binder.dart';
 import 'package:pure_live/player/core/playback_source_transport.dart';
 
 import '../../../platforms/common/playback/idle_releasing_live_player.dart';

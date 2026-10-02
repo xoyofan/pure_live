@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
-import 'package:pure_live/common/services/settings_service.dart';
-import 'package:pure_live/common/utils/hive_pref_util.dart';
+import 'package:pure_live/services/settings_service.dart';
+import 'package:pure_live/core/storage/hive_pref_util.dart';
 import 'package:pure_live/get/get.dart';
 
 /// 宿主未注册 GetX 运行时的安全访问契约(zishu 播放链/sidecar/单测):

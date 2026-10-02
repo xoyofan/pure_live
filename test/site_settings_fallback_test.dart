@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/core/site/soop/soop_site.dart';
-import 'package:pure_live/core/site/twitch/twitch_site.dart';
-import 'package:pure_live/core/site/yy/yy_site.dart';
+import 'package:pure_live/platforms/soop/soop_site.dart';
+import 'package:pure_live/platforms/twitch/twitch_site.dart';
+import 'package:pure_live/platforms/yy/yy_site.dart';
 
 /// 适配器在宿主未注册 GetX `SettingsService` 时必须降级而不是整链失败:
 /// cookie 视为空(游客态解析)、代理视为直连。2026-10-02 真机日志:twitch
