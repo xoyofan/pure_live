@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:live_parser/live_parser.dart' show pickHuyaIdentityLabel;
 import 'package:pure_live/core/models/live_room.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pure_live/core/models/live_area.dart';
@@ -201,41 +202,48 @@ class HuyaSite
 
   @override
   Future<List<LiveRoom>> getCategoryRooms(LiveArea category, {int page = 1, int pageSize = 30}) async {
+    // 列表取数对齐 zishu live_parser huya browse:getLiveList(live-only,
+    // 条目带 sRecommendTagName 身份标签 → 卡片右上角标);原 cache.php
+    // getLiveListByPage 无该字段。字段名映射同 zishu _normalizeRoom;
+    // 观看数沿用 fork popularity 口径(lTotalCount 累计热度)。
+    final effectivePageSize = pageSize.clamp(1, 120);
     var resultText = await HttpClient.instance.getJson(
-      "https://www.huya.com/cache.php",
-      queryParameters: {
-        "m": "LiveList",
-        "do": "getLiveListByPage",
-        "tagAll": 0,
-        "gameId": category.areaId,
-        "page": page,
-      },
+      "https://live.huya.com/liveHttpUI/getLiveList",
+      queryParameters: {"iGid": category.areaId, "iPageNo": page, "iPageSize": effectivePageSize},
       header: {"user-agent": kUserAgent, "Cookie": ParserConfig.instance?.cookieFor(SiteIds.huyaSite) ?? ''},
     );
     var result = json.decode(resultText);
     var items = <LiveRoom>[];
-    for (var item in result["data"]["datas"]) {
-      var cover = item["screenshot"].toString();
-      if (!cover.contains("?")) {
+    for (var item in result["vList"] ?? []) {
+      var cover = (item["sScreenshot"] ?? item["sPreviewUrl"])?.toString() ?? "";
+      if (cover.startsWith("//")) {
+        cover = "https:$cover";
+      }
+      if (cover.isNotEmpty && !cover.contains("?")) {
         cover += "?x-oss-process=style/w338_h190&";
       }
-      var title = item["introduction"]?.toString() ?? "";
+      var title = item["sIntroduction"]?.toString() ?? "";
       if (title.isEmpty) {
-        title = item["roomName"]?.toString() ?? "";
+        title = item["sRoomName"]?.toString() ?? "";
       }
+      final viewers = (item["lTotalCount"] ?? item["lUserCount"])?.toString() ?? "";
+      final rawData = Map<String, dynamic>.from(item as Map);
       var roomItem = LiveRoom(
-        roomId: item["profileRoom"].toString(),
+        roomId: (item["lProfileRoom"] ?? item["lChannel"] ?? item["lUid"]).toString(),
         title: title,
         cover: cover,
-        nick: item["nick"].toString(),
-        watching: item["totalCount"].toString(),
-        popularity: item["totalCount"].toString(),
+        nick: item["sNick"]?.toString() ?? "",
+        watching: viewers,
+        popularity: viewers,
         audienceMetricType: AudienceMetricType.popularity,
-        avatar: item["avatar180"],
-        area: item["gameFullName"].toString(),
+        avatar: item["sAvatar180"],
+        area: item["sGameFullName"]?.toString() ?? "",
         liveStatus: LiveStatus.live,
         status: true,
         platform: SiteIds.huyaSite,
+        // 列表条目不参与播放(播放走详情重解析);data 仅作桥接暂存,
+        // purelive_backend 据此填 RoomSummary.identityLabel。
+        data: {"identityLabel": pickHuyaIdentityLabel(rawData) ?? ''},
       );
       items.add(roomItem);
     }

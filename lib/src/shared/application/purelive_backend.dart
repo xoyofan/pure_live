@@ -152,13 +152,24 @@ RoomRecord pureliveStatsRecord(LiveRoom room, String site) {
   );
 }
 
+/// 读适配器塞进 `LiveRoom.data` 的桥接暂存字段(soop cateNo / 虎牙
+/// identityLabel / 斗鱼·B站 promoTag / 斗鱼 startedAtMs);缺键或空串
+/// 返回 null(数据诚实:接口没有就不填,不伪造)。
+String? _dataString(LiveRoom room, String key) {
+  final data = room.data;
+  if (data is! Map) return null;
+  final value = data[key]?.toString().trim() ?? '';
+  return value.isEmpty ? null : value;
+}
+
 /// 把 pure_live LiveRoom 映射为 live_parser RoomPayload(不含流)。
 ///
 /// soop 分类契约:LiveRoom 无分类号字段,解析层把 CHANNEL `CATE` 放进
 /// `data['cateNo']`;payload.cid 承载房间号(soop 无二级分类 id,zishu
 /// live_parser 同构),真实分类号走 [RoomPayload.cateNo]——播放页收藏星/
 /// 分类跳转按 cateNo,不得拿 cid 冒充。其余平台拿不到分类上下文,cid
-/// 维持空串(与既有行为一致)。
+/// 维持空串(与既有行为一致)。斗鱼 `data['startedAtMs']`(betard
+/// show_time)换算 payload.startedAt,播放页元信息条显示真实开播时间。
 RoomPayload pureliveRoomToPayload(
   LiveRoom room,
   String site, {
@@ -167,6 +178,7 @@ RoomPayload pureliveRoomToPayload(
 }) {
   final data = room.data;
   final cateNo = data is Map ? (data['cateNo']?.toString().trim() ?? '') : '';
+  final startedAtMs = data is Map ? int.tryParse(data['startedAtMs']?.toString() ?? '') : null;
   return RoomPayload(
     site: site,
     roomId: room.roomId ?? '',
@@ -178,6 +190,7 @@ RoomPayload pureliveRoomToPayload(
     category: room.area ?? '',
     cid: site == Sites.soopSite ? (room.roomId ?? '') : '',
     cateNo: cateNo,
+    startedAt: startedAtMs != null && startedAtMs > 0 ? DateTime.fromMillisecondsSinceEpoch(startedAtMs) : null,
     roomState: _stateOf(room),
     streams: streams,
     availableQualities: availableQualities,
@@ -323,7 +336,8 @@ class PureLiveBrowseRepository implements BrowseRepository {
 
 /// 浏览列表条目 → RoomSummary:cid 用请求的分类号(卡片分类反查/我的分类
 /// 判重按分类号;推荐流无分类上下文为空),category 用解析层已反查的
-/// 展示名(soop 为中文,其余平台为上游原名)。
+/// 展示名(soop 为中文,其余平台为上游原名)。identityLabel(虎牙右上
+/// 身份角标)/promoTag(斗鱼·B站特色 chip)从适配器暂存提取。
 RoomSummary pureliveBrowseSummary(LiveRoom room, String site, {required String cid}) {
   return RoomSummary(
     site: site,
@@ -335,6 +349,8 @@ RoomSummary pureliveBrowseSummary(LiveRoom room, String site, {required String c
     online: audienceDisplayOf(room),
     cover: room.cover ?? '',
     avatar: room.avatar ?? '',
+    promoTag: _dataString(room, 'promoTag'),
+    identityLabel: _dataString(room, 'identityLabel'),
     roomState: room.liveStatus == LiveStatus.live ? RoomState.live : RoomState.offline,
   );
 }

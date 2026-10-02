@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:live_parser/live_parser.dart' show pickBilibiliPromoTag;
 import 'package:pure_live/core/index.dart';
 import 'package:pure_live/core/models/live_category.dart';
 import 'package:pure_live/core/models/live_anchor_item.dart';
@@ -122,6 +123,9 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
           area: item["area_name"].toString(),
           status: true,
           platform: SiteIds.bilibiliSite,
+          // 运营角标(PK 中 > 认证关键词,zishu live_parser 同款提取;接口
+          // 无对应字段时返回 null,不伪造)。桥接层据此填 RoomSummary.promoTag。
+          data: {"promoTag": pickBilibiliPromoTag(Map<String, dynamic>.from(item as Map)) ?? ''},
         );
         items.add(roomItem);
       }
@@ -384,6 +388,9 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
             liveStatus: LiveStatus.live,
             status: true,
             platform: SiteIds.bilibiliSite,
+            // 运营角标(PK 中 > 认证关键词,zishu live_parser 同款提取;
+            // 热榜端点为精简 schema 无该字段时返回 null,不伪造)。
+            data: {"promoTag": pickBilibiliPromoTag(item) ?? ''},
           );
         })
         .where((room) => room.roomId?.isNotEmpty == true)

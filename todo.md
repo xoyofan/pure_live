@@ -412,6 +412,16 @@
 - [x] **播放页⭐零改动点亮**:play_view `_RoomHeader` 的分类徽标+⭐逻辑与 zishu 逐字节一致,只差 payload.cateNo/cid 为空——桥接补数即亮;⭐点击 toggleForCategory 按 cateNo 判重,徽标本体可点进 `/soop/category/<cateNo>`
 - 验证:analyze 改动文件 0 告警;新增 `test/soop_category_zh_bridge_test.dart` 10 用例 + 受影响 5 文件共 **36 测试全过**;curl 实测三接口字段(categoryList zh_CN 直出/`broad_cate_no` 在列/详情 CATE)与进程表键归一闭环
 
+### 迭代 28(2026-10-03)✅ zishu↔fork 全量差距审计(结论:功能面已追平) + 三条断供链接通(角标/promo/开播时间)
+
+- [x] **审计方法与结论**:zishu_flutter 顶点 e0ee05d(2026-10-01)。`packages/live_parser` 两仓**仅 barrel 差一行**(fork 反多 remap 导出);`lib/src` 22 个差异文件经 word-diff + 去空白归一 + 顶层标识符集合差三重判定,**零 zishu 独有功能**——差异全部为 fork 侧增量(34 平台/purelive 桥/补充映射表/owned-input/默认最高档/预取移除)与格式化宽度噪音;zishu 功能关键词(死节点负缓存/re-resolve/Alt+兜底/本地流代理/cat=日志/语音字幕/跨平台分类/主题色 override)逐一在 fork 命中;speech2zh 包与外围 assets 逐字节一致。**zishu 比 fork 多的解析/功能 = 无**
+- [x] **真实差距在契约缝隙**(文件 diff 不可见):zishu 原生 browse/resolver 填 `identityLabel`/`promoTag`/`startedAt`,fork 全平台走 purelive 桥后**数据断供但 UI 组件在**(room_card 右上角标/特色 chip 行/播放页元信息条开播时间)
+- [x] **虎牙身份角标**:fork 分类流 cache.php 无 `sRecommendTagName`(实测 0 命中)→ `getCategoryRooms` 切 zishu 端点 `getLiveList`(实测 120 条/页全带该字段,gid=2135 验证),字段映射同 zishu `_normalizeRoom`,identityLabel 存 `LiveRoom.data`;推荐流 cache.php 该字段结构性缺失,不伪造
+- [x] **斗鱼 promoTag + 开播时间**:推荐(allpage)/分类(mixList)条目实测带 `copilotLabel`/`authInfo`/`vipId` → `pickDouyuPromoTag` 暂存 data;betard `show_time`(秒级)→ `data['startedAtMs']`
+- [x] **B站 promoTag**:分类(second/getList,风控不可匿名探测)/推荐(getListByAreaID 实测精简 schema 无 pk_id/verify)→ `pickBilibiliPromoTag` 防御性暂存,取不到即 null;fork 推荐热榜端点为有意的 fork 增量(热度排序),不回退 zishu 的 webMain 端点
+- [x] **桥接层**:`_dataString` 统一提取暂存 → `RoomSummary.identityLabel/promoTag`、`payload.startedAt`(>0 才填);live_parser barrel 补导出 identity_label/douyu·bilibili promo_tag(与既有 remap 导出同款模式)
+- 验证:analyze 改动文件 0 告警;**全量 148/148 全过**(含新增 6 用例:huya 角标/douyu promo/startedAtMs 三态/null 不伪造);getLiveList 实测上游忽略小 pageSize 恒 120 条(hasMore 语义无碍)
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:

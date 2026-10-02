@@ -107,4 +107,61 @@ void main() {
       expect(summary.cid, '');
     });
   });
+
+  group('适配器暂存字段 → 契约(虎牙角标/斗鱼·B站promo/斗鱼开播时间)', () {
+    test('huya data.identityLabel → summary.identityLabel(卡片右上角标)', () {
+      final summary = pureliveBrowseSummary(
+        LiveRoom(roomId: '353322', platform: 'huya', data: {'identityLabel': '超级明星'}),
+        'huya',
+        cid: '1',
+      );
+      expect(summary.identityLabel, '超级明星');
+      expect(summary.promoTag, isNull);
+    });
+
+    test('douyu data.promoTag → summary.promoTag(卡片特色 chip)', () {
+      final summary = pureliveBrowseSummary(
+        LiveRoom(roomId: '71420', platform: 'douyu', data: {'promoTag': '贵族'}),
+        'douyu',
+        cid: '1',
+      );
+      expect(summary.promoTag, '贵族');
+      expect(summary.identityLabel, isNull);
+    });
+
+    test('data 为 null/空串时两个标签均为 null(不伪造)', () {
+      final summary = pureliveBrowseSummary(
+        LiveRoom(roomId: '1', platform: 'huya'),
+        'huya',
+        cid: '1',
+      );
+      final blank = pureliveBrowseSummary(
+        LiveRoom(roomId: '2', platform: 'douyu', data: {'promoTag': ''}),
+        'douyu',
+        cid: '1',
+      );
+      expect(summary.identityLabel, isNull);
+      expect(summary.promoTag, isNull);
+      expect(blank.promoTag, isNull);
+    });
+
+    test('douyu data.startedAtMs → payload.startedAt(播放页开播时间)', () {
+      final payload = pureliveRoomToPayload(
+        LiveRoom(roomId: '71420', platform: 'douyu', data: {'startedAtMs': 1790000000000}),
+        'douyu',
+      );
+      expect(payload.startedAt, DateTime.fromMillisecondsSinceEpoch(1790000000000));
+    });
+
+    test('startedAtMs 缺失/非数字/为 0 时 payload.startedAt 为 null', () {
+      for (final data in [
+        null,
+        {'startedAtMs': 'abc'},
+        {'startedAtMs': 0},
+      ]) {
+        final payload = pureliveRoomToPayload(LiveRoom(roomId: '71420', platform: 'douyu', data: data), 'douyu');
+        expect(payload.startedAt, isNull, reason: 'data=$data');
+      }
+    });
+  });
 }

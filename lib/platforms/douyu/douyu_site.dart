@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:meta/meta.dart';
+import 'package:live_parser/live_parser.dart' show pickDouyuPromoTag;
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_message.dart';
 import 'package:pure_live/core/models/live_room.dart';
@@ -153,6 +154,9 @@ class DouyuSite
         avatar: item['av'].toString().isNotEmpty ? 'https://apic.douyucdn.cn/upload/${item['av']}_middle.jpg' : '',
         status: true,
         platform: SiteIds.douyuSite,
+        // 运营角标(copilotLabel > 认证 > 贵族,zishu live_parser 同款提取);
+        // 桥接层据此填 RoomSummary.promoTag → 卡片特色 chip 行。
+        data: {"promoTag": pickDouyuPromoTag(Map<String, dynamic>.from(item as Map)) ?? ''},
       );
       items.add(roomItem);
     }
@@ -478,6 +482,9 @@ class DouyuSite
           platform: SiteIds.douyuSite,
           status: true,
           liveStatus: LiveStatus.live,
+          // 运营角标(copilotLabel > 认证 > 贵族,zishu live_parser 同款提取);
+          // 桥接层据此填 RoomSummary.promoTag → 卡片特色 chip 行。
+          data: {"promoTag": pickDouyuPromoTag(Map<String, dynamic>.from(item as Map)) ?? ''},
         );
         items.add(roomItem);
       }
@@ -562,6 +569,10 @@ class DouyuSite
   LiveRoom _buildRoom(Map<dynamic, dynamic> roomInfo, {required String roomId}) {
     final live = isLiveRoomPayload(roomInfo);
     final replay = _asInt(roomInfo['videoLoop']) == 1;
+    // 本场开播时间(betard show_time 秒级时间戳,0/缺失=未知;zishu
+    // live_parser douyu room_api 同口径)。桥接层换算 payload.startedAt,
+    // 播放页元信息条据此显示真实开播时间,拿不到不伪造。
+    final showTimeSeconds = _asInt(roomInfo['show_time']) ?? 0;
 
     return LiveRoom(
       cover: roomInfo["room_pic"].toString(),
@@ -578,7 +589,7 @@ class DouyuSite
       liveStatus: live ? LiveStatus.live : LiveStatus.offline,
       status: live,
       danmakuData: roomInfo["room_id"].toString(),
-      data: null,
+      data: showTimeSeconds > 0 ? {"startedAtMs": showTimeSeconds * 1000} : null,
       platform: SiteIds.douyuSite,
       link: "https://www.douyu.com/$roomId",
       isRecord: replay,
