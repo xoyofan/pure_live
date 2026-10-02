@@ -394,6 +394,16 @@
 - **产物**:`local-artifacts/3.1.18-4107/PureLive-3.1.18-4107-windows-x64-portable.zip`(73.4MB,SHA256 332df7ac...;1357 文件,pure_live.exe+3 原生 dll;包内 flutter_assets/assets/version.json 实测 3.1.18+4107)
 - **启动验证**:进程活(PID 5020),窗口标题「全平台首页 · 紫薯直播 3.1.18」;niconico/FC2 owned-input 播放与分类中文化待真机抽查
 
+
+### 迭代 26(2026-10-03)✅ 两小时专项:首页/分类/全平台直播验证——零回归 + 探针中文化可视化
+
+- **全站播放探针**(33 站):**26 media-ok + 2 owned-input**(niconico/fc2 新链路首验通过);非 ok 全为既有结构性(bigo 匿名门/pandalive IP 封禁/tiktok+xhs+youtube 无目录)。逐站媒体形态正常(flv(avc)/ts/mp4)
+- **分类探针**:28/34 ok(结构性余项同上);新增 `displayNames` 字段——探针直接输出与 UI 同一 `displayCategoryName` 入口的译文样本,中文化验证从单测层提升到探针层:soop FC ONLINE→FC Online足球在线、chzzk 로스트아크→命运方舟、twitch GTA5/GTA5、twitcasting Popular→热门、showroom Popularity→人气、picarto Furry→兽人 全部命中
+- **首页对齐探针**(33 站):16 站 aligned、raw-key 泄漏 0;showroom/fc2 的"列表日文/详情英文"为上游接口语言摇摆,展示层补充表已覆盖(アイドル→偶像 单测在案);baidulive 列表"美容养生"/详情"养生"为上游数据粒度差,非代码问题
+- 补漏:chzzk WARDOGS/워독스 双键入表(战犬);期间引入的 const map 重复键即时修复
+
+**验证**:analyze 0 error;**133/133 全过**;audit 0 error。三探针与合并前基线完全一致——上游合并+优化轮+迭代21-25 全部修复在新布局上运行时零回归
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:
