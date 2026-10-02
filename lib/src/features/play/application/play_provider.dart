@@ -44,9 +44,7 @@ final playerProvider = Provider<LivePlayer>((ref) {
   final proxy = ref.watch(streamProxyProvider);
   final player = IdleReleasingLivePlayer(
     createPlayer: () => MediaKitLivePlayer(
-      videoHardwareAccelerationEnabled: ref
-          .read(settingsProvider)
-          .videoHardwareAcceleration,
+      videoHardwareAccelerationEnabled: ref.read(settingsProvider).videoHardwareAcceleration,
       // 单线路源卡顿升级:无内部回退线路时,重开同一死 URL 无意义,早一点
       // re-resolve(换节点 / 降画质)逃出被钉死的链路。实测斗鱼 room9999 的
       // hwa.douyucdn2.cn 断供,旧逻辑拖满 6 次退避阶梯(8→30s)才 re-resolve,
@@ -57,38 +55,27 @@ final playerProvider = Provider<LivePlayer>((ref) {
       streamProxy: proxy,
     ),
   );
-  ref.listen<bool>(
-    settingsProvider.select((settings) => settings.videoHardwareAcceleration),
-    (_, enabled) {
-      if (player case IdleReleasingLivePlayer idlePlayer) {
-        final inner = idlePlayer.currentPlayer;
-        if (inner case final VideoHardwareAccelerationAware aware) {
-          aware.setVideoHardwareAcceleration(enabled);
-        }
+  ref.listen<bool>(settingsProvider.select((settings) => settings.videoHardwareAcceleration), (_, enabled) {
+    if (player case IdleReleasingLivePlayer idlePlayer) {
+      final inner = idlePlayer.currentPlayer;
+      if (inner case final VideoHardwareAccelerationAware aware) {
+        aware.setVideoHardwareAcceleration(enabled);
       }
-    },
-  );
+    }
+  });
   ref.onDispose(player.dispose);
   return player;
 });
 
 /// 播放快照流:控制条/舞台 overlay 用它驱动 UI。
-final playerSnapshotProvider = StreamProvider<PlayerSnapshot>(
-  (ref) => ref.watch(playerProvider).snapshots,
-);
+final playerSnapshotProvider = StreamProvider<PlayerSnapshot>((ref) => ref.watch(playerProvider).snapshots);
 
 /// 播放控制器入参:(site, roomId)。
 typedef PlayParams = ({String site, String roomId});
 
 /// 播放页状态:解析结果 + 选中画质/线路 + 代际计数。
 class PlayState {
-  const PlayState({
-    this.payload,
-    this.quality,
-    this.line,
-    this.generation = 0,
-    this.showDanmaku = true,
-  });
+  const PlayState({this.payload, this.quality, this.line, this.generation = 0, this.showDanmaku = true});
 
   final RoomPayload? payload;
   final StreamQuality? quality;
@@ -123,8 +110,9 @@ class PlayState {
 
 /// 播放页控制器:family by (site, roomId);autoDispose 随页面离开释放状态,
 /// 但全局播放器实例不在此销毁。
-final playControllerProvider = AsyncNotifierProvider.autoDispose
-    .family<PlayController, PlayState, PlayParams>(PlayController.new);
+final playControllerProvider = AsyncNotifierProvider.autoDispose.family<PlayController, PlayState, PlayParams>(
+  PlayController.new,
+);
 
 /// 后台预取的档位上限、并发数与首批错开间隔。
 ///
@@ -166,7 +154,6 @@ class PlayController extends AsyncNotifier<PlayState> {
   /// 主动重签,消除"token 过期 → CDN reset → 卡顿 → 升级换线"的整段
   /// 被动恢复。任何一次 open 成功后按新 URL 重新排期。
 
-
   Map<String, int> _loadHostAvoidlist({bool refresh = false}) {
     final cached = _hostAvoidlist;
     if (!refresh && cached != null) {
@@ -174,9 +161,7 @@ class PlayController extends AsyncNotifier<PlayState> {
     }
     Map<String, int> loaded = {};
     try {
-      loaded = decodeHostAvoidlist(
-        File(hostAvoidlistFilePath()).readAsStringSync(),
-      );
+      loaded = decodeHostAvoidlist(File(hostAvoidlistFilePath()).readAsStringSync());
     } catch (_) {
       // 读不到/读失败:按无负缓存处理,不影响正常选线。
     }
@@ -194,9 +179,7 @@ class PlayController extends AsyncNotifier<PlayState> {
       try {
         final file = File(hostAvoidlistFilePath());
         await file.parent.create(recursive: true);
-        await file.writeAsString(
-          encodeHostAvoidlist(pruneHostAvoidlist(avoidlist, nowMs: _nowMs())),
-        );
+        await file.writeAsString(encodeHostAvoidlist(pruneHostAvoidlist(avoidlist, nowMs: _nowMs())));
       } catch (error) {
         PlaybackLog.write('host_avoid_persist_error', {'error': '$error'});
       }
@@ -225,10 +208,7 @@ class PlayController extends AsyncNotifier<PlayState> {
         aware.setLineRecovery(null);
       }
       final stopWatch = Stopwatch()..start();
-      final fields = <String, Object?>{
-        'site': params.site,
-        'room': params.roomId,
-      };
+      final fields = <String, Object?>{'site': params.site, 'room': params.roomId};
       PlaybackLog.writeResourceSample('room_release_start', fields);
       if (token != null && player is IdleReleasingLivePlayer) {
         unawaited(
@@ -250,18 +230,11 @@ class PlayController extends AsyncNotifier<PlayState> {
     // select 以「该平台生效值」为 key,只有它变化才重建本 family;
     // 房间缺该档时 _pickQuality 回退 streams.first(「没有才退」)。
     final settingsQuality = ref.watch(
-      settingsProvider.select(
-        (settings) => settings.effectiveDefaultQuality(params.site),
-      ),
+      settingsProvider.select((settings) => settings.effectiveDefaultQuality(params.site)),
     );
     // 线路格式偏好(auto/hls/flv):设置页可改,进房/重解析时都按它选线。
-    final preferredFormat = ref.watch(
-      settingsProvider.select((settings) => settings.preferredLineFormat.value),
-    );
-    final preferredQuality =
-        _qualityOverride ??
-        StartupRoute.qualityOverride ??
-        settingsQuality;
+    final preferredFormat = ref.watch(settingsProvider.select((settings) => settings.preferredLineFormat.value));
+    final preferredQuality = _qualityOverride ?? StartupRoute.qualityOverride ?? settingsQuality;
     final resolveWatch = Stopwatch()..start();
     // 整链截止(2026-09-29 斗鱼网络故障实测):半开连接(TCP 通、响应永不到)
     // 下单请求超时可能不触发,build 会无限 await —— 页面既不出错也不重试,
@@ -270,11 +243,7 @@ class PlayController extends AsyncNotifier<PlayState> {
     final RoomPayload payload;
     try {
       payload = await source
-          .resolveRoom(
-            site: params.site,
-            roomIdOrUrl: params.roomId,
-            preferredQuality: preferredQuality,
-          )
+          .resolveRoom(site: params.site, roomIdOrUrl: params.roomId, preferredQuality: preferredQuality)
           .timeout(const Duration(seconds: 45));
     } catch (error) {
       PlaybackLog.write('resolve_fail', {
@@ -302,9 +271,7 @@ class PlayController extends AsyncNotifier<PlayState> {
       'ms': resolveWatch.elapsedMilliseconds,
       'site': params.site,
       'room': params.roomId,
-      'qualities': [
-        for (final option in payload.availableQualities) option.name,
-      ].join(','),
+      'qualities': [for (final option in payload.availableQualities) option.name].join(','),
       'streams': payload.streams.length,
     });
 
@@ -317,24 +284,14 @@ class PlayController extends AsyncNotifier<PlayState> {
     final picked = pickStreamLine(quality, preferredFormat, site: params.site);
     // 自动进房选线避开负缓存内的死节点(只作用于自动选线;用户手动切线/切档
     // 不经过这里,2026-09-26「不偷换用户线路」口径不受影响)。
-    final line = avoidFlaggedLine(
-      picked,
-      quality?.lines ?? const [],
-      _loadHostAvoidlist(),
-      nowMs: _nowMs(),
-    );
+    final line = avoidFlaggedLine(picked, quality?.lines ?? const [], _loadHostAvoidlist(), nowMs: _nowMs());
     if (picked != null && line != picked) {
       PlaybackLog.write('host_avoid_applied', {
         'from': Uri.tryParse(picked.url)?.host,
         'to': Uri.tryParse(line?.url ?? '')?.host,
       });
     }
-    final next = PlayState(
-      payload: payload,
-      quality: quality,
-      line: line,
-      generation: generation,
-    );
+    final next = PlayState(payload: payload, quality: quality, line: line, generation: generation);
 
     if (!next.isFixture && line != null) {
       // 开流不阻塞状态落地;错误经快照流呈现在舞台 overlay。
@@ -350,24 +307,14 @@ class PlayController extends AsyncNotifier<PlayState> {
   }
 
   /// 离房后等全局播放器真正卸载旧源,再落一条释放后 RSS 样本。
-  Future<void> _stopAndSampleRelease(
-    LivePlayer player,
-    Stopwatch stopWatch,
-    Map<String, Object?> fields,
-  ) async {
+  Future<void> _stopAndSampleRelease(LivePlayer player, Stopwatch stopWatch, Map<String, Object?> fields) async {
     try {
       await player.stop();
     } catch (error) {
-      PlaybackLog.writeResourceSample('room_release_error', {
-        ...fields,
-        'error': error,
-      });
+      PlaybackLog.writeResourceSample('room_release_error', {...fields, 'error': error});
     } finally {
       stopWatch.stop();
-      PlaybackLog.writeResourceSample('room_release_end', {
-        ...fields,
-        'elapsed_ms': stopWatch.elapsedMilliseconds,
-      });
+      PlaybackLog.writeResourceSample('room_release_end', {...fields, 'elapsed_ms': stopWatch.elapsedMilliseconds});
     }
   }
 
@@ -376,11 +323,7 @@ class PlayController extends AsyncNotifier<PlayState> {
   /// 保留本仓「切画质即开」的能力,但把时机推到首帧之后 —— 参考实现
   /// (pure_live)在进房时根本不预取,先帧优先是它开流快的一个原因。
   /// 首帧迟迟不来(15s 超时)则放弃预取:首帧都没来,切画质本就走懒取流。
-  Future<void> _prefetchAfterFirstFrame(
-    RoomPayload payload,
-    RoomSource source,
-    int prefetchToken,
-  ) async {
+  Future<void> _prefetchAfterFirstFrame(RoomPayload payload, RoomSource source, int prefetchToken) async {
     final player = ref.read(playerProvider);
     try {
       await player.snapshots
@@ -393,20 +336,12 @@ class PlayController extends AsyncNotifier<PlayState> {
     unawaited(_prefetchQualities(payload, source, prefetchToken));
   }
 
-  Future<void> _prefetchQualities(
-    RoomPayload initial,
-    RoomSource source,
-    int prefetchToken,
-  ) async {
+  Future<void> _prefetchQualities(RoomPayload initial, RoomSource source, int prefetchToken) async {
     // 待补档位:只选「确实缺线路」的档,超出上限的记录跳过原因。
+    // 判定用精确同名(pendingPrefetchQualities),不能用 qualityByName ——
+    // 它未命中时回退首档,缺失档会被误判成已解析,预取队列恒空。
     final targets = <QualityOption>[];
-    for (final option in initial.availableQualities) {
-      final existing =
-          _prefetchedQualities[option.name] ??
-          initial.qualityByName(option.name);
-      // 已带线路的档位直接跳过 —— Twitch/YouTube 这类平台
-      // 一次响应就已拿全档线路,完全不需要预取。
-      if (existing != null && existing.lines.isNotEmpty) continue;
+    for (final option in pendingPrefetchQualities(initial, _prefetchedQualities)) {
       if (targets.length >= kPrefetchQualityLimit) {
         PlaybackLog.write('prefetch_skip', {
           'site': params.site,
@@ -435,23 +370,13 @@ class PlayController extends AsyncNotifier<PlayState> {
       }
     }
 
-    await Future.wait([
-      for (var i = 0; i < kPrefetchConcurrency; i++) worker(),
-    ]);
+    await Future.wait([for (var i = 0; i < kPrefetchConcurrency; i++) worker()]);
   }
 
   /// 补一个档位的线路并合并回当前 payload。
-  Future<void> _prefetchOne(
-    QualityOption option,
-    RoomSource source,
-    int prefetchToken,
-  ) async {
+  Future<void> _prefetchOne(QualityOption option, RoomSource source, int prefetchToken) async {
     final startedAt = DateTime.now();
-    PlaybackLog.write('prefetch_start', {
-      'site': params.site,
-      'room': params.roomId,
-      'quality': option.name,
-    });
+    PlaybackLog.write('prefetch_start', {'site': params.site, 'room': params.roomId, 'quality': option.name});
     try {
       final fetchedPayload = await source.resolveRoom(
         site: params.site,
@@ -480,16 +405,10 @@ class PlayController extends AsyncNotifier<PlayState> {
       final current = state.value;
       final currentPayload = current?.payload;
       if (current == null || currentPayload == null) return;
-      final merged = [
-        for (final stream in currentPayload.streams)
-          stream.name == fetched.name ? fetched : stream,
-      ];
+      final merged = mergeResolvedStream(currentPayload.streams, fetched);
       state = AsyncData(
         current.copyWith(
-          payload: currentPayload.copyWith(
-            streams: merged,
-            fetchedAt: fetchedPayload.fetchedAt,
-          ),
+          payload: currentPayload.copyWith(streams: merged, fetchedAt: fetchedPayload.fetchedAt),
         ),
       );
     } catch (error) {
@@ -520,13 +439,7 @@ class PlayController extends AsyncNotifier<PlayState> {
       return;
     }
     final generation = ++_generation;
-    state = AsyncData(
-      current.copyWith(
-        quality: effectiveQuality,
-        line: line,
-        generation: generation,
-      ),
-    );
+    state = AsyncData(current.copyWith(quality: effectiveQuality, line: line, generation: generation));
     _open(line, _fallbackLines(effectiveQuality, line));
   }
 
@@ -584,9 +497,7 @@ class PlayController extends AsyncNotifier<PlayState> {
     if (player case LineRecoveryAware aware) {
       aware.setLineRecovery(_recoverLines);
     }
-    unawaited(
-      _openAndApplyVolume(player, line, fallbacks, _generation, openToken),
-    );
+    unawaited(_openAndApplyVolume(player, line, fallbacks, _generation, openToken));
   }
 
   /// 开流前后套用本房间音量,不改变 pure_live 的线路选择和开流顺序。
@@ -601,9 +512,7 @@ class PlayController extends AsyncNotifier<PlayState> {
     // 进程级属性,通常先于首帧音频落地;开流后再补一次,校正快照与迟到回流。
     unawaited(_applyRoomVolume(player));
     await player.open(line, fallbacks);
-    if (!ref.mounted ||
-        generation != _generation ||
-        openToken != _latestPlayerOpenToken) {
+    if (!ref.mounted || generation != _generation || openToken != _latestPlayerOpenToken) {
       return;
     }
     await _applyRoomVolume(player);
@@ -635,25 +544,18 @@ class PlayController extends AsyncNotifier<PlayState> {
   ///
   /// [keepCurrentHost] 控制 brother 线路排序:预刷新传 true(保持当前节点,
   /// 见 [refreshedLinesFor]);故障恢复默认 false(逃离死节点)。
-  Future<List<StreamLine>> _recoverLines({
-    bool recordAvoid = true,
-    bool keepCurrentHost = false,
-  }) async {
+  Future<List<StreamLine>> _recoverLines({bool recordAvoid = true, bool keepCurrentHost = false}) async {
     // 宿主已离场(autoDispose)时一律拒答:下面要读 state,而销毁后读会抛错。
     // 回调注销是主动防护,这里再兜一道 —— 注销与调用之间存在竞态窗口。
     if (!ref.mounted) return const [];
     final current = state.value;
     final source = ref.read(roomSourceProvider);
     final quality = current?.quality;
-    if (current == null ||
-        current.payload == null ||
-        source is! RoomRecoverer) {
+    if (current == null || current.payload == null || source is! RoomRecoverer) {
       PlaybackLog.write('resolve_skip', {
         'site': params.site,
         'room': params.roomId,
-        'reason': current == null || current.payload == null
-            ? 'no_state'
-            : 'source_unaware',
+        'reason': current == null || current.payload == null ? 'no_state' : 'source_unaware',
       });
       return const [];
     }
@@ -668,35 +570,21 @@ class PlayController extends AsyncNotifier<PlayState> {
       // 原档名消失,`pickPlayQuality` 只按名字回退首档,懒取流下首档常是
       // 空线路占位 → `no_line` → give_up(2026-09-28 真机 00:37 实测)。
       final next = _pickPlayableQuality(payload, quality?.name);
-      final line = pickStreamLine(
-        next,
-        ref.read(settingsProvider).preferredLineFormat.value,
-        site: params.site,
-      );
+      final line = pickStreamLine(next, ref.read(settingsProvider).preferredLineFormat.value, site: params.site);
       if (line == null) {
-        PlaybackLog.write('resolve_fail', {
-          'site': params.site,
-          'room': params.roomId,
-          'reason': 'no_line',
-        });
+        PlaybackLog.write('resolve_fail', {'site': params.site, 'room': params.roomId, 'reason': 'no_line'});
         return const [];
       }
       // 全部兄弟线路:故障恢复逃离死节点(keepCurrentHost=false,默认);
       // URL 预刷新保持当前节点只换 token(keepCurrentHost=true,服务端轮换
       // 边缘不是故障,逃逸排序会让短 TTL 流在节点池里 ping-pong)。
-      final recovery = keepCurrentHost
-          ? refreshedLinesFor(next, current.line)
-          : recoveryLinesFor(next, current.line);
+      final recovery = keepCurrentHost ? refreshedLinesFor(next, current.line) : recoveryLinesFor(next, current.line);
       // 故障恢复成功逃离到不同 host:把死节点记入负缓存,后续进房/重启
       // 不再首撞它(乐观记录,口径见 host_avoidlist.dart)。预刷新路径
       // (recordAvoid=false)不记:那是服务端正常轮换,不是旧节点故障。
       final escapedHost = Uri.tryParse(current.line?.url ?? '')?.host ?? '';
-      final recoveryHost =
-          Uri.tryParse(recovery.firstOrNull?.url ?? '')?.host ?? '';
-      if (recordAvoid &&
-          escapedHost.isNotEmpty &&
-          recoveryHost.isNotEmpty &&
-          recoveryHost != escapedHost) {
+      final recoveryHost = Uri.tryParse(recovery.firstOrNull?.url ?? '')?.host ?? '';
+      if (recordAvoid && escapedHost.isNotEmpty && recoveryHost.isNotEmpty && recoveryHost != escapedHost) {
         _avoidFailedHost(current.line?.url);
       }
       // 新地址落回状态:用户随后手动切线路 / 切档时用的才是同一批,
@@ -707,9 +595,7 @@ class PlayController extends AsyncNotifier<PlayState> {
         'quality': next?.name,
         'lines': recovery.length,
         'host': Uri.tryParse(recovery.firstOrNull?.url ?? '')?.host,
-        'hosts': [
-          for (final line in recovery) Uri.tryParse(line.url)?.host ?? '?',
-        ].join(','),
+        'hosts': [for (final line in recovery) Uri.tryParse(line.url)?.host ?? '?'].join(','),
       });
       state = AsyncData(
         current.copyWith(
@@ -724,11 +610,7 @@ class PlayController extends AsyncNotifier<PlayState> {
       await _applyRoomVolume(ref.read(playerProvider));
       return recovery;
     } catch (error) {
-      PlaybackLog.write('resolve_fail', {
-        'site': params.site,
-        'room': params.roomId,
-        'error': '$error',
-      });
+      PlaybackLog.write('resolve_fail', {'site': params.site, 'room': params.roomId, 'error': '$error'});
       return const [];
     }
   }
@@ -742,8 +624,7 @@ class PlayController extends AsyncNotifier<PlayState> {
   ///
   /// 底层 [LivePlayer.open] 的 `fallbacks` 形参与 mpv 播放列表能力保留
   /// （属平台层能力，不在本轮拆除），只是不再被喂数据。
-  List<StreamLine> _fallbackLines(StreamQuality? quality, StreamLine? line) =>
-      const [];
+  List<StreamLine> _fallbackLines(StreamQuality? quality, StreamLine? line) => const [];
 
   /// 按偏好挑**可起播**的档位:在 [pickPlayQuality] 结果落在空线路占位档
   /// (懒取流:解析侧只给实给档真实线路,其余档位占位;或服务器把高请求
@@ -754,15 +635,9 @@ class PlayController extends AsyncNotifier<PlayState> {
   /// 时改为挑**最低码率的可播档**(rate 升序、须有线路;rate 同分取靠后 ——
   /// 平台档位列表习惯高→低排,同 rate 视为并列低档):劣化网络下低码率流
   /// 更容易存活(2026-09-29 斗鱼 9999 实测口径)。
-  StreamQuality? _pickPlayableQuality(
-    RoomPayload payload,
-    String? preferredName,
-  ) {
-    if (preferredName != null &&
-        StartupRoute.worstQualityFlags.contains(preferredName.toLowerCase())) {
-      final playable = payload.streams
-          .where((stream) => stream.lines.isNotEmpty)
-          .toList();
+  StreamQuality? _pickPlayableQuality(RoomPayload payload, String? preferredName) {
+    if (preferredName != null && StartupRoute.worstQualityFlags.contains(preferredName.toLowerCase())) {
+      final playable = payload.streams.where((stream) => stream.lines.isNotEmpty).toList();
       if (playable.isEmpty) return null;
       playable.sort((a, b) {
         final byRate = a.rate.compareTo(b.rate);
@@ -772,9 +647,6 @@ class PlayController extends AsyncNotifier<PlayState> {
     }
     final selected = pickPlayQuality(payload, preferredName);
     if (selected == null || selected.lines.isNotEmpty) return selected;
-    return payload.streams.firstWhere(
-      (stream) => stream.lines.isNotEmpty,
-      orElse: () => selected,
-    );
+    return payload.streams.firstWhere((stream) => stream.lines.isNotEmpty, orElse: () => selected);
   }
 }

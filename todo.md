@@ -164,6 +164,24 @@
 - 应用侧核对:运行中 pure_live.exe = 迭代11 最终构建(14:42:50 出包,14:43:29 启动),与探针同源码同链路;若应用内失败面大于 pandalive,优先重启应用对齐(站点单例缓存/Clash 节点切换瞬时窗),探针期间应用保持运行(flutter test 不触 exe)
 - 工具链:并行前置条件确认——**冷构建绝不能并发**(迭代11 竞态教训),warm 缓存下 3 组并行安全;`flutterw.ps1` 参数直接是 flutter 子命令(`test <file>`),不能再传一层 `flutter`
 
+### 迭代 13(2026-10-02)✅ 画质菜单多档不可点修复:zishu 预取懒取流链两处缺陷 + UI 契约违约
+
+用户报告"各平台有多个清晰度但只能点击其中一个"。定位链:用户所见画质菜单是 **zishu 播放页** `lib/src/features/play`(`_QualitySelectBox`;`/watch/:site/play/:id` 路由直达,`purelive_play_bridge`/pure_live LivePlayPage 在 lib 下零引用,非运行时路径);解析层经新探针 `tool/probes/quality_switch_probe_test.dart`(复用控制器判定函数)实测 17 个多档平台全数 switch-ok,排除解析层与 pure_live live_play 面板。
+
+缺陷链(源 `f3606c3f` zishu 宿主切换引入的预取设计,三环相扣):
+
+1. `_prefetchQualities` 用 `qualityByName` 判"该档是否已解析"——它未命中回退 `streams.first`(必有线路)→ 缺失档全部误判已解析,**预取队列恒空(预取成死代码)**
+2. `_prefetchOne` 合并只做同名替换——懒取流初始 streams 仅进房档,预取回的新档位被静默丢弃
+3. UI `enabled` 只放开 streams 已有档,违反设计契约"上限之外的档位仍可点击——切档时按需解析"(`kPrefetchQualityLimit` 注释原文)
+
+修复(三环全修):
+
+- `play_selection.dart` 新纯函数 `pendingPrefetchQualities`(精确同名判定,占位档照常入队)/ `mergeResolvedStream`(新档名追加,`streams.first` 默认档锚点不变)
+- `play_provider.dart` 两处调用点接入;`player_controls.dart` `_QualitySelectBox` 恢复全档可点(未解析档传空线路占位 → `switchQuality` 走既有 `_qualityOverride` 按需重解析路径)
+- 新增 `test/play_quality_prefetch_test.dart` 8 用例全过;全仓 50/50;analyze 改动文件零问题
+- 探针入库:`tool/probes/quality_switch_probe_test.dart`(`PURELIVE_QUALITY_SWITCH_PROBE=1`,环境变量与全站探针同款)
+- 备注:B 站匿名 qn 回落/斗鱼匿名降档(第四节通用待修复)是服务端行为,与本缺陷无关,切档请求路径本就正常
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:

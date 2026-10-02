@@ -19,6 +19,40 @@ StreamQuality? pickPlayQuality(RoomPayload payload, String? preferredName) {
   return payload.qualityByName(preferredName);
 }
 
+/// 预取待补档位:availableQualities 里还没有「精确同名已解析流」的档,按菜单顺序。
+///
+/// 已解析判定必须是精确同名,不能用 [RoomPayload.qualityByName]:后者未命中
+/// 时回退 `streams.first`(必有线路),会把所有缺失档误判成"已解析"→ 预取
+/// 队列恒空,画质菜单永远只有进房档可点(2026-10-02 多平台定案)。同名的
+/// 占位档(lines 为空)不算已解析,照常入队。
+List<QualityOption> pendingPrefetchQualities(RoomPayload payload, Map<String, StreamQuality> prefetched) {
+  bool resolved(String name) {
+    final cached = prefetched[name];
+    if (cached != null) return cached.lines.isNotEmpty;
+    for (final stream in payload.streams) {
+      if (stream.name == name) return stream.lines.isNotEmpty;
+    }
+    return false;
+  }
+
+  return [
+    for (final option in payload.availableQualities)
+      if (!resolved(option.name)) option,
+  ];
+}
+
+/// 把预取回的档位并回当前流集合:同名替换,新档名**追加**。
+///
+/// 原实现只做同名替换:懒取流下初始 streams 只有进房档,预取回的新档位
+/// 被静默丢弃,菜单项永远禁用。追加在末尾,`streams.first`(默认档回退
+/// 锚点,pickPlayQuality 契约)保持不变。
+List<StreamQuality> mergeResolvedStream(List<StreamQuality> current, StreamQuality fetched) {
+  return [
+    for (final stream in current) stream.name == fetched.name ? fetched : stream,
+    if (!current.any((stream) => stream.name == fetched.name)) fetched,
+  ];
+}
+
 /// 实测 FLV 起播更快的站点白名单,对齐 SFVideoLive web 真源 `usePlayer.ts`
 /// 的 `preferFlvForNative`(commits 45241d2 + a074399,斗鱼首帧 2.3s→1.0s):
 /// - douyu / bilibili / douyin:FLV 单流连接即出帧(0.9~1.7s),HLS 需清单+分片
@@ -37,11 +71,7 @@ const _flvFastStartSites = {'douyu', 'bilibili', 'douyin'};
 /// 站点([_flvFastStartSites])在同档存在 FLV 线时优选 FLV 起播 —— 起播快一倍
 /// 以上。契约首选已是 FLV 时原样返回,因此与「斗鱼 HLS 仅兜底(hlsH5Preview
 /// 不再抢首选)」的解析侧修复天然不冲突;非白名单站点(虎牙等)维持契约首选。
-StreamLine? pickStreamLine(
-  StreamQuality? quality,
-  String? preferredFormat, {
-  String? site,
-}) {
+StreamLine? pickStreamLine(StreamQuality? quality, String? preferredFormat, {String? site}) {
   if (quality == null) return null;
   final format = preferredFormat?.trim().toLowerCase() ?? '';
   if (format.isNotEmpty && format != 'auto') {
@@ -53,8 +83,7 @@ StreamLine? pickStreamLine(
   final contract = quality.preferredLine;
   if (contract == null) return null;
   final siteKey = site?.trim().toLowerCase() ?? '';
-  if (contract.format.toLowerCase() == 'flv' ||
-      !_flvFastStartSites.contains(siteKey)) {
+  if (contract.format.toLowerCase() == 'flv' || !_flvFastStartSites.contains(siteKey)) {
     return contract;
   }
   for (final line in quality.lines) {

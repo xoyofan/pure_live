@@ -23,8 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:live_parser/live_parser.dart';
 
-import '../../../platforms/common/playback/live_player.dart'
-    show LivePlayer, PlayerSnapshot;
+import '../../../platforms/common/playback/live_player.dart' show LivePlayer, PlayerSnapshot;
 import '../../../platforms/common/playback/play_screen_mode.dart';
 import '../../../shared/presentation/design_tokens.dart';
 import '../../../shared/presentation/zishu_tokens.dart';
@@ -126,11 +125,7 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
   @override
   Widget build(BuildContext context) {
     // 画质/线路 selectbox 的数据源:本房间的解析结果(未解析成功时不渲染)。
-    final play = ref
-        .watch(
-          playControllerProvider((site: widget.site, roomId: widget.roomId)),
-        )
-        .value;
+    final play = ref.watch(playControllerProvider((site: widget.site, roomId: widget.roomId))).value;
 
     // Slider 需要 Material 祖先;播放页为无壳布局,这里用透明 Material 自给。
     // SnackBar 的宿主由播放页根级 Scaffold 提供(见 play_view.dart)。
@@ -149,9 +144,7 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
           // 侧栏挤压出 ~390dp 的窄控制条(实测 800 视口 → 392dp 溢出)。
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final snapshot =
-                  ref.watch(playerSnapshotProvider).value ??
-                  const PlayerSnapshot();
+              final snapshot = ref.watch(playerSnapshotProvider).value ?? const PlayerSnapshot();
               final player = ref.read(playerProvider);
               final compact = constraints.maxWidth < 560;
               return buildRow(context, snapshot, player, compact, play);
@@ -164,13 +157,7 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
 
   /// 控制条主行;[compact] 为 true 时隐藏音量滑杆/延迟文案/画中画/网页全屏,
   /// 只留播放/刷新/弹幕/静音/画质/线路/全屏等核心按钮。
-  Widget buildRow(
-    BuildContext context,
-    PlayerSnapshot snapshot,
-    LivePlayer player,
-    bool compact,
-    PlayState? play,
-  ) {
+  Widget buildRow(BuildContext context, PlayerSnapshot snapshot, LivePlayer player, bool compact, PlayState? play) {
     final tokens = context.tokens;
     final payload = play?.payload;
     // 布局(用户口径 2026-09-20 重排):左组=播放/暂停 → 刷新 → 睡眠定时等
@@ -194,12 +181,9 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
                   key: const Key('play-toggle-play'),
                   style: _onVideoButtonStyle(),
                   tooltip: snapshot.playing ? '暂停 (Space)' : '播放 (Space)',
-                  onPressed: () =>
-                      (snapshot.playing ? player.pause() : player.play()),
+                  onPressed: () => (snapshot.playing ? player.pause() : player.play()),
                   icon: Icon(
-                    snapshot.playing
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
+                    snapshot.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
                     size: 20,
                     color: AppOnVideo.text,
                   ),
@@ -213,26 +197,11 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
                     // 复用 playControllerProvider 的 retry 通路:payload 已就位
                     // 时只 bump 代际并重新 open 当前线路(轻量重开流),不重解析
                     // 房间;仅当解析失败(payload 为 null)时 retry 才整体重解析。
-                    ref
-                        .read(
-                          playControllerProvider((
-                            site: widget.site,
-                            roomId: widget.roomId,
-                          )).notifier,
-                        )
-                        .retry();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('已刷新'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
+                    ref.read(playControllerProvider((site: widget.site, roomId: widget.roomId)).notifier).retry();
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(const SnackBar(content: Text('已刷新'), duration: Duration(seconds: 2)));
                   },
-                  icon: Icon(
-                    Icons.refresh_rounded,
-                    size: 20,
-                    color: AppOnVideo.text,
-                  ),
+                  icon: Icon(Icons.refresh_rounded, size: 20, color: AppOnVideo.text),
                 ),
                 if (!compact) const _SleepTimerButton(),
                 if (widget.danmakuEnabled) ...[
@@ -244,15 +213,10 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
                     tooltip: widget.showDanmaku ? '隐藏弹幕' : '显示弹幕',
                     onPressed: widget.onDanmakuToggle,
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
-                    ),
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     icon: _DanmakuMark(
                       active: widget.showDanmaku,
-                      corner: widget.showDanmaku
-                          ? _DanmakuCorner.check
-                          : _DanmakuCorner.none,
+                      corner: widget.showDanmaku ? _DanmakuCorner.check : _DanmakuCorner.none,
                     ),
                   ),
                   _DanmakuSettingsButton(
@@ -272,10 +236,7 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
                     tooltip: widget.speechCaptionEnabled ? '关闭语音字幕' : '开启语音字幕',
                     onPressed: widget.onCaptionToggle,
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
-                    ),
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     icon: _TranslateMark(active: widget.speechCaptionEnabled),
                   ),
               ],
@@ -294,9 +255,7 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
                   tooltip: snapshot.muted ? '取消静音 (M)' : '静音 (M)',
                   onPressed: () => player.setMuted(!snapshot.muted),
                   icon: Icon(
-                    snapshot.muted
-                        ? Icons.volume_off_rounded
-                        : Icons.volume_up_rounded,
+                    snapshot.muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
                     size: 20,
                     color: AppOnVideo.text,
                   ),
@@ -312,19 +271,12 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
                     child: SliderTheme(
                       data: SliderTheme.of(context).copyWith(
                         trackHeight: 3,
-                        thumbShape: const RoundSliderThumbShape(
-                          enabledThumbRadius: 6,
-                        ),
-                        overlayShape: const RoundSliderOverlayShape(
-                          overlayRadius: 10,
-                        ),
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
                       ),
                       child: Slider(
                         // 静音时滑杆归零(语义=无声);解除静音回快照值。
-                        value: (snapshot.muted ? 0.0 : snapshot.volume).clamp(
-                          0.0,
-                          100.0,
-                        ),
+                        value: (snapshot.muted ? 0.0 : snapshot.volume).clamp(0.0, 100.0),
                         max: 100,
                         activeColor: tokens.accent,
                         // 未激活轨道在视频上需保持可见:浅色主题 border 近白
@@ -335,11 +287,7 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
                           unawaited(
                             ref
                                 .read(roomVolumeStoreProvider)
-                                .save(
-                                  site: widget.site,
-                                  roomId: widget.roomId,
-                                  volume: value,
-                                ),
+                                .save(site: widget.site, roomId: widget.roomId, volume: value),
                           );
                         },
                       ),
@@ -351,12 +299,7 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
                     payload: payload,
                     activeQuality: play?.quality,
                     onQualityTap: (quality) => ref
-                        .read(
-                          playControllerProvider((
-                            site: widget.site,
-                            roomId: widget.roomId,
-                          )).notifier,
-                        )
+                        .read(playControllerProvider((site: widget.site, roomId: widget.roomId)).notifier)
                         .switchQuality(quality),
                   ),
                   const SizedBox(width: AppSpacing.xs),
@@ -364,12 +307,7 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
                     activeQuality: play?.quality,
                     activeLine: play?.line,
                     onLineTap: (line) => ref
-                        .read(
-                          playControllerProvider((
-                            site: widget.site,
-                            roomId: widget.roomId,
-                          )).notifier,
-                        )
+                        .read(playControllerProvider((site: widget.site, roomId: widget.roomId)).notifier)
                         .switchLine(line),
                   ),
                   const SizedBox(width: AppSpacing.sm),
@@ -381,47 +319,31 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
                     style: _onVideoButtonStyle(),
                     tooltip: '画中画',
                     onPressed: widget.onTogglePip,
-                    icon: Icon(
-                      Icons.picture_in_picture_alt_rounded,
-                      size: 20,
-                      color: AppOnVideo.text,
-                    ),
+                    icon: Icon(Icons.picture_in_picture_alt_rounded, size: 20, color: AppOnVideo.text),
                   ),
                 if (!compact)
                   IconButton(
                     // 测试锚点:网页全屏切换(视频铺满窗口,不动系统窗口)。
                     key: const Key('play-toggle-widescreen'),
                     style: _onVideoButtonStyle(),
-                    tooltip: widget.screenMode.isWidescreen
-                        ? '退出网页全屏 (W)'
-                        : '网页全屏 (W)',
+                    tooltip: widget.screenMode.isWidescreen ? '退出网页全屏 (W)' : '网页全屏 (W)',
                     onPressed: widget.onToggleWidescreen,
                     icon: Icon(
-                      widget.screenMode.isWidescreen
-                          ? Icons.close_fullscreen_rounded
-                          : Icons.open_in_full_rounded,
+                      widget.screenMode.isWidescreen ? Icons.close_fullscreen_rounded : Icons.open_in_full_rounded,
                       size: 20,
-                      color: widget.screenMode.isWidescreen
-                          ? tokens.accent
-                          : AppOnVideo.text,
+                      color: widget.screenMode.isWidescreen ? tokens.accent : AppOnVideo.text,
                     ),
                   ),
                 IconButton(
                   // 测试锚点:全屏切换按钮。图标随呈现态切换(对齐 pure_live)。
                   key: const Key('play-toggle-fullscreen'),
                   style: _onVideoButtonStyle(),
-                  tooltip: widget.screenMode.isFullscreen
-                      ? '退出全屏 (F)'
-                      : '全屏 (F)',
+                  tooltip: widget.screenMode.isFullscreen ? '退出全屏 (F)' : '全屏 (F)',
                   onPressed: widget.onToggleFullscreen,
                   icon: Icon(
-                    widget.screenMode.isFullscreen
-                        ? Icons.fullscreen_exit_rounded
-                        : Icons.fullscreen_rounded,
+                    widget.screenMode.isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
                     size: 20,
-                    color: widget.screenMode.isFullscreen
-                        ? tokens.accent
-                        : AppOnVideo.text,
+                    color: widget.screenMode.isFullscreen ? tokens.accent : AppOnVideo.text,
                   ),
                 ),
               ],
@@ -435,12 +357,13 @@ class _PlayerControlsBarState extends ConsumerState<PlayerControlsBar> {
 
 /// 画质 selectbox:入口显示当前档名(`play-quality-current`),菜单项沿用
 /// `play-quality-{name}` 锚点,选中档打勾。自 QualityLineBar 迁入。
+///
+/// 全部广告档可点(2026-10-02 恢复设计契约"上限之外的档位仍可点击——切档
+/// 时按需解析"):已解析档直接开流;未解析档传空线路占位,switchQuality 走
+/// `_qualityOverride` 按需重解析。此前只放开 streams 里已有的档,叠加预取
+/// 队列恒空的缺陷,菜单永远只有进房档可点。
 class _QualitySelectBox extends StatelessWidget {
-  const _QualitySelectBox({
-    required this.payload,
-    required this.activeQuality,
-    required this.onQualityTap,
-  });
+  const _QualitySelectBox({required this.payload, required this.activeQuality, required this.onQualityTap});
 
   final RoomPayload payload;
   final StreamQuality? activeQuality;
@@ -460,14 +383,9 @@ class _QualitySelectBox extends StatelessWidget {
           PopupMenuItem<StreamQuality>(
             // 测试锚点:菜单项沿用画质 chip 锚点(挂 PopupMenuItem)。
             key: Key('play-quality-${option.name}'),
-            value: payload.streams
-                .where((stream) => stream.name == option.name)
-                .firstOrNull,
-            enabled:
-                payload.streams
-                    .where((stream) => stream.name == option.name)
-                    .firstOrNull !=
-                null,
+            value:
+                payload.streams.where((stream) => stream.name == option.name).firstOrNull ??
+                StreamQuality(name: option.name, rate: option.rate, lines: const []),
             child: Row(
               children: [
                 if (activeQuality?.name == option.name)
@@ -492,16 +410,10 @@ class _QualitySelectBox extends StatelessWidget {
               activeQuality?.name ?? '画质',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: AppTypography.bodySecondary.copyWith(
-                color: AppOnVideo.textMuted,
-              ),
+              style: AppTypography.bodySecondary.copyWith(color: AppOnVideo.textMuted),
             ),
           ),
-          const Icon(
-            Icons.arrow_drop_down_rounded,
-            size: 18,
-            color: AppOnVideo.textMuted,
-          ),
+          const Icon(Icons.arrow_drop_down_rounded, size: 18, color: AppOnVideo.textMuted),
         ],
       ),
     );
@@ -510,11 +422,7 @@ class _QualitySelectBox extends StatelessWidget {
 
 /// 线路 selectbox:入口显示当前线路名,菜单项锚点 `play-line-item-{name}`。
 class _LineSelectBox extends StatelessWidget {
-  const _LineSelectBox({
-    required this.activeQuality,
-    required this.activeLine,
-    required this.onLineTap,
-  });
+  const _LineSelectBox({required this.activeQuality, required this.activeLine, required this.onLineTap});
 
   final StreamQuality? activeQuality;
   final StreamLine? activeLine;
@@ -556,16 +464,10 @@ class _LineSelectBox extends StatelessWidget {
               activeLine?.name ?? '线路',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: AppTypography.bodySecondary.copyWith(
-                color: AppOnVideo.textMuted,
-              ),
+              style: AppTypography.bodySecondary.copyWith(color: AppOnVideo.textMuted),
             ),
           ),
-          const Icon(
-            Icons.arrow_drop_down_rounded,
-            size: 18,
-            color: AppOnVideo.textMuted,
-          ),
+          const Icon(Icons.arrow_drop_down_rounded, size: 18, color: AppOnVideo.textMuted),
         ],
       ),
     );
@@ -604,23 +506,10 @@ class _SleepTimerButton extends ConsumerWidget {
         _toast(context, '已设定 $value 分钟后停止播放');
       },
       itemBuilder: (context) => [
-        if (active)
-          const PopupMenuItem<int>(
-            key: Key('play-sleep-timer-off'),
-            value: 0,
-            child: Text('关闭定时'),
-          ),
+        if (active) const PopupMenuItem<int>(key: Key('play-sleep-timer-off'), value: 0, child: Text('关闭定时')),
         for (final minutes in SleepTimerController.presetsMinutes)
-          PopupMenuItem<int>(
-            key: Key('play-sleep-timer-$minutes'),
-            value: minutes,
-            child: Text('$minutes 分钟'),
-          ),
-        const PopupMenuItem<int>(
-          key: Key('play-sleep-timer-custom'),
-          value: _customValue,
-          child: Text('自定义…'),
-        ),
+          PopupMenuItem<int>(key: Key('play-sleep-timer-$minutes'), value: minutes, child: Text('$minutes 分钟')),
+        const PopupMenuItem<int>(key: Key('play-sleep-timer-custom'), value: _customValue, child: Text('自定义…')),
       ],
       child: Icon(
         active ? Icons.bedtime_rounded : Icons.bedtime_outlined,
@@ -633,9 +522,7 @@ class _SleepTimerButton extends ConsumerWidget {
   void _toast(BuildContext context, String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
-      );
+      ..showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 2)));
   }
 
   Future<void> _pickCustomMinutes(BuildContext context, WidgetRef ref) async {
@@ -650,28 +537,19 @@ class _SleepTimerButton extends ConsumerWidget {
             controller: controller,
             autofocus: true,
             keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              hintText: '分钟(1-${SleepTimerController.maxCustomMinutes})',
-            ),
+            decoration: InputDecoration(hintText: '分钟(1-${SleepTimerController.maxCustomMinutes})'),
           ),
           actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('取消')),
             TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () =>
-                  Navigator.of(dialogContext)
-                      .pop(int.tryParse(controller.text.trim())),
+              onPressed: () => Navigator.of(dialogContext).pop(int.tryParse(controller.text.trim())),
               child: const Text('确定'),
             ),
           ],
         ),
       );
       if (minutes == null || minutes <= 0) return;
-      final clamped = minutes > SleepTimerController.maxCustomMinutes
-          ? SleepTimerController.maxCustomMinutes
-          : minutes;
+      final clamped = minutes > SleepTimerController.maxCustomMinutes ? SleepTimerController.maxCustomMinutes : minutes;
       if (!context.mounted) return;
       ref.read(sleepTimerProvider.notifier).start(Duration(minutes: clamped));
       _toast(context, '已设定 $clamped 分钟后停止播放');
@@ -709,12 +587,7 @@ class _DanmakuMark extends StatelessWidget {
           ),
           child: Text(
             '弹',
-            style: TextStyle(
-              fontSize: AppFontSize.body,
-              height: 1,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
+            style: TextStyle(fontSize: AppFontSize.body, height: 1, fontWeight: FontWeight.w700, color: color),
           ),
         ),
         if (corner == _DanmakuCorner.check)
@@ -733,11 +606,7 @@ class _DanmakuMark extends StatelessWidget {
         if (corner == _DanmakuCorner.gear)
           _DanmakuCornerBadge(
             background: const Color(0xF2121212),
-            child: Icon(
-              Icons.settings_rounded,
-              size: 9,
-              color: active ? context.tokens.accent : AppOnVideo.textMuted,
-            ),
+            child: Icon(Icons.settings_rounded, size: 9, color: active ? context.tokens.accent : AppOnVideo.textMuted),
           ),
       ],
     );
@@ -767,12 +636,7 @@ class _TranslateMark extends StatelessWidget {
           ),
           child: Text(
             '译',
-            style: TextStyle(
-              fontSize: AppFontSize.body,
-              height: 1,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
+            style: TextStyle(fontSize: AppFontSize.body, height: 1, fontWeight: FontWeight.w700, color: color),
           ),
         ),
         if (active)
@@ -836,23 +700,17 @@ class _DanmakuCornerBadge extends StatelessWidget {
 /// 显示/透明度/字号/速度/区域)。侧栏「设置」tab 的弹幕设置是聊天侧栏的
 /// 弹幕样式,与本面板(舞台飘屏弹幕)无关、互不影响。
 class _DanmakuSettingsButton extends ConsumerStatefulWidget {
-  const _DanmakuSettingsButton({
-    super.key,
-    required this.show,
-    required this.onToggleShow,
-  });
+  const _DanmakuSettingsButton({super.key, required this.show, required this.onToggleShow});
 
   /// 舞台弹幕当前显隐(与「弹」开关同一状态源)。
   final bool show;
   final VoidCallback onToggleShow;
 
   @override
-  ConsumerState<_DanmakuSettingsButton> createState() =>
-      _DanmakuSettingsButtonState();
+  ConsumerState<_DanmakuSettingsButton> createState() => _DanmakuSettingsButtonState();
 }
 
-class _DanmakuSettingsButtonState
-    extends ConsumerState<_DanmakuSettingsButton> {
+class _DanmakuSettingsButtonState extends ConsumerState<_DanmakuSettingsButton> {
   final MenuController _menu = MenuController();
 
   @override
@@ -874,10 +732,7 @@ class _DanmakuSettingsButtonState
               _settingsRow(
                 label: '显示',
                 // 开关大小对齐侧栏「聊天弹幕」开关(全局 CompactSwitch 30×16)。
-                trailing: CompactSwitch(
-                  value: widget.show,
-                  onChanged: (_) => widget.onToggleShow(),
-                ),
+                trailing: CompactSwitch(value: widget.show, onChanged: (_) => widget.onToggleShow()),
               ),
               SettingsSliderRow(
                 // popover 恒定暗底(0xF2121212):标签用 AppOnVideo 亮色。
@@ -886,12 +741,9 @@ class _DanmakuSettingsButtonState
                 value: settings.opacity.toDouble(),
                 min: DanmakuSettings.kOpacityMin.toDouble(),
                 max: DanmakuSettings.kOpacityMax.toDouble(),
-                divisions:
-                    DanmakuSettings.kOpacityMax - DanmakuSettings.kOpacityMin,
+                divisions: DanmakuSettings.kOpacityMax - DanmakuSettings.kOpacityMin,
                 display: '${settings.opacity}%',
-                onChanged: (v) => ref
-                    .read(danmakuSettingsProvider.notifier)
-                    .setOpacity(v.round()),
+                onChanged: (v) => ref.read(danmakuSettingsProvider.notifier).setOpacity(v.round()),
               ),
               SettingsSliderRow(
                 onVideo: true,
@@ -899,12 +751,9 @@ class _DanmakuSettingsButtonState
                 value: settings.fontSize.toDouble(),
                 min: DanmakuSettings.kFontSizeMin.toDouble(),
                 max: DanmakuSettings.kFontSizeMax.toDouble(),
-                divisions:
-                    DanmakuSettings.kFontSizeMax - DanmakuSettings.kFontSizeMin,
+                divisions: DanmakuSettings.kFontSizeMax - DanmakuSettings.kFontSizeMin,
                 display: '${settings.fontSize}',
-                onChanged: (v) => ref
-                    .read(danmakuSettingsProvider.notifier)
-                    .setFontSize(v.round()),
+                onChanged: (v) => ref.read(danmakuSettingsProvider.notifier).setFontSize(v.round()),
               ),
               SettingsSliderRow(
                 onVideo: true,
@@ -912,18 +761,13 @@ class _DanmakuSettingsButtonState
                 value: settings.speed.toDouble(),
                 min: DanmakuSettings.kSpeedMin.toDouble(),
                 max: DanmakuSettings.kSpeedMax.toDouble(),
-                divisions:
-                    DanmakuSettings.kSpeedMax - DanmakuSettings.kSpeedMin,
+                divisions: DanmakuSettings.kSpeedMax - DanmakuSettings.kSpeedMin,
                 display: '${settings.speed}',
-                onChanged: (v) => ref
-                    .read(danmakuSettingsProvider.notifier)
-                    .setSpeed(v.round()),
+                onChanged: (v) => ref.read(danmakuSettingsProvider.notifier).setSpeed(v.round()),
               ),
               _settingsAreaRow(
                 current: settings.displayAreaRatio,
-                onPick: (v) => ref
-                    .read(danmakuSettingsProvider.notifier)
-                    .setDisplayAreaRatio(v),
+                onPick: (v) => ref.read(danmakuSettingsProvider.notifier).setDisplayAreaRatio(v),
               ),
             ],
           ),
@@ -932,9 +776,7 @@ class _DanmakuSettingsButtonState
       style: MenuStyle(
         alignment: Alignment.topCenter,
         backgroundColor: const WidgetStatePropertyAll(Color(0xF2121212)),
-        padding: const WidgetStatePropertyAll(
-          EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        ),
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
       ),
       builder: (context, controller, child) {
         final open = controller.isOpen;
@@ -943,8 +785,7 @@ class _DanmakuSettingsButtonState
           tooltip: '飘屏弹幕设置',
           // 控制条内按钮统一 on-video 墨色(hover/pressed/focus)。
           style: _onVideoButtonStyle(),
-          onPressed: () =>
-              (controller.isOpen ? controller.close() : controller.open()),
+          onPressed: () => (controller.isOpen ? controller.close() : controller.open()),
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
           icon: _DanmakuMark(active: open, corner: _DanmakuCorner.gear),
@@ -963,19 +804,11 @@ class _DanmakuSettingsButtonState
     ),
     child: Text(
       '飘屏弹幕',
-      style: TextStyle(
-        fontSize: AppFontSize.bodySecondary,
-        fontWeight: FontWeight.w600,
-        color: context.tokens.accent,
-      ),
+      style: TextStyle(fontSize: AppFontSize.bodySecondary, fontWeight: FontWeight.w600, color: context.tokens.accent),
     ),
   );
 
-  Widget _settingsRow({
-    required String label,
-    Widget? slider,
-    Widget? trailing,
-  }) => SizedBox(
+  Widget _settingsRow({required String label, Widget? slider, Widget? trailing}) => SizedBox(
     width: 216,
     child: Row(
       children: [
@@ -983,10 +816,7 @@ class _DanmakuSettingsButtonState
           width: 38,
           child: Text(
             label,
-            style: TextStyle(
-              fontSize: AppControls.labelFontSize,
-              color: AppOnVideo.textMuted,
-            ),
+            style: TextStyle(fontSize: AppControls.labelFontSize, color: AppOnVideo.textMuted),
           ),
         ),
         if (slider != null)
@@ -995,18 +825,12 @@ class _DanmakuSettingsButtonState
           const SizedBox(width: 8),
           trailing ?? const SizedBox.shrink(),
         ],
-        if (slider != null) ...[
-          const SizedBox(width: 6),
-          trailing ?? const SizedBox.shrink(),
-        ],
+        if (slider != null) ...[const SizedBox(width: 6), trailing ?? const SizedBox.shrink()],
       ],
     ),
   );
 
-  Widget _settingsAreaRow({
-    required double current,
-    required ValueChanged<double> onPick,
-  }) => SizedBox(
+  Widget _settingsAreaRow({required double current, required ValueChanged<double> onPick}) => SizedBox(
     width: 216,
     child: Row(
       children: [
@@ -1014,10 +838,7 @@ class _DanmakuSettingsButtonState
           width: 38,
           child: Text(
             '区域',
-            style: TextStyle(
-              fontSize: AppControls.labelFontSize,
-              color: AppOnVideo.textMuted,
-            ),
+            style: TextStyle(fontSize: AppControls.labelFontSize, color: AppOnVideo.textMuted),
           ),
         ),
         const Spacer(),
@@ -1026,22 +847,13 @@ class _DanmakuSettingsButtonState
           tooltip: '弹幕显示区域',
           onSelected: onPick,
           itemBuilder: (context) => [
-            for (final (label, ratio) in const [
-              ('全屏', 1.0),
-              ('3/4', 0.75),
-              ('半屏', 0.5),
-              ('1/4', 0.25),
-            ])
+            for (final (label, ratio) in const [('全屏', 1.0), ('3/4', 0.75), ('半屏', 0.5), ('1/4', 0.25)])
               PopupMenuItem<double>(
                 value: ratio,
                 child: Row(
                   children: [
                     if (current == ratio)
-                      Icon(
-                        Icons.check_rounded,
-                        size: 16,
-                        color: context.tokens.accent,
-                      )
+                      Icon(Icons.check_rounded, size: 16, color: context.tokens.accent)
                     else
                       const SizedBox(width: 16),
                     const SizedBox(width: AppSpacing.xs),
@@ -1059,23 +871,13 @@ class _DanmakuSettingsButtonState
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  switch (current) {
-                    0.75 => '3/4',
-                    0.5 => '半屏',
-                    0.25 => '1/4',
-                    _ => '全屏',
-                  },
-                  style: const TextStyle(
-                    fontSize: AppFontSize.caption,
-                    color: AppOnVideo.text,
-                  ),
-                ),
-                const Icon(
-                  Icons.arrow_drop_down_rounded,
-                  size: 16,
-                  color: AppOnVideo.textMuted,
-                ),
+                Text(switch (current) {
+                  0.75 => '3/4',
+                  0.5 => '半屏',
+                  0.25 => '1/4',
+                  _ => '全屏',
+                }, style: const TextStyle(fontSize: AppFontSize.caption, color: AppOnVideo.text)),
+                const Icon(Icons.arrow_drop_down_rounded, size: 16, color: AppOnVideo.textMuted),
               ],
             ),
           ),
