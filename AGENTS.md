@@ -8,12 +8,12 @@
 - Use Chinese for progress/results. Report findings, changes, verification and remaining work concisely; distinguish code, tests, builds, published assets and device acceptance.
 - Write commit messages in Chinese (user requirement, 2026-09-30): keep the conventional `type(scope):` prefix English, write the subject and body in Chinese. Follow this for future commits without being asked again.
 
-## Architecture: zishu UI + pure_live 解析/播放 (2026-10-01, 用户口径)
+## Architecture: zishu UI/播放 + pure_live 解析 (2026-10-02 修订, 用户口径)
 
-- Windows 桌面端严格分层:**UI 一律用 zishu**(`lib/src/`,riverpod+go_router+live_parser 契约),**解析与播放内核一律用 pure_live**(`lib/core` LiveSite + `lib/modules/live_play` PlayerManager 链)。
-- 入口 `lib/main.dart` 已是 zishu Windows UI;pure_live 旧 UI(GetX:`lib/common`/`lib/modules` 非 live_play 部分)保留为编译单元但运行时绕过,不做功能演进。
+- Windows 桌面端严格分层:**UI 与播放页/内核一律用 zishu**(`lib/src/`,riverpod+go_router+live_parser 契约;播放链 = `lib/src/features/play` + MediaKitLivePlayer),**线路/清晰度解析一律用 pure_live**(`lib/core` LiveSite 适配器)。
+- 入口 `lib/main.dart` 已是 zishu Windows UI;pure_live 旧 UI(GetX:`lib/common`/`lib/modules` 全部)保留为编译单元但运行时绕过,不做功能演进。
+- 清晰度分工(2026-10-02 用户口径):pure_live 负责线路/清晰度**解析**(`getPlayQualites`/`getPlayUrls`,经 `purelive_backend.dart` 供流);zishu 只用各平台默认清晰度设置(`effectiveDefaultQuality`)匹配**初始档**,切档经同一解析器按需重解析。2026-10-01 的"播放页 = LivePlayPage 桥接"条目作废(嵌套 GetX 于 release 灰屏,当日已回退,不再采用;`purelive_play_bridge`/`ZISHU_PLAY_KERNEL` 不存在也不引入)。
 - 四家(B站/抖音/虎牙/斗鱼)浏览/解析数据经 `PURE_LIVE_PARSER=true`(默认开)走 `lib/src/shared/application/purelive_backend.dart` 的注册覆盖;新增解析能力(分类/搜索/弹幕/线路)在 purelive_backend 补齐,不改 UI 侧契约。
-- 播放页 = pure_live `LivePlayPage`(PlayerManager 链),经 `purelive_play_bridge` 桥接入;禁止再切回 zishu 播放内核(`ZISHU_PLAY_KERNEL` define 仅作逃生口)。
 - 旧 UI 登录体系(firebase)已随 UI 弃用移除;不得为旧 UI 重新引入已删依赖。
 
 ## Project map
