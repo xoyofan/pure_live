@@ -307,7 +307,3 @@ ffmpeg_kit_extended_config:
   type: base
   gpl: false
   small: false
-  # windows 原生包改走 fork 自己的 release 资产(akashskypatel 上游资产
-  # 0.11.1 与包内固定 SHA 不匹配, 实测 SHA256 mismatch 拦截; wzgrx 远端
-  # 资产与包内哈希对齐, 00:11 那次构建已验证 SHA256 verification passed)。
-  windows-x64: https://github.com/wzgrx/pure_live/releases/download/native-ffmpeg-9.0.2-b1/bundle-base-windows-x86_64-shared-lgpl.zip
