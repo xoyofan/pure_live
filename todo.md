@@ -236,7 +236,9 @@
 - 探针盲区:全站探针 setUpAll 手动 `Get.put(SettingsService)`,与真机 zishu 链路的**关键环境差异**,故探针 28/29 全绿而真机四平台必挂
 - 修复:`SettingsService.maybe` 安全访问器(`Get.isRegistered` 守卫,已注册时与 `to` 等价);twitch 站 4 处(cookie+3 处 proxy)、twitch 弹幕 1 处、kuaishou 2 处、soop 1 处、yy 1 处改 `maybe` 降级(cookie 空=游客态可解析——探针空 Hive 下 media-ok 即证;代理 null=直连)。`playback_header_resolver`/douyu 本就容错不动;`sites.availableSites`/iptv 不在 zishu 链路不动
 
-**验证**:新增 3 套单测 11 用例全过(`purelive_line_format_test` 6 / `settings_service_maybe_test` 2 / `site_settings_fallback_test` 3:twitch 匿名头、soop/yy 空 Cookie 降级、maybe null/等价契约)。全仓 analyze 与 backend 编译级验证待并行的十七live弹幕工作收敛后补跑(其半成品 `seventeen_danmaku.dart` 拉全图编译不过,与本修复无关)。真机 Windows 起播猫耳 HLS 复验待构建窗口。
+**验证**:新增 3 套单测 11 用例全过(`purelive_line_format_test` 6 / `settings_service_maybe_test` 2 / `site_settings_fallback_test` 3:twitch 匿名头、soop/yy 空 Cookie 降级、maybe null/等价契约);并行工作收敛后全仓 analyze 补跑通过(仅剩 10 条预存在项),backend 链既有测试 14 用例过。
+
+**真机复验(当日 19:38,Windows Release @60e6e37d 构建)**:`pure_live.exe --site missevan --room 868888435` 直达用户报的房间——`resolve_ms=227 qualities=HLS,FLV` → `open host=d1-missevan104.bilivideo.com`(**无 `proxy_line_wrap`**,修复前 HLS 必被包进 FLV 代理)→ `video_first_frame_rendered` 1s 内 → 持续播放 50s+ `demuxer_cache_time` 稳定推进、`frame_drops=0`、mpv `path=` 直持猫耳 m3u8 地址;本次会话 `source_open_failure` 零新增(历史 31 次全为修复前)。顺带修复:验证时发现启动路由 URL 平台推断表缺猫耳域名(`--room https://fm.missevan.com/live/N` 静默回落首页),补 `fm.missevan.com` 条目 + `startup_url_hint_test` 3 用例。
 
 **备注**:当日真机日志另见 bigo `schema`×4(owned-input 播放配方,非缺陷)、chzzk `mediaUnavailable`(房间未播)、douyu 超时/握手失败×4(15:24-15:34 出口网络抖动,后续恢复)。
 
