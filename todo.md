@@ -364,6 +364,16 @@
 - **tool/probes 15 文件迁移新契约**:合并漏网的探针(getRoomDetail(platform,roomId)/getPlayQualites(detail:) 等旧签名)批量迁 `liveroom` 契约+新导入路径,analyze 0 error
 - **运行时复核(合并前后基线一致)**:分类探针 28/34 categories-ok(非 ok 全为结构性空目录/凭证门控);对齐探针 33 站 raw-key 泄漏 0、aligned 16(PandaTV 出口封禁/Steam transport 为已知瞬态)
 
+
+### 迭代 23(2026-10-02)✅ 合并后运行时验证:全站播放/画质切换/分类/对齐四探针全绿
+
+- **全站播放探针**(33 站全链路到真实媒体字节):**26 media-ok + 2 owned-input**;非 ok 全为既档结构性(bigo=上游匿名 needLogin 门/13 迭代18,tiktok/xhs/youtube 无公开目录,pandalive 出口 IP 封禁)——与合并前基线完全一致,零回归
+- **画质切换探针**(33 站):19 switch-ok + 8 单档站(结构性,切档不适用)+ 已解释项——niconico failed 为文档在案的 owned-input 设计(getPlayUrls 设计性返回空,迭代17B);yy switch-partial 为该房间仅推一路 rendition(超清回同流 rejected 判定正确、流畅切流 accepted,机制正常)。探针本身补齐 15+10 处旧签名迁移(resolvePlayUrls/ForRecovery/reversed getRoomDetail)
+- **分类 28/34 / 对齐 33 站泄漏 0**(迭代22 已录,此处复认)
+- 收尾:analyze lib+tool 0 error;audit 0 error
+
+**结论**:上游合并(cf47156c)+优化轮后的解析层在新布局/新契约上运行时行为与合并前完全一致,零回归。
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:
