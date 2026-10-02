@@ -331,6 +331,21 @@
 
 **验证**:播放/搜索回归 20 用例全过;analyze 10 条全预存在零新增。
 
+### 迭代 20(2026-10-02)✅ 上游合并落地:liuchuancong/pure_live 276fae8a 布局重构波+LiveSite liveroom 契约, 按双原则完成
+
+用户原则:**解析层跟上游 purelive,UI 以我们 fork 的 zishu 为准**。接迭代15b 的 defer 冻结(docs/UPSTREAM_AUDIT_276fae8a.md)正式执行合并:
+
+- **入站**:109 提交/1292 文件/760 高风险;核心=站点适配器 `core/site→platforms`、`core/interface→contracts`、旧 UI `modules→features` 布局重构 + `getRoomDetail(LiveRoom liveroom)` 接口参数化 + pip/弹幕/壁纸功能与 7 项播放器修复
+- **冲突 88 处全解**(试合并实测数):platforms 26 处以上游为底做真三方合成(git merge-file)回植 fork 语义补丁——missevan catalogs 灰度修复/soop `Accept-Language: en-US`/bigo liveStatus 死分支/chzzk 真目录(迭代17)/twitch+kuaishou+soop+yy `SettingsService.maybe` 降级/斗鱼抖音 ParserConfig 注入与 LiveCurrentRoomContext 解耦(dafa1d3d 口径)/yy+cc+twitcasting+niconico 徽标补齐
+- **11 平台弹幕(fork 迭代4-14)整体迁入 `platforms/<site>/`**(git rename 误落 douyin/ 已归位),9 站 getDanmaku wiring+danmakuData 回植;acfun/douyin proto 归位
+- **core 层双源保留**:模型留 fork LiveRoomVolumeStore 钩子(sidecar 依赖)+上游 detailIdentity/fillFromDetail;http_client 留 proxyDirectiveProvider;core_error 留 formatter 钩子;core_log 留 runtime 钩子——sidecar 无 UI/无 GetX 约束不变
+- **auth/firebase 维持删除**(13 文件 drop);`main.dart` 保 zishu 入口;旧 UI 取上游 features 新布局+回植 fork 启动接线;旧 UI 独立入口 `main_purelive.dart` 移除(零消费方)
+- **依赖**:media_core 克隆至 `F:/media_core`(上游同款路径,新增 danmaku/mediasession/live/logging 四子包);新依赖 ffmpeg_kit_extended_flutter(首测 SHA256 失败系下载损坏,清缓存重试通过)
+- **收尾**:审计脚本 live_back 不变量路径迁 features 布局;manifest 补 `enableOnBackInvokedCallback="true"`(predictive_back 规则);`.playwright-mcp/` 入 ignore
+
+**验证**:`analyze lib tool` **0 error**;全套件 **128/128 过**(11 平台弹幕协议/直达识别/分类中文化/画质契约/统计刷新);`audit_repository.py` **0 error**;上游祖先关系保留(merge commit cf47156c)。**待办**:opt-in 探针复验(全站播放/分类/对齐)建议在下次真机窗口跑一轮;pip/壁纸等上游新功能属旧 UI,zishu 界面不消费
+
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:
