@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/core/danmaku/empty_danmaku.dart';
+import 'package:pure_live/core/danmaku/pandalive_danmaku.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/interface/live_directory.dart';
 import 'package:pure_live/core/interface/live_search.dart';
@@ -36,7 +36,7 @@ class PandaLiveSite extends LiveSite
   String get directoryNoticeKey => 'pandalive_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => PandaliveDanmaku();
 
   @override
   Future<List<LiveCategory>> getCategores(int page, int pageSize) async => page == 1
@@ -75,8 +75,7 @@ class PandaLiveSite extends LiveSite
     area: room.category,
     link: PandaLiveLink.url(room.userId),
     liveStatus: LiveStatus.live,
-    onlineViewers: room.onlineViewers?.toString(),
-    totalViewers: null,
+
     followers: room.followers?.toString(),
     audienceMetricType: AudienceMetricType.onlineViewers,
     notice: room.isAdult
@@ -102,6 +101,9 @@ class PandaLiveSite extends LiveSite
       PandaLiveState.offline => LiveStatus.offline,
       PandaLiveState.unknown => LiveStatus.unknown,
     },
+    danmakuData: (room.chatToken == null || room.chatToken!.isEmpty)
+        ? null
+        : PandaliveDanmakuArgs(token: room.chatToken!, channel: room.chatChannel ?? '${room.userIndex}'),
     onlineViewers: room.onlineViewers?.toString(),
     totalViewers: null,
     followers: room.followers?.toString(),
