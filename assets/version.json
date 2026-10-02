@@ -1,15 +1,15 @@
 {
-  "version": "3.1.17",
-  "build_number": 4106,
+  "version": "3.1.18",
+  "build_number": 4107,
   "version_num": 301074106,
   "android_abis": [
     "armeabi-v7a",
     "arm64-v8a",
     "x86_64"
   ],
-  "version_desc": "version: 3.1.17\n版本更新：\n- 斗鱼原画不再每 5 分钟断流（#35）：到期前约 45 秒在后台取得新链接，旧连接继续播放，直到新连接到达一个还没播到的关键帧再接上；两条链接的时间戳在同一条时间线上，播放不卡顿、不重复、不重新缓冲。单个直播间与多画面都已接入；换链接失败时仍回退到断流自动重连。\n-  Android ARMv7 与 x86_64 改用自编 mpv 0.41.0 + FFmpeg 9.0.2 播放库，三种架构解码能力一致（包括旧式 HEVC FLV）。\n- 下线 Kick：kick.com 全部接口被 Cloudflare 按 TLS 指纹拦截，只有 Android 与 Windows 能勉强绕过。现支持 33 个直播平台 + IPTV；已关注的 Kick 主播和分享链接会提示「该平台已下线」。\n- Linux 安装包将自带 libmpv 依赖的 VA-API 等库，不再需要手动安装 libva-wayland2（源码已包含，下次发布 Linux 包时生效）。",
+  "version_desc": "version: 3.1.18\n版本更新：\n- 上游合并与解析层统一：解析层对齐上游 pure_live 新布局与契约（站点适配器归位 lib/platforms、房间身份统一 LiveRoom 签名），34 站行为全量复核零回归。\n- 修复 bigo 在播判定死分支；CHZZK 展示真实热门分类目录；SOOP 分类目录与首页徽标中文化；猫耳适配灰度改版。\n- 全站分类中文化：Twitch/TwitCasting/Picarto/SHOWROOM 分类与首页徽标中文展示。\n- 打通 niconico/FC2 owned-input 播放：此前解析成功但黑屏的直播间现在可正常起播（本地中继座位，离场自动回收）。\n- 修复 17.live/TwitCasting 频道链接直达：任意平台档粘贴链接即可直达直播间。\n- 界面漏字修复：部分平台画质名/公告在桌面端显示为英文 key 的问题（nico 分类、17LIVE 画质等）。\n- 瞬态失败自动重试：分类浮层偶发网络失败不再常驻报错，可点击重试。",
   "prerelease": false,
-  "download_url": "https://github.com/liuchuancong/pure_live/releases/tag/v3.1.17",
+  "download_url": "https://github.com/xoyofan/pure_live/releases/tag/v3.1.18",
   "platforms": {
     "android": {
       "version": "3.1.17",
