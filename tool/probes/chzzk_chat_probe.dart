@@ -98,10 +98,16 @@ List<int> _dechunkBytes(List<int> input) {
 Future<void> main(List<String> args) async {
   final observeSeconds = int.tryParse(args.firstOrNull ?? '') ?? 14;
 
+  final override = args.length > 1 ? args[1] : '';
   final lives = await _getJson(apiHost, '/service/v1/lives', query: {'size': '10'});
   final rows = lives is Map && lives['data'] is List ? lives['data'] as List : const [];
   if (rows.isEmpty) throw StateError('directory returned no rows');
-  final channel = (rows.first as Map)['channel'] as Map?;
+  final channel = override.isEmpty
+      ? (rows.first as Map)['channel'] as Map?
+      : (rows
+                .map((r) => (r as Map)['channel'])
+                .firstWhere((c) => c is Map && c['channelId']?.toString() == override, orElse: () => null)
+            as Map?);
   final channelId = channel?['channelId']?.toString() ?? '';
   stdout.writeln('[dir] rows=${rows.length} firstChannel=$channelId name=${channel?['channelName']}');
 
@@ -116,42 +122,100 @@ Future<void> main(List<String> args) async {
   final chatChannelId = detail['chatChannelId']?.toString() ?? '';
   if (chatChannelId.isEmpty) throw StateError('chatChannelId missing');
 
-  final client = await _ChzzkChatSocket.connect('kr-ss1.chat.naver.net');
+  // Access token for the anonymous READ session.
+  final tokenContent = await _getJson(
+    'comm-api.game.naver.com',
+    '/nng_main/v1/chats/access-token',
+    query: {'channelId': chatChannelId, 'chatType': 'STREAMING'},
+  );
+  final tokenMap = tokenContent is Map ? tokenContent : const {};
+  final accessToken = tokenMap['accessToken']?.toString() ?? '';
+  stdout.writeln(
+    '[token] accessToken=${accessToken.isEmpty ? '(empty)' : '${accessToken.length}B'} extraToken=${(tokenMap['extraToken']?.toString() ?? '').length}B',
+  );
+  if (accessToken.isEmpty) throw StateError('access token missing');
+
+  // Host selection mirrors the web client: sum of chatChannelId char codes % 9 + 1.
+  final hostIndex = chatChannelId.codeUnits.fold<int>(0, (sum, code) => sum + code).abs() % 9 + 1;
+  final host = 'kr-ss$hostIndex.chat.naver.net';
+  stdout.writeln('[ws] target $host/chat');
+
+  final client = await _ChzzkChatSocket.connect(host);
   stdout.writeln('[ws] connected (alpn=${client.negotiatedProtocol})');
   await client.sendText(
-    jsonEncode({'svcType': 'chat', 'svcId': 'chzzk', 'cid': chatChannelId, 'ver': '3', 'fd': '', 'auth': ''}),
+    jsonEncode({
+      'ver': '2',
+      'cmd': 100,
+      'svcid': 'game',
+      'cid': chatChannelId,
+      'tid': 1,
+      'bdy': {'uid': null, 'devType': 2001, 'accTkn': accessToken, 'auth': 'READ'},
+    }),
   );
-  stdout.writeln('[->] CONNECT frame sent');
+  stdout.writeln('[->] cmd100 register sent');
 
   var sawChat = false;
   final done = Completer<void>();
+  var sid = '';
   client.onText = (text) {
-    final preview = text.length > 500 ? '${text.substring(0, 500)}…(${text.length})' : text;
+    final preview = text.length > 400 ? '${text.substring(0, 400)}…(${text.length})' : text;
     stdout.writeln('[<-] $preview');
     try {
       final frame = jsonDecode(text) as Map;
-      final typ = frame['typ']?.toString() ?? frame['type']?.toString() ?? '';
-      if (typ == 'PING') {
-        final pong = jsonEncode({
-          'svcid': frame['svcid'],
-          'cid': frame['cid'],
-          'ver': frame['ver'],
-          'typ': 'PONG',
-          'sid': frame['sid'],
-        });
-        client.sendText(pong);
-        stdout.writeln('[->] $pong');
+      final cmd = int.tryParse(frame['cmd']?.toString() ?? '') ?? 0;
+      if (cmd == 10100) {
+        final bdy = frame['bdy'];
+        sid = bdy is Map ? bdy['sid']?.toString() ?? '' : '';
+        stdout.writeln('[<-] registered sid=$sid');
+        // Pull recent messages to prove the read path even on quiet rooms.
+        requestRecent(client, chatChannelId, sid);
+      } else if (cmd == 0) {
+        client.sendText(jsonEncode({'ver': '2', 'cmd': 10000, 'sid': sid}));
+        stdout.writeln('[->] cmd10000 pong');
+      } else if (cmd == 93101) {
+        final bdy = frame['bdy'];
+        final list = bdy is Map ? bdy['messageList'] : null;
+        if (list is List && list.isNotEmpty) {
+          sawChat = true;
+          for (final entry in list.whereType<Map>().take(3)) {
+            final profile = entry['profile'];
+            String name = '';
+            if (profile is String) {
+              try {
+                final decoded = jsonDecode(profile);
+                if (decoded is Map) name = decoded['nickname']?.toString() ?? '';
+              } catch (_) {}
+            }
+            stdout.writeln('[<-] CHAT $name: ${entry['msg']}');
+          }
+        }
       }
-      if (typ == 'CHAT' || (frame['bdy'] is List && (frame['bdy'] as List).isNotEmpty)) sawChat = true;
     } catch (_) {}
   };
   client.onClose = () {
     stdout.writeln('[ws] closed by server');
     if (!done.isCompleted) done.complete();
   };
+  final ping = Timer.periodic(const Duration(seconds: 20), (_) => client.sendText(jsonEncode({'ver': '2', 'cmd': 0})));
   await Future.any([done.future, Future<void>.delayed(Duration(seconds: observeSeconds))]);
+  ping.cancel();
   await client.close();
   stdout.writeln('[ws] sawChat=$sawChat');
+}
+
+void requestRecent(_ChzzkChatSocket client, String cid, String sid) {
+  if (sid.isEmpty) return;
+  client.sendText(
+    jsonEncode({
+      'ver': '2',
+      'cmd': 5101,
+      'cid': cid,
+      'sid': sid,
+      'tid': 2,
+      'bdy': {'recentMessageCount': 50},
+    }),
+  );
+  stdout.writeln('[->] cmd5101 recent-message request sent');
 }
 
 /// Minimal RFC6455 client over RawSecureSocket with ALPN http/1.1, for hosts
@@ -159,7 +223,7 @@ Future<void> main(List<String> args) async {
 class _ChzzkChatSocket {
   _ChzzkChatSocket._(this._socket, this.negotiatedProtocol);
 
-  static Future<_ChzzkChatSocket> connect(String host) async {
+  static Future<_ChzzkChatSocket> connect(String host, {String path = '/chat'}) async {
     final address = (await InternetAddress.lookup(host)).where((a) => a.type == InternetAddressType.IPv4).first;
     final socket = await RawSecureSocket.connect(
       address,
@@ -169,7 +233,7 @@ class _ChzzkChatSocket {
     );
     final key = base64.encode(List<int>.generate(16, (_) => Random.secure().nextInt(256)));
     final request =
-        'GET /connect HTTP/1.1\r\n'
+        'GET $path HTTP/1.1\r\n'
         'Host: $host\r\n'
         'Upgrade: websocket\r\n'
         'Connection: Upgrade\r\n'

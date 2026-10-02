@@ -116,6 +116,10 @@ const _supportedProbePlatforms = <String>{
   Sites.showroomSite,
   Sites.twitcastingSite,
   Sites.acfunSite,
+  Sites.missevanSite,
+  Sites.picartoSite,
+  Sites.fc2LiveSite,
+  Sites.bigoSite,
 };
 
 Future<Map<String, Object?>> _probePlatform(

@@ -7,6 +7,7 @@ import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
 import 'package:pure_live/core/common/http_client.dart';
 import 'package:pure_live/core/common/request_scope.dart';
+import 'package:pure_live/core/danmaku/missevan_danmaku.dart';
 import 'package:pure_live/model/live_play_quality.dart';
 
 enum MissevanFailure { transport, access, rateLimited, service, notFound, schema, cancelled, qualityUnavailable }
@@ -307,6 +308,7 @@ class MissevanApi {
     final row = _object(info['room']);
     final room = _room(row);
     if (room.roomId != id) throw const MissevanException(MissevanFailure.schema);
+    room.danmakuData = MissevanDanmakuArgs(roomId: id);
     if (info['creator'] != null) {
       final creator = _object(info['creator']);
       if (roomId('${creator['user_id']}') != room.userId) throw const MissevanException(MissevanFailure.schema);

@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/core/danmaku/empty_danmaku.dart';
+import 'package:pure_live/core/danmaku/bigo_danmaku.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/interface/live_directory.dart';
 import 'package:pure_live/core/interface/live_search.dart';
@@ -39,7 +39,7 @@ final class BigoSite extends LiveSite
   String get directoryNoticeKey => 'bigo_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => BigoDanmaku();
 
   Future<List<BigoDirectoryCard>> _directory({CancelToken? cancel}) {
     if (cancel != null) return _api.directory(cancel: cancel);
@@ -156,6 +156,7 @@ final class BigoSite extends LiveSite
       platform: id,
       roomId: status.canonicalSiteId,
       userId: '${status.ownerId}',
+      danmakuData: BigoDanmakuArgs(siteId: status.canonicalSiteId, roomId: room.roomId ?? '${status.ownerId}'),
       title: room.title.isEmpty ? room.nickname : room.title,
       nick: room.nickname,
       avatar: room.avatar ?? '',

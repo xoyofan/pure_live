@@ -1,6 +1,6 @@
 import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/core/danmaku/empty_danmaku.dart';
+import 'package:pure_live/core/danmaku/missevan_danmaku.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/interface/live_site.dart';
 import 'package:pure_live/core/interface/live_directory.dart';
@@ -35,7 +35,7 @@ class MissevanSite extends LiveSite
   @override
   String get name => '猫耳 FM';
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => MissevanDanmaku();
   @override
   Future<List<LiveCategory>> getCategores(int page, int pageSize) async =>
       page == 1 ? [LiveCategory(id: id, name: name, children: await _api.categories())] : [];

@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/core/danmaku/empty_danmaku.dart';
+import 'package:pure_live/core/danmaku/picarto_danmaku.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/interface/live_directory.dart';
 import 'package:pure_live/core/interface/live_search.dart';
@@ -27,7 +27,7 @@ class PicartoSite extends LiveSite
   @override
   String get name => 'Picarto';
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => PicartoDanmaku();
 
   @override
   Future<List<LiveCategory>> getCategores(int page, int pageSize) async => page == 1
@@ -87,6 +87,7 @@ class PicartoSite extends LiveSite
   Future<LiveRoom> getRoomDetail({required String roomId, required String platform}) async {
     final detail = await _api.detail(roomId);
     if (detail.master != null) detail.room.data = parsePicartoHls(await _api.read(detail.master!), detail.master!);
+    detail.room.danmakuData = PicartoDanmakuArgs(channelName: detail.room.nick ?? detail.room.roomId ?? '');
     return detail.room;
   }
 

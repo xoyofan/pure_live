@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/common/models/live_area.dart';
 import 'package:pure_live/common/models/live_room.dart';
-import 'package:pure_live/core/danmaku/empty_danmaku.dart';
+import 'package:pure_live/core/danmaku/fc2_danmaku.dart';
 import 'package:pure_live/core/interface/live_danmaku.dart';
 import 'package:pure_live/core/interface/live_directory.dart';
 import 'package:pure_live/core/interface/live_search.dart';
@@ -39,7 +39,7 @@ final class Fc2Site extends LiveSite
   String get directoryNoticeKey => 'fc2live_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => Fc2Danmaku();
 
   Future<Fc2Directory> _directory({CancelToken? cancel}) {
     if (cancel != null) return _api.directory(cancel: cancel);
@@ -118,6 +118,7 @@ final class Fc2Site extends LiveSite
     return LiveRoom(
       platform: 'fc2live',
       roomId: room.channelId,
+      danmakuData: Fc2DanmakuArgs(channelId: room.channelId),
       userId: room.channelId,
       title: room.title,
       nick: room.userName,
