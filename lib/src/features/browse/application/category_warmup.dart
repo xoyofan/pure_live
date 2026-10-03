@@ -18,22 +18,41 @@ import 'package:live_parser/live_parser.dart' show CategoryResult;
 
 import '../../../shared/presentation/platform_brands.dart';
 
-/// 异步逐站预热分类索引。
+/// 异步预热分类索引,受限并发(默认 [kWarmupConcurrency] 路同时)。
 ///
 /// [fetchCategories] 通常传 `(site) => ref.read(browseCategoriesProvider(site)
 /// .future)`;[sites] 为要预热的平台 id 集合(一般取
 /// `PlatformBrandCatalog.browsePlatforms` 的 id)。
+///
+/// 迭代27(2026-10-03 用户口径「分类应该初始化加载在内存, hover 马上显示」):
+/// 串行逐站在 30+ 平台下尾站要等数十秒才预热到,hover 仍见 loading;改为
+/// 受限并行,全量预热时间从「站点数×单站延迟」压到「并发轮次×单站延迟」。
+/// 首屏让位由启动 2s 延迟保证,并发度上限避免请求风暴。
+const int kWarmupConcurrency = 6;
+
 Future<void> warmupBrowseCategories(
   Future<CategoryResult> Function(String site) fetchCategories,
-  Iterable<String> sites,
-) async {
-  for (final site in sites) {
-    try {
-      await fetchCategories(site);
-    } catch (_) {
-      // 预热失败静默:hover 时该站分类 provider 会自行重试拉取。
+  Iterable<String> sites, {
+  int concurrency = kWarmupConcurrency,
+}) async {
+  final queue = [for (final site in sites) site];
+  var cursor = 0;
+
+  Future<void> worker() async {
+    while (cursor < queue.length) {
+      final site = queue[cursor++];
+      try {
+        await fetchCategories(site);
+      } catch (_) {
+        // 预热失败静默:hover 时该站分类 provider 会自行重试拉取。
+      }
     }
   }
+
+  final workers = <Future<void>>[
+    for (var i = 0; i < concurrency && i < queue.length; i++) worker(),
+  ];
+  await Future.wait(workers);
 }
 
 /// 全部支持浏览的平台 id(预热站点集合)。

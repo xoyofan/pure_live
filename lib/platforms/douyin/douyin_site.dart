@@ -8,7 +8,6 @@ import 'package:pure_live/core/models/live_anchor_item.dart';
 import 'package:pure_live/core/network/http_client.dart';
 import 'package:pure_live/core/models/live_play_quality.dart';
 import 'package:pure_live/core/contracts/live_site.dart';
-import 'package:pure_live/core/utils/type_cast.dart';
 import 'package:pure_live/platforms/douyin/douyin_danmaku.dart';
 import 'package:pure_live/platforms/douyin/douyin_audience.dart';
 import 'package:pure_live/core/contracts/live_danmaku.dart';
@@ -135,47 +134,190 @@ class DouyinSite implements LiveSite, LiveSiteRecordRoomResolver {
     return '';
   }
 
+  /// 娱乐分区(聊天/音乐/二次元/舞蹈/文化/生活/运动)兜底表。
+  /// 上游规则:数值 id 100-199 为娱乐类 partition_type=4,其余(游戏树)为 1。
+  static const List<Map<String, String>> _kEntertainmentTabFallbacks = [
+    {'id_str': '101', 'title': '聊天'},
+    {'id_str': '102', 'title': '音乐'},
+    {'id_str': '104', 'title': '二次元'},
+    {'id_str': '105', 'title': '舞蹈'},
+    {'id_str': '106', 'title': '文化'},
+    {'id_str': '107', 'title': '生活'},
+    {'id_str': '108', 'title': '运动'},
+  ];
+
+  static List<Map<String, dynamic>> _partitionListOf(dynamic raw) {
+    if (raw is List) {
+      return [
+        for (final item in raw)
+          if (item is Map) item.cast<String, dynamic>(),
+      ];
+    }
+    return const [];
+  }
+
+  /// 抖音一级分区是否为娱乐类(id 数值 100-199, zishu web 同款判定)。
+  static bool _isEntertainmentPartition(Map<String, dynamic> partition) {
+    final id = int.tryParse('${partition['id_str'] ?? partition['id'] ?? ''}');
+    return id != null && id >= 100 && id <= 199;
+  }
+
+  /// 从首页内嵌 JSON 构建 zishu 同款二级分类(用户口径 2026-10-03):
+  /// * 游戏根分区(title == 游戏)的 sub_partition 是二级分区(射击游戏/
+  ///   竞技游戏/单机游戏/角色扮演...),每个二级分区的嵌套 sub_partition
+  ///   是实际可播条目(和平精英/原神...)——hover/抽屉按「二级分区 →
+  ///   三级条目」两列展示;
+  /// * 娱乐分区(聊天/音乐/...)各自只有一级,合并为单一「娱乐」组,
+  ///   条目即各娱乐分区本身(areaId 带 partition_type=4, 分类房间接口
+  ///   按此路由);
+  /// * 解析失败/结构变更回落静态兜底表,保证 hover 永远有可点二级分类。
   @override
   Future<List<LiveCategory>> getCategores(int page, int pageSize) async {
-    List<LiveCategory> categories = [];
-    var result = await HttpClient.instance.getText(
-      "https://live.douyin.com/",
-      queryParameters: {"from_nav": "1"},
-      header: await getRequestHeaders(),
-    );
+    if (page > 1) return [];
+    try {
+      var result = await HttpClient.instance.getText(
+        "https://live.douyin.com/",
+        queryParameters: {"from_nav": "1"},
+        header: await getRequestHeaders(),
+      );
+      String extracted = extractCategoryDataJson(result);
+      var renderDataJson = json.decode(extracted);
+      var data = _partitionListOf(renderDataJson["categoryData"]);
+      if (data.isEmpty) return _fallbackCategores();
 
-    String extracted = extractCategoryDataJson(result);
-    var renderDataJson = json.decode(extracted);
-    var data = renderDataJson["categoryData"];
-    for (var item in data) {
-      List<LiveArea> subs = [];
-      var id = '${item["partition"]["id_str"]},${item["partition"]["type"]}';
-      for (var subItem in item["sub_partition"]) {
-        var subCategory = LiveArea(
-          areaId: '${subItem["partition"]["id_str"]},${subItem["partition"]["type"]}',
-          typeName: item["partition"]["title"] ?? '',
-          areaType: id,
-          areaName: subItem["partition"]["title"] ?? '',
-          areaPic: "",
-          platform: SiteIds.douyinSite,
-        );
-        subs.add(subCategory);
+      final gameGroups = <LiveCategory>[];
+      final entertainment = <LiveArea>[];
+      for (final item in data) {
+        final partition = (item['partition'] as Map?)?.cast<String, dynamic>() ?? const {};
+        final title = '${partition['title'] ?? ''}';
+        // 游戏根按 title 定位(zishu web marker 同款):其 id(103) 也落在
+        // 100-199 数字段,不能用 id 区间判娱乐,否则游戏树被整棵误吞。
+        final isGameRoot = title == '游戏';
+        if (!isGameRoot && _isEntertainmentPartition(partition)) {
+          entertainment.add(
+            LiveArea(
+              areaId: '${partition['id_str']},4',
+              typeName: '娱乐',
+              areaType: 'yule',
+              areaName: title,
+              areaPic: '',
+              platform: SiteIds.douyinSite,
+            ),
+          );
+          continue;
+        }
+
+        // 游戏树:二级分区为组,嵌套 sub_partition 为组内条目。
+        for (final rawChild in _partitionListOf(item['sub_partition'])) {
+          final child = (rawChild['partition'] as Map?)?.cast<String, dynamic>() ?? const {};
+          final childTitle = '${child['title'] ?? ''}';
+          if (childTitle.isEmpty) continue;
+          final childId = '${child['id_str'] ?? child['id'] ?? ''}';
+          final grandChildren = _partitionListOf(rawChild['sub_partition']);
+          final areas = <LiveArea>[
+            for (final grand in grandChildren)
+              if ((grand['partition'] as Map?) != null)
+                LiveArea(
+                  areaId: '${grand['partition']['id_str']},${grand['partition']['type'] ?? '1'}',
+                  typeName: childTitle,
+                  areaType: childId,
+                  areaName: '${grand['partition']['title'] ?? ''}',
+                  areaPic: '',
+                  platform: SiteIds.douyinSite,
+                ),
+          ];
+          gameGroups.add(
+            LiveCategory(
+              id: childId,
+              name: childTitle,
+              children: areas.isNotEmpty
+                  ? areas
+                  : [
+                      LiveArea(
+                        areaId: '$childId,1',
+                        typeName: childTitle,
+                        areaType: childId,
+                        areaName: childTitle,
+                        areaPic: '',
+                        platform: SiteIds.douyinSite,
+                      ),
+                    ],
+            ),
+          );
+        }
       }
 
-      var category = LiveCategory(children: subs, id: id, name: asT<String?>(item["partition"]["title"]) ?? "");
-      subs.insert(
-        0,
-        LiveArea(
-          areaId: category.id,
-          typeName: category.name,
-          areaType: category.id,
-          areaPic: "",
-          areaName: category.name,
-          platform: SiteIds.douyinSite,
-        ),
-      );
-      categories.add(category);
+      final categories = [...gameGroups];
+      if (entertainment.isNotEmpty) {
+        categories.add(LiveCategory(id: 'yule', name: '娱乐', children: entertainment));
+      }
+      if (categories.isEmpty) return _fallbackCategores();
+      return categories;
+    } catch (error) {
+      CoreLog.error(error);
+      return _fallbackCategores();
     }
+  }
+
+  /// 解析失败/上游结构变更时的静态兜底(zishu web 同款分组数据)。
+  List<LiveCategory> _fallbackCategores() {
+    const gameGroups = <(String, String, List<(String, String)>)>[
+      (
+        '射击游戏',
+        '1010000',
+        [
+          ('1010032', '和平精英'),
+          ('1010017', '无畏契约'),
+          ('1010003', 'CSGO'),
+          ('1011032', '三角洲行动'),
+          ('1010037', '穿越火线'),
+          ('1010026', '绝地求生'),
+        ],
+      ),
+      (
+        '竞技游戏',
+        '1020000',
+        [('1010045', '王者荣耀'), ('1010014', '英雄联盟'), ('1010016', '永劫无间'), ('1010041', '第五人格'), ('1010055', '金铲铲之战')],
+      ),
+      ('单机游戏', '1030000', [('1010358', '黑神话:悟空'), ('1010250', '星际战甲')]),
+      ('角色扮演', '1040000', [('1010039', '原神'), ('1010053', '梦幻西游'), ('1010150', '魔兽世界')]),
+    ];
+    final entertainmentTabs = <(String, String)>[
+      for (final tab in _kEntertainmentTabFallbacks) (tab['id_str']!, tab['title']!),
+    ];
+    final categories = <LiveCategory>[
+      for (final (name, gid, games) in gameGroups)
+        LiveCategory(
+          id: gid,
+          name: name,
+          children: [
+            for (final (cid, cname) in games)
+              LiveArea(
+                areaId: '$cid,1',
+                typeName: name,
+                areaType: gid,
+                areaName: cname,
+                areaPic: '',
+                platform: SiteIds.douyinSite,
+              ),
+          ],
+        ),
+      LiveCategory(
+        id: 'yule',
+        name: '娱乐',
+        children: [
+          for (final (cid, cname) in entertainmentTabs)
+            LiveArea(
+              areaId: '$cid,4',
+              typeName: '娱乐',
+              areaType: 'yule',
+              areaName: cname,
+              areaPic: '',
+              platform: SiteIds.douyinSite,
+            ),
+        ],
+      ),
+    ];
     return categories;
   }
 

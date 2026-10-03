@@ -904,6 +904,10 @@ abstract final class AppDirectoryDrawer {
   /// 分类名称字号(`font-size: .72rem`)。
   static const double catFontSize = 11.5;
 
+  /// 二级分类条目固定宽度(用户口径 2026-10-03「每个固定显示四个汉字左右」):
+  /// 4 × catFontSize(11.5) ≈ 46px 文本 + 两侧 1.92px 内边距与圆角余量。
+  static const double catChipWidth = 56;
+
   // ---- 开合按钮(__toggle) ----
 
   /// 细长竖条按钮(`width: .85rem; height: 44px`,仅右侧圆角,贴右缘)。

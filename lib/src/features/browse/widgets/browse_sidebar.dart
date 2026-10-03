@@ -348,24 +348,10 @@ class _CategoryTree extends StatelessWidget {
       return _DrawerHint(text: '该平台暂无分类', tokens: tokens);
     }
     if (isFlatCategoryGroups(value.groups)) {
-      // 单一大组:平铺网格(无组标题),与参考实现一致。
-      return GridView.count(
-        padding: const EdgeInsets.fromLTRB(
-          AppDirectoryDrawer.catPadH,
-          AppDirectoryDrawer.catPadTop,
-          AppDirectoryDrawer.catPadH,
-          AppDirectoryDrawer.catPadBottom,
-        ),
-        crossAxisCount: 2,
-        mainAxisSpacing: AppDirectoryDrawer.catGapMain,
-        crossAxisSpacing: AppDirectoryDrawer.catGapCross,
-        // 220px 抽屉、8.8px 左右内边距下条目宽约 99.4px;参考条目
-        // min-height 20.8px,据此推 aspect 使默认行高一致。
-        childAspectRatio: 99.4 / AppDirectoryDrawer.catItemHeight,
-        children: [
-          for (final item in sections.first.items)
-            _CategoryLeaf(site: site, cid: item.cid, name: item.name),
-        ],
+      // 单一大组:固定四字宽条目横向平铺(用户口径 2026-10-03)。
+      return _CategoryChipFlow(
+        site: site,
+        items: sections.first.items,
       );
     }
     // 多组:一级分区标题 + 该组二级分类网格(逐区排列,整列纵向滚动)。
@@ -391,17 +377,9 @@ class _CategoryTree extends StatelessWidget {
               ),
             ),
           ),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            mainAxisSpacing: AppDirectoryDrawer.catGapMain,
-            crossAxisSpacing: AppDirectoryDrawer.catGapCross,
-            childAspectRatio: 99.4 / AppDirectoryDrawer.catItemHeight,
-            children: [
-              for (final item in section.items)
-                _CategoryLeaf(site: site, cid: item.cid, name: item.name),
-            ],
+          _CategoryChipFlow(
+            site: site,
+            items: section.items,
           ),
           const SizedBox(height: AppSpacing.sm),
         ],
@@ -431,6 +409,48 @@ class _DrawerHint extends StatelessWidget {
           style: context.textCaption.copyWith(color: tokens.textSecondary),
         ),
       ),
+    );
+  }
+}
+
+/// 二级分类横向平铺网格(用户口径 2026-10-03):每个条目固定约四个汉字宽
+/// (`catChipWidth` ≈ 4 × catFontSize + 内边距),`Wrap` 流式换行——窄抽屉
+/// (220px)下每行恰好 3 枚,条目多时纵向续排,组内不再分两列大格。
+///
+/// 用 [LayoutBuilder] 按实际可用宽度计算每行枚数,避免写死列数在宽抽屉
+/// (折叠侧栏宽度变化)下溢出或留白。
+class _CategoryChipFlow extends StatelessWidget {
+  const _CategoryChipFlow({required this.site, required this.items});
+
+  final String site;
+  final List<CategoryItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final chipWidth = AppDirectoryDrawer.catChipWidth;
+        final gap = AppDirectoryDrawer.catGapCross;
+        final perRow = constraints.maxWidth > 0
+            ? ((constraints.maxWidth + gap) / (chipWidth + gap)).floor()
+            : 3;
+        final columns = perRow < 1 ? 1 : perRow;
+        return GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: columns,
+          mainAxisSpacing: AppDirectoryDrawer.catGapMain,
+          crossAxisSpacing: AppDirectoryDrawer.catGapCross,
+          childAspectRatio: chipWidth / AppDirectoryDrawer.catItemHeight,
+          children: [
+            for (final item in items)
+              SizedBox(
+                width: chipWidth,
+                child: _CategoryLeaf(site: site, cid: item.cid, name: item.name),
+              ),
+          ],
+        );
+      },
     );
   }
 }
