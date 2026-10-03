@@ -473,6 +473,13 @@
 - [x] **修复**:`buildPureLiveRegistration` 增 `browseOverride`;youtube 保留 native browse(播放/统计仍走 purelive);实测注册表链路 youtube 12 房+4 分类、liveme 12 房
 - 重建:PureLive-3.1.19-4108 便携包 16:33 重打;启动 PID 15392。全量 194/194 全过;提交 71811b5b
 
+### 迭代 36(2026-10-03)✅ 三链接失败归因:bigo=上游适配器缺陷(已修);chzzk=区域封锁(结构性);twitcasting=在播健康
+
+- [x] **twitcasting /_ll44n**:直达识别+解析链全通(实测直播中,3 档画质)——用户试播时房间未开播/已下播,重试即可,非缺陷
+- [x] **bigo /cn/1081931220**:上游适配器缺陷。Bigo API 未开播房形状已漂移(实测:needLogin/passRoom=null、roomType=0 int、avatar=http),上游 `bigo_api.dart` 三处严格校验逐个抛 schema,把「未开播」伪装成「解析失败」。**与上游 liuchuancong/pure_live master 逐字节核实同源(413/414/430/461 行)**;fork 修复:null 视为未受限、roomType int/string 双收、avatar 与 snapshot 同口径放宽 http(s),hls 仍强制 https;修复后同房解析出结果。新增 bigo_offline_status_test 3 用例;全量 200/200 全过
+- [x] **chzzk /live/7c14…**:API 返回 9004「해외 시청 불가능한 컨텐츠」——频道对当前出口区域封锁,适配器诚实映射 mediaUnavailable;结构性限制(迭代8 结论:需韩国住宅网络),非解析缺陷
+- 工具:新增 `tool/probes/link_direct_matrix_probe_test.dart`(三链接直达+解析矩阵)与 `tool/probes/youtube_liveme_home_probe_test.dart`、`navigation_platforms_probe_test.dart`(迭代35 附件);提交 10cf5b4c,重建 16:50 打开 PID 11800
+
 
 ### 迭代 27(2026-10-03)✅ 抖音二级分类对齐 zishu + 分类并行预热 + 抽屉二级分类四字宽横铺
 
