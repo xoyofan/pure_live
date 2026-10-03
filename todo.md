@@ -480,6 +480,14 @@
 - [x] **chzzk /live/7c14…**:API 返回 9004「해외 시청 불가능한 컨텐츠」——频道对当前出口区域封锁,适配器诚实映射 mediaUnavailable;结构性限制(迭代8 结论:需韩国住宅网络),非解析缺陷
 - 工具:新增 `tool/probes/link_direct_matrix_probe_test.dart`(三链接直达+解析矩阵)与 `tool/probes/youtube_liveme_home_probe_test.dart`、`navigation_platforms_probe_test.dart`(迭代35 附件);提交 10cf5b4c,重建 16:50 打开 PID 11800
 
+### 迭代 39(2026-10-03)✅ 斗鱼 5 分钟重读修复——租约到期前排期热切(连接不断)
+
+用户报告"画面和声音重读了一小段"。playback.log 实录:斗鱼 88660 每**整 5 分钟** `proxy_upstream_fail upstream_done`→事后恢复热切(huosa↔hwa 交替),且每次把正常节点误记负缓存(host_avoid_recorded)。重读=断连后拼接的重叠。
+
+- [x] **根因**:斗鱼匿名原画 URL 带 `expire=300s`,到点服务端断连。契约早有 `LivePlayLeaseMetadata.getPlayUrlRefreshAt`(斗鱼=签发时+300s-45s 提前量),上游旧 UI 消费它排期续签——zishu 播放链从未实现排期器,只能事后恢复(拼接重叠=重读一小段;recordAvoid=true 还污染负缓存)
+- [x] **修复**:play_provider 开流成功后排期 `_scheduleLeaseRefresh`——到 refreshAt 调 `_recoverLines(recordAvoid:false, keepCurrentHost:true)`(同节点只换 token),首线路仍为 FLV 时经新增的 `MediaKitLivePlayer.hotSwitchUpstream` 走代理热切(mpv 无感,连接不断);新地址落回 state 并按新 URL 再排期;不可热切(HLS/无代理)静默放弃退回事后链
+- 验证:**全量 200/200 全过**;analyze 0 error。等待用户真机观察:5 分钟周期不再出现 upstream_done 断连(日志无 proxy_upstream_fail/无 host_avoid_recorded)
+
 ### 迭代 38(2026-10-03)✅ 抖音首页对齐 zishu 参照——全参数签名请求+翻页修复
 
 用户报告"当前抖音首页是不是不正确,看看 zishu 的"。对照诊断(fork vs zishu 参照 live_parser):

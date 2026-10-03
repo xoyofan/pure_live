@@ -1650,6 +1650,15 @@ class MediaKitLivePlayer
     });
   }
 
+  /// 主动热切上游地址(租约预刷新):仅当当前线路被本地代理包装时可用,
+  /// mpv 无感消耗缓冲;未被包装(非 FLV/代理未启用)返回 false,调用方退回
+  /// 既有恢复链。
+  Future<bool> hotSwitchUpstream(String url) async {
+    final session = _proxySession;
+    if (session == null) return false;
+    return session.switchUpstream(url);
+  }
+
   @override
   Future<void> seekTo(Duration position) async {
     // 轮播房循环稿件的起播偏移:mpv 对 HLS 点播可 seek(force-seekable=yes);

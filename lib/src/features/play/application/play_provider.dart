@@ -12,6 +12,8 @@ import 'package:live_parser/live_parser.dart';
 import 'package:pure_live/domains/live/domain/live_input_playback_binder.dart';
 import 'package:pure_live/core/player/core/playback_input_lease.dart';
 import 'package:pure_live/domains/live/data/stream/playback_source_transport.dart';
+import 'package:pure_live/domains/live/data/platforms/sites.dart' show Sites;
+import 'package:pure_live/shared/platforms/live_site.dart' show LivePlayLeaseMetadata;
 
 import '../../../platforms/common/playback/idle_releasing_live_player.dart';
 import '../../../platforms/common/playback/live_player.dart';
@@ -605,6 +607,63 @@ class PlayController extends AsyncNotifier<PlayState> {
     // 成员位即"每房间一次"——切画质/线路不回跳,换房新控制器自然重置。
     await _applyStartOffset(player);
     await _applyRoomVolume(player);
+    // 租约预刷新排期(2026-10-03):斗鱼等平台 URL 带寿命(原画实测 300s),
+    // 到点服务端断连——此前只能走事后恢复链(热切拼接处会重读一小段,且
+    // 误把正常节点记入负缓存)。改为到期前主动重签热切,连接不断。
+    _scheduleLeaseRefresh(player, line, generation);
+  }
+
+  /// URL 租约预刷新计时器。
+  Timer? _leaseRefreshTimer;
+
+  /// 站点自报的刷新时点([LivePlayLeaseMetadata.getPlayUrlRefreshAt])到点前
+  /// 主动重签:recordAvoid=false(节点轮换不是故障)、keepCurrentHost=true
+  /// (同节点只换 token),首线路仍为 FLV 时经本地代理热切,mpv 无感。
+  /// 不可热切(HLS/无代理)时静默放弃,退回既有事后恢复链兜底。
+  void _scheduleLeaseRefresh(LivePlayer player, StreamLine line, int generation) {
+    _leaseRefreshTimer?.cancel();
+    _leaseRefreshTimer = null;
+    if (generation != _generation) return;
+    try {
+      final lease = Sites.of(params.site).liveSite is LivePlayLeaseMetadata
+          ? Sites.of(params.site).liveSite as LivePlayLeaseMetadata
+          : null;
+      if (lease == null) return;
+      final refreshAt = lease.getPlayUrlRefreshAt(line.url);
+      if (refreshAt == null) return;
+      var delay = refreshAt.difference(DateTime.now());
+      if (delay <= const Duration(seconds: 3)) return; // 已贴脸:事后链兜底
+      if (delay > const Duration(minutes: 10)) delay = const Duration(minutes: 10);
+      _leaseRefreshTimer = Timer(delay, () async {
+        if (!ref.mounted || generation != _generation) return;
+        final lines = await _recoverLines(recordAvoid: false, keepCurrentHost: true);
+        if (lines.isEmpty || generation != _generation) return;
+        final first = lines.first;
+        if (first.format != 'flv' || player is! MediaKitLivePlayer) return;
+        final switched = await (player as MediaKitLivePlayer).hotSwitchUpstream(first.url);
+        PlaybackLog.write(switched ? 'lease_refresh_ok' : 'lease_refresh_skip', {
+          'site': params.site,
+          'room': params.roomId,
+        });
+        if (switched) {
+          // 新地址落回状态(用户随后切档/切线用的才是同一批),并按新 URL 再排期。
+          final current = state.value;
+          final quality = current?.quality;
+          if (current != null && quality != null) {
+            state = AsyncData(
+              current.copyWith(
+                quality: StreamQuality(name: quality.name, rate: quality.rate, lines: lines),
+                line: first,
+                generation: generation,
+              ),
+            );
+          }
+          _scheduleLeaseRefresh(player, first, generation);
+        }
+      });
+    } catch (_) {
+      // 排期失败不影响播放:事后恢复链兜底。
+    }
   }
 
   /// 本控制器(=本房间)是否已完成起播偏移。
