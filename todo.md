@@ -459,6 +459,13 @@
 - [x] **解析层兜底**:TwitchSite 新增 `loginFromInput`(频道链接→login,含 www./m. 与尾斜杠)——URL 万一仍达适配器(启动参数等)不再灌进 GQL
 - 验证:直达识别 10 用例全过(既有 douyu/niconico/17live/twitcasting c: 无回归 + twitch 新例含 site 断言 + videos/directory 负例);真网络探针 login/URL 两形态均 ok;analyze 改动文件 0 告警;**全量 194/194 全过**
 
+### 迭代 34(2026-10-03)✅ Windows Release 3.1.19+4108 重建并启动(校验器适配上游合并的旧 UI/插件移除)
+
+- [x] **构建受阻三连**(上游合并移除 flv_lzc/旧 UI 后校验器未同步):①validate_build_policy 读已删 `plugins/flv_lzc/android/build.gradle` 抛错;②再撞已删 `lib/modules/live_play/pages/live_play_page.dart` 等 11 个旧 UI 文件标记;③MSBuild 复制 exe 被运行中旧实例(纯粹直播 PID 24320)锁死(已知坑)
+- [x] **修复**:校验器退役两块失效断言(fplayer 本地 16KB 依赖块 / 旧 GetX UI modules+player 运行时标记块,git 历史可恢复);杀旧实例后增量 17.9s 构建成功
+- [x] **产物**:`local-artifacts/3.1.19-4108/PureLive-3.1.19-4108-windows-x64-portable.zip`(16:07 重打);启动验证 PID 22656,窗口「全平台首页 · 紫薯直播 3.1.19」
+- [x] **质量档说明**:`-SkipQuality`——本人源码改动在 7b496c9d 已有全量 194/194 + analyze 0 证据;此后并行会话布局收编增量 lib/ analyze 干净,唯 `integration_test/engine_playback_test.dart` 15 个错误(引用被删旧路径,重构尾巴,归并行会话清理);另 `android/build.gradle.kts:12` 仍解析已不含的 `:flv_lzc` 项目(Android 修复列车待处理)
+
 
 ### 迭代 27(2026-10-03)✅ 抖音二级分类对齐 zishu + 分类并行预热 + 抽屉二级分类四字宽横铺
 

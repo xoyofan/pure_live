@@ -332,41 +332,10 @@ foreach ($marker in @(
     }
 }
 
-$fplayerPluginBuildPath = Join-Path $repoRoot 'plugins\flv_lzc\android\build.gradle'
-$fplayerPluginBuild = Get-Content -LiteralPath $fplayerPluginBuildPath -Raw
-$androidRootBuild = Get-Content -LiteralPath (Join-Path $repoRoot 'android\build.gradle.kts') -Raw
-$fplayerCoreVersion = '1.0.4-purelive16k'
-$fplayerCoreRelativePath =
-    "plugins\flv_lzc\android\libs\io\github\flutterplayer\fplayer-core\$fplayerCoreVersion\fplayer-core-$fplayerCoreVersion.aar"
-$fplayerCorePath = Join-Path $repoRoot $fplayerCoreRelativePath
-foreach ($marker in @(
-    'url = uri("$projectDir/libs")',
-    'includeModule("io.github.flutterplayer", "fplayer-core")',
-    "io.github.flutterplayer:fplayer-core:$fplayerCoreVersion"
-)) {
-    if (-not $fplayerPluginBuild.Contains($marker)) {
-        throw "Local 16 KB fplayer dependency marker is missing: $marker"
-    }
-}
-foreach ($marker in @(
-    'maven(rootProject.file("../plugins/flv_lzc/android/libs"))',
-    'includeModule("io.github.flutterplayer", "fplayer-core")'
-)) {
-    if (-not $androidRootBuild.Contains($marker)) {
-        throw "Android app local fplayer repository marker is missing: $marker"
-    }
-}
-if ($fplayerPluginBuild.Contains("io.github.flutterplayer:fplayer-core:1.0.4'")) {
-    throw 'The 4 KB-aligned Maven fplayer-core 1.0.4 artifact must not be restored.'
-}
-if (-not (Test-Path -LiteralPath $fplayerCorePath -PathType Leaf)) {
-    throw "Local 16 KB fplayer AAR is missing: $fplayerCoreRelativePath"
-}
-$expectedFplayerCoreHash = '3643B36BC906F1FED56B313AC98669EEAA9DA0D2262409808429C5B614C676DA'
-$actualFplayerCoreHash = (Get-FileHash -LiteralPath $fplayerCorePath -Algorithm SHA256).Hash
-if ($actualFplayerCoreHash -ne $expectedFplayerCoreHash) {
-    throw "Local 16 KB fplayer AAR hash mismatch: $actualFplayerCoreHash"
-}
+# [2026-10-03] fplayer/flv_lzc 本地 16 KB 依赖校验块已随插件移除
+# (f7d7c782 Remove Windows video output implementation 之后上游合并删掉了
+# plugins/flv_lzc 整目录):播放内核已是 media_kit,这些标记不再有载体。
+# 若未来重新引入本地 AAR 依赖,按 BUILD_POLICY 恢复对应校验。
 
 $androidSigningWorkflow = Get-Content -LiteralPath (Join-Path $repoRoot '.github\workflows\sign-staged-android.yml') -Raw
 foreach ($marker in @(
@@ -548,68 +517,13 @@ $androidManifest = Get-Content -LiteralPath (Join-Path $repoRoot 'android\app\sr
 if ($androidManifest -match 'enableOnBackInvokedCallback="false"') {
     throw 'Android predictive back must not be disabled.'
 }
-$livePage = Get-Content -LiteralPath (Join-Path $repoRoot 'lib\modules\live_play\pages\live_play_page.dart') -Raw
-$liveController = Get-Content -LiteralPath (Join-Path $repoRoot 'lib\modules\live_play\controllers\live_play_controller.dart') -Raw
-if (-not $livePage.Contains('LivePlayBackScope(') -or -not $liveController.Contains('exitPresentationForSystemBack')) {
-    throw 'Live room route-local back handling is missing.'
-}
-if ($liveController.Contains('BackButtonInterceptor') -or $liveController.Contains('clearListener();`r`n    return false')) {
-    throw 'Live room must not use the legacy global back interceptor or pre-pop listener teardown.'
-}
 
-$generalSettings = Get-Content -LiteralPath (Join-Path $repoRoot 'lib\modules\settings\pages\general_settings_page.dart') -Raw
-if (-not $generalSettings.Contains('Platform.isAndroid || Platform.isWindows') -or
-    -not $generalSettings.Contains('_showRefreshRateModeDialog(context)')) {
-    throw 'Android and Windows must both expose the shared refresh-rate policy.'
-}
-$backupPage = Get-Content -LiteralPath (Join-Path $repoRoot 'lib\modules\backup\backup_page.dart') -Raw
-$fileUtils = Get-Content -LiteralPath (Join-Path $repoRoot 'lib\plugins\file_utils.dart') -Raw
-if (-not $backupPage.Contains('LogFileWriter.resolveLogDirectory()') -or
-    -not $backupPage.Contains('await FileUtils.openFileOrUrl(logDir.path)') -or
-    -not $fileUtils.Contains('ProcessStartMode.detached')) {
-    throw 'Desktop/MSIX directory opening must use the canonical log directory and checked shell launch.'
-}
+# [2026-10-03] 旧 GetX UI(lib/modules/live_play、lib/modules/settings、
+# lib/modules/backup、lib/player、lib/plugins/file_utils)的运行时断言块
+# 已随上游合并整体移除:运行时播放页/播放内核为 zishu(lib/src)+MediaKit,
+# 上述文件不存在,这些标记不再有载体。zishu 侧对应不变量由 lib/src 的
+# 测试与 golden 承接;若恢复旧 UI,按 git 历史恢复本块。
 
-$normalLayout = Get-Content -LiteralPath (Join-Path $repoRoot 'lib\modules\live_play\widgets\layout\live_play_content.dart') -Raw
-foreach ($marker in @('live-play-portrait-stack', 'live-play-desktop-panel', 'live-play-video-only-layout')) {
-    if (-not $normalLayout.Contains($marker)) {
-        throw "Normal live-room layout invariant marker is missing: $marker"
-    }
-}
-$liveVideoFrame = Get-Content -LiteralPath (Join-Path $repoRoot 'lib\modules\live_play\widgets\layout\live_play_video.dart') -Raw
-if (-not $liveVideoFrame.Contains('this.expandToParent = false') -or
-    -not $liveVideoFrame.Contains('return AspectRatio(aspectRatio: 16 / 9, child: child)')) {
-    throw 'Ordinary landscape rooms must retain the legacy 16:9 video-frame contract.'
-}
-$playerManager = Get-Content -LiteralPath (Join-Path $repoRoot 'lib\player\core\player_manager.dart') -Raw
-if ($playerManager.Contains('return FittedBox(') -or $playerManager.Contains('StreamBuilder<List<int?>>')) {
-    throw 'Native video adapters must remain the single aspect/BoxFit authority.'
-}
-$mediaKitAdapter = Get-Content -LiteralPath (Join-Path $repoRoot 'lib\player\adapters\media_kit_adapter.dart') -Raw
-if (-not $mediaKitAdapter.Contains('_player.stream.videoParams.listen') -or
-    $mediaKitAdapter.Contains('_player.stream.width.listen') -or
-    $mediaKitAdapter.Contains('_player.stream.height.listen')) {
-    throw 'MediaKit geometry must publish one display-corrected decoder snapshot.'
-}
-$portraitSupport = Get-Content -LiteralPath (Join-Path $repoRoot 'lib\player\core\portrait_stream_support.dart') -Raw
-foreach ($marker in @(
-    'stabilityDelay = const Duration(milliseconds: 500)',
-    'portraitThreshold = 0.90',
-    'landscapeThreshold = 1.10',
-    'resolveCompactWindowAspectRatio',
-    'resolveAndroidPipAspectRatio',
-    '1 / 2.39',
-    'minimumDanmakuHeight = 200'
-)) {
-    if (-not $portraitSupport.Contains($marker)) {
-        throw "Portrait-source presentation invariant marker is missing: $marker"
-    }
-}
-$fullscreenPolicy = Get-Content -LiteralPath (Join-Path $repoRoot 'lib\player\utils\fullscreen.dart') -Raw
-if (-not $fullscreenPolicy.Contains('supportsOrientationLockForLogicalDisplay') -or
-    -not $fullscreenPolicy.Contains('logicalDisplaySize.shortestSide < 600')) {
-    throw 'Android large-screen orientation policy must remain adaptive.'
-}
 if ($featureWorkflow -match 'stage-build-' -or $featureWorkflow -match 'stage-apple-') {
     throw 'Feature workflow must use precise single-platform stage tags.'
 }
