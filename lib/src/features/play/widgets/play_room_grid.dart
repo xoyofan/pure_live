@@ -58,12 +58,7 @@ class PlayRoomGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const padding = EdgeInsets.fromLTRB(
-      AppSpacing.sm,
-      0,
-      AppSpacing.sm,
-      AppSpacing.sm,
-    );
+    const padding = EdgeInsets.fromLTRB(AppSpacing.sm, 0, AppSpacing.sm, AppSpacing.sm);
     return LayoutBuilder(
       builder: (context, constraints) {
         // 由实际列宽推导纵横比,让卡片高恰好 = 封面(16:9) + 元信息两行。
@@ -99,12 +94,7 @@ class PlayRoomGrid extends StatelessWidget {
 
 /// 单张封面卡:16:9 封面 + 角标 + 主播名 + 标题。
 class PlayRoomCard extends StatelessWidget {
-  const PlayRoomCard({
-    super.key,
-    required this.room,
-    this.isSpecial = false,
-    this.onTap,
-  });
+  const PlayRoomCard({super.key, required this.room, this.isSpecial = false, this.onTap});
 
   final RoomRecord room;
   final bool isSpecial;
@@ -112,6 +102,9 @@ class PlayRoomCard extends StatelessWidget {
 
   /// 是否开播:状态真源 roomState(不再用 online 是否非空推断)。
   bool get _live => room.roomState == RoomState.live;
+
+  /// 轮播房:可播放但非实时,不落「未开播」遮罩(2026-10-03 上游合并轮)。
+  bool get _carousel => room.roomState == RoomState.carousel;
 
   @override
   Widget build(BuildContext context) {
@@ -140,11 +133,7 @@ class PlayRoomCard extends StatelessWidget {
                     cover: room.cover ?? '',
                     fallbackLabel: (room.category ?? '').isEmpty
                         ? room.site
-                        : displayCategoryName(
-                            room.site,
-                            room.category,
-                            room.cid,
-                          ),
+                        : displayCategoryName(room.site, room.category, room.cid),
                     offline: !_live,
                   ),
                   // 左上:平台徽章(web `.platform-cover-badge` 贴左上)。
@@ -191,15 +180,11 @@ class PlayRoomCard extends StatelessWidget {
                         key: const Key('cover-badge-special'),
                         corner: CoverCorner.bottomLeft,
                         background: tokens.coverScrim,
-                        child: Icon(
-                          Icons.star_rounded,
-                          size: 11,
-                          color: tokens.brand,
-                        ),
+                        child: Icon(Icons.star_rounded, size: 11, color: tokens.brand),
                       ),
                     ),
                   // 离线:整封面压暗 + 居中「未开播」(web `.follow-preview-offline`)。
-                  if (!_live)
+                  if (!_live && !_carousel)
                     Positioned.fill(
                       key: const Key('cover-offline-overlay'),
                       child: ColoredBox(
@@ -238,10 +223,7 @@ class PlayRoomCard extends StatelessWidget {
                       room.title ?? '',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: context.textSecondary.copyWith(
-                        fontSize: AppFontSize.label,
-                        color: tokens.textSecondary,
-                      ),
+                      style: context.textSecondary.copyWith(fontSize: AppFontSize.label, color: tokens.textSecondary),
                     ),
                   ],
                 ),

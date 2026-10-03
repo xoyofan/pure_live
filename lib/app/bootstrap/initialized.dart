@@ -25,11 +25,7 @@ import 'package:pure_live/core/player/kernel/player_kernel_service.dart';
 import 'package:pure_live/core/stream/upstream_proxy_routing.dart';
 import 'package:pure_live/features/backup/backup_controller.dart';
 import 'package:pure_live/domains/live/presentation/playback/controllers/player_room_context_bridge.dart';
-import 'package:pure_live/core/stream/upstream_proxy_routing.dart';
-import 'package:pure_live/core/player/kernel/player_kernel_service.dart';
-import 'package:pure_live/core/config/migrations/settings_upgrade_migration.dart';
 import 'package:pure_live/core/config/parser_runtime_binding.dart';
-import 'package:pure_live/features/backup/backup_controller.dart';
 import 'package:pure_live/shared/platforms/live_room_context.dart';
 
 /// Keep decoded cover/avatar memory bounded independently from the encoded

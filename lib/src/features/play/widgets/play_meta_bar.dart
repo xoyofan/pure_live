@@ -24,12 +24,12 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:live_parser/live_parser.dart'
-    show RoomPayload, RoomRecord, RoomStatField, RoomStatTone;
+import 'package:live_parser/live_parser.dart' show RoomPayload, RoomRecord, RoomStatField, RoomStatTone;
 
 import '../../../shared/presentation/design_tokens.dart';
 import '../../../shared/presentation/platform_display.dart';
 import '../../../shared/presentation/zishu_tokens.dart';
+import '../../../shared/application/purelive_backend.dart' show restrictionDisplayText;
 import '../../follow/application/follow_provider.dart';
 import '../application/room_stats_provider.dart';
 
@@ -65,9 +65,7 @@ class PlayMetaBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = context.tokens;
     final payload = this.payload;
-    final anchor = payload?.anchorName.trim().isNotEmpty == true
-        ? payload!.anchorName.trim()
-        : '主播信息';
+    final anchor = payload?.anchorName.trim().isNotEmpty == true ? payload!.anchorName.trim() : '主播信息';
     final isLive = payload?.isLive ?? false;
     // 统计区数据源(用户口径 2026-09-20:统计不能只服务已关注房间;
     // 2026-09-24 回归口径:取数与关注状态解耦)——先取 [roomStatsProvider]
@@ -75,12 +73,8 @@ class PlayMetaBar extends ConsumerWidget {
     // 本地统计快照。上游未提供的字段仍显示「—」,不伪造。
     final site = payload?.site ?? '';
     final roomId = payload?.roomId ?? '';
-    final matched = ref
-        .watch(followProvider)
-        .where((entry) => entry.key == '$site:$roomId');
-    final RoomRecord? followedRecord = matched.isNotEmpty
-        ? RoomRecord.fromSummary(matched.first.room)
-        : null;
+    final matched = ref.watch(followProvider).where((entry) => entry.key == '$site:$roomId');
+    final RoomRecord? followedRecord = matched.isNotEmpty ? RoomRecord.fromSummary(matched.first.room) : null;
     final RoomRecord? summary = mergeDisplayStats(
       parsed: ref.watch(roomStatsProvider((site: site, roomId: roomId))).value,
       local: followedRecord,
@@ -88,7 +82,16 @@ class PlayMetaBar extends ConsumerWidget {
     final display = displaySpecFor(site);
     final followersText = formatFollowersValue(summary?.followers);
     final startedText = formatStartedAt(payload?.startedAt, isLive: isLive);
+    final restrictionText = restrictionDisplayText(payload?.restriction ?? '');
     final statItems = <Widget>[
+      if (restrictionText != null)
+        _MetaStat(
+          key: const Key('play-meta-stat-restriction'),
+          icon: Icons.lock_outline_rounded,
+          iconColor: tokens.textSecondary,
+          label: '受限',
+          value: restrictionText,
+        ),
       if (display.showFollowers)
         _MetaStat(
           key: const Key('play-meta-stat-followers'),
@@ -162,11 +165,7 @@ class PlayMetaBar extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Wrap(
-                    spacing: AppSpacing.sm,
-                    runSpacing: 2,
-                    children: statItems,
-                  ),
+                  Wrap(spacing: AppSpacing.sm, runSpacing: 2, children: statItems),
                 ],
               ),
             ),
@@ -192,21 +191,16 @@ class PlayMetaBar extends ConsumerWidget {
     RoomStatField.svip => Icons.diamond_outlined,
   };
 
-  Color _metaStatColor(BuildContext context, RoomStatTone tone) =>
-      switch (tone) {
-        RoomStatTone.audience => context.tokens.statAudience,
-        RoomStatTone.vip => context.tokens.statVip,
-        RoomStatTone.svip => context.tokens.statSvip,
-      };
+  Color _metaStatColor(BuildContext context, RoomStatTone tone) => switch (tone) {
+    RoomStatTone.audience => context.tokens.statAudience,
+    RoomStatTone.vip => context.tokens.statVip,
+    RoomStatTone.svip => context.tokens.statSvip,
+  };
 }
 
 /// 圆形头像:无图时以昵称首字兜底(品牌色底 + 主文字色)。
 class _MetaAvatar extends StatelessWidget {
-  const _MetaAvatar({
-    required this.avatar,
-    required this.label,
-    required this.live,
-  });
+  const _MetaAvatar({required this.avatar, required this.label, required this.live});
 
   final String avatar;
   final String label;
@@ -223,10 +217,7 @@ class _MetaAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: const BorderRadius.only(bottomRight: Radius.circular(2)),
         color: tokens.surfaceRaised,
-        border: Border.all(
-          color: live ? tokens.liveBadge : tokens.border,
-          width: 1,
-        ),
+        border: Border.all(color: live ? tokens.liveBadge : tokens.border, width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: avatar.isEmpty
@@ -260,13 +251,7 @@ class _MetaAvatar extends StatelessWidget {
 
 /// 单个统计格:图标 + 「标签 值」。标签用次级色、值用主文字色。
 class _MetaStat extends StatelessWidget {
-  const _MetaStat({
-    super.key,
-    required this.icon,
-    required this.iconColor,
-    required this.label,
-    required this.value,
-  });
+  const _MetaStat({super.key, required this.icon, required this.iconColor, required this.label, required this.value});
 
   final IconData icon;
   final Color iconColor;
@@ -288,11 +273,7 @@ class _MetaStat extends StatelessWidget {
               '$label $value',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: AppFontSize.caption,
-                height: 1.05,
-                color: tokens.textSecondary,
-              ),
+              style: TextStyle(fontSize: AppFontSize.caption, height: 1.05, color: tokens.textSecondary),
             ),
           ),
         ],
@@ -329,9 +310,7 @@ class _MetaActions extends StatelessWidget {
         Expanded(
           child: _MetaActionButton(
             key: const Key('play-side-follow-btn'),
-            icon: followed
-                ? Icons.favorite_rounded
-                : Icons.favorite_border_rounded,
+            icon: followed ? Icons.favorite_rounded : Icons.favorite_border_rounded,
             label: followed ? '已关注' : '关注',
             selected: followed,
             colors: _MetaChipColors(
@@ -349,9 +328,7 @@ class _MetaActions extends StatelessWidget {
         Expanded(
           child: _MetaActionButton(
             key: const Key('play-side-super-follow'),
-            icon: superFollowed
-                ? Icons.star_rounded
-                : Icons.star_border_rounded,
+            icon: superFollowed ? Icons.star_rounded : Icons.star_border_rounded,
             label: superFollowed ? '已超关' : '超关',
             selected: superFollowed,
             colors: _MetaChipColors(
@@ -431,15 +408,11 @@ class _MetaActionButtonState extends State<_MetaActionButton> {
     final tokens = context.tokens;
     final colors = widget.colors;
     final active = widget.selected || _pressed;
-    final background = active
-        ? colors.activeBackground
-        : (_hovered ? colors.hoverBackground : colors.background);
+    final background = active ? colors.activeBackground : (_hovered ? colors.hoverBackground : colors.background);
     final foreground = active ? colors.activeForeground : colors.foreground;
     final glow = _focused
         ? AppFocus.ring(tokens.accent)
-        : (_hovered || _pressed
-              ? AppElevation.accentGlow(colors.border)
-              : null);
+        : (_hovered || _pressed ? AppElevation.accentGlow(colors.border) : null);
     return Tooltip(
       message: widget.label,
       child: AnimatedContainer(

@@ -32,7 +32,6 @@ import 'package:pure_live/core/config/cookie_settings_controller.dart';
 import 'package:pure_live/domains/iptv/presentation/channel_detail_controller.dart';
 import 'package:pure_live/domains/account/data/bilibili_account_service.dart';
 import 'package:pure_live/domains/iptv/data/iptv_settings_controller.dart';
-import 'package:pure_live/domains/iptv/presentation/channel_detail_controller.dart';
 import 'package:pure_live/domains/live/data/favorite_room_controller.dart';
 import 'package:pure_live/domains/live/data/history_controller.dart';
 import 'package:pure_live/domains/live/data/platforms/sites.dart';
@@ -52,15 +51,7 @@ import 'package:pure_live/domains/wallpaper/domain/background_controller.dart';
 import 'package:pure_live/features/about/widgets/release_history_repository.dart';
 import 'package:pure_live/features/backup/backup_controller.dart';
 import 'package:pure_live/domains/live/presentation/playback/states/player_state.dart';
-import 'package:pure_live/domains/live/presentation/playback/widgets/local_interaction/local_interaction_controller.dart';
-import 'package:pure_live/domains/recorder/data/consts/recorder_config.dart';
-import 'package:pure_live/domains/recorder/data/consts/recorder_keys.dart';
-import 'package:pure_live/domains/recorder/data/record_settings_controller.dart';
-import 'package:pure_live/domains/recorder/presentation/pages/recorder/recorder_controller.dart';
-import 'package:pure_live/domains/recorder/data/services/cache_service.dart';
-import 'package:pure_live/domains/recorder/data/services/stream_resolver_service.dart';
 import 'package:pure_live/features/web_dav/web_dav_settings_controller.dart';
-import 'package:pure_live/domains/iptv/data/iptv_settings_controller.dart';
 import 'package:pure_live/shared/platforms/huya/huya_site.dart';
 
 class InitialServices {

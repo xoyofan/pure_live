@@ -84,15 +84,10 @@ class _RoomCardMeta extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = (room.title ?? '').trim().isNotEmpty
         ? room.title!
-        : ((room.anchorName ?? '').trim().isNotEmpty
-              ? room.anchorName!
-              : ' ');
+        : ((room.anchorName ?? '').trim().isNotEmpty ? room.anchorName! : ' ');
     // chip 顺序:按 SiteChipKind 枚举序分桶拼接(桶内保输入序),
     // 实现「游戏/类型 tag 在前,language 在后」;UI 不看平台。
-    final siteChips = [
-      for (final kind in SiteChipKind.values)
-        ...room.chips.where((chip) => chip.kind == kind),
-    ];
+    final siteChips = [for (final kind in SiteChipKind.values) ...room.chips.where((chip) => chip.kind == kind)];
     // promoTag 保留为特色 chip;已单独成 chip(name 相同)时不重复。
     final promoTag = (room.promoTag ?? '').trim();
     final chipWidgets = <Widget>[
@@ -103,13 +98,10 @@ class _RoomCardMeta extends StatelessWidget {
           // 可点判据只看 filterCid(Stage 1 口径);点击进该标签的过滤
           // 房间列表,与分类浮层跳 `/:site/category/:cid` 同一路由。
           onTap: chip.navigable
-              ? () => context.go(
-                  '/${room.site}/category/${Uri.encodeComponent(chip.filterCid!)}',
-                )
+              ? () => context.go('/${room.site}/category/${Uri.encodeComponent(chip.filterCid!)}')
               : null,
         ),
-      if (promoTag.isNotEmpty &&
-          !siteChips.any((chip) => chip.name == promoTag))
+      if (promoTag.isNotEmpty && !siteChips.any((chip) => chip.name == promoTag))
         OutlineChip(key: Key('room-meta-chip-$promoTag'), label: promoTag),
     ];
     return Padding(
@@ -162,6 +154,9 @@ class _Cover extends StatelessWidget {
     // 在播判据只看状态真源 roomState(浏览目录按 4a-i 已赋 live),
     // 不再用统计数字是否存在推断在线。
     final live = room.isLive;
+    // 轮播房(循环播旧视频):可播放但非实时——不落「未开播」遮罩,
+    // 播放入口保持可达(上游 4.x 把 carousel 从 offline 分离,2026-10-03)。
+    final carousel = room.roomState == RoomState.carousel;
     final brand = PlatformBrandCatalog.byId(room.site);
     final identity = (room.identityLabel ?? '').trim();
     final anchor = (room.anchorName ?? '').trim();
@@ -177,8 +172,7 @@ class _Cover extends StatelessWidget {
                 : CachedNetworkImage(
                     imageUrl: room.cover!,
                     fit: BoxFit.cover,
-                    placeholder: (_, _) =>
-                        ColoredBox(color: context.tokens.surfaceRaised),
+                    placeholder: (_, _) => ColoredBox(color: context.tokens.surfaceRaised),
                     errorWidget: (_, _, _) => _CoverPlaceholder(room: room),
                   ),
           ),
@@ -187,11 +181,8 @@ class _Cover extends StatelessWidget {
           // 判据沿用本组件的 `live`(roomState 真源),不另造第二套离线判定。
           // 注:web 的「上次开播 X」文案由 follow 域数据支撑,网格数据源
           // 无该字段,离线一律显示「未开播」。
-          if (!live && !replay)
-            const Positioned.fill(
-              key: Key('room-card-offline'),
-              child: CoverOfflineOverlay(),
-            ),
+          if (!live && !replay && !carousel)
+            const Positioned.fill(key: Key('room-card-offline'), child: CoverOfflineOverlay()),
           // 左上:分类实底角标(保持现状,不改线框、不挪位)。
           Positioned(
             left: 0,
@@ -229,11 +220,7 @@ class _Cover extends StatelessWidget {
                 corner: CoverCorner.bottomLeft,
                 background: brand?.color,
                 foreground: brand?.chipForeground,
-                child: Text(
-                  anchor,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                child: Text(anchor, maxLines: 1, overflow: TextOverflow.ellipsis),
               ),
             ),
           // 右下:热度(未开播不显示)。
@@ -259,10 +246,7 @@ class _Cover extends StatelessWidget {
                 background: context.tokens.brandBright,
                 child: Text(
                   '轮播',
-                  style: context.textCaption.copyWith(
-                    color: context.tokens.surfaceSoft,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: context.textCaption.copyWith(color: context.tokens.surfaceSoft, fontWeight: FontWeight.w700),
                 ),
               ),
             ),
@@ -284,12 +268,7 @@ class _CoverPlaceholder extends StatelessWidget {
     final category = room.category ?? '';
     return ColoredBox(
       color: context.tokens.surfaceRaised,
-      child: Center(
-        child: Text(
-          category.isEmpty ? room.site : category,
-          style: context.textSecondary,
-        ),
-      ),
+      child: Center(child: Text(category.isEmpty ? room.site : category, style: context.textSecondary)),
     );
   }
 }

@@ -470,6 +470,19 @@
 - 验证:新增 opt-in 探针 `tool/probes/proxy_media_headers_probe_test.dart`(resolver 头部契约 → 代理转发 → 真实 wansu 流实拉 FLV magic 字节)全绿;`resolve_room_diag` 17live 全链路(搜索→详情→四档→2线)绿;analyze 与 HEAD 基线持平(67,零新增);受影响单测(purelive_stats_refresh/soop_category_zh_bridge)21/21。另修 `resolve_room_diag_probe_test.dart` 缺 `LiveRoom` 导入(布局重构遗留编译坏点)
 
 
+### 迭代 34(2026-10-03)✅ 上游新语义扩充到 zishu UI——桥接层全类型弹幕+受限口径+轮播房+开播时间直读(批次一+二)
+
+用户指令"处理"(接迭代33 后的 UI 语义差距分析)。缺口集中在 purelive 桥(渲染层本已就绪):zishu 契约本有 emoji 分段/徽章/礼物枚举,桥却只放行 chat。
+
+1. **live_parser 契约扩展**:`DanmakuMessageType` 追加 superChat/notice/retraction;新增 `DanmakuRetraction`(按观众/按消息/全部三态)+`DanmakuMessage.retraction`;`RoomState` 追加 carousel;`RoomPayload` 新增 `restriction`(LiveRestriction 枚举名,空串=无限制)
+2. **桥全类型透传**(`purelive_backend`):chat/gift/superChat/notice/retraction 五类放行(此前 bilibili 五类/斗鱼礼物/虎牙下播通知全被丢),online 维持丢弃;新增顶层纯函数 `pureliveDanmakuSegmentsFromEmotes`(平台表情编码→富文本段,重叠取先现)+`pureliveDanmakuRetractionFrom`+`restrictionDisplayText`(九类中文文案)
+3. **开播时间直读**:上游 8 家直填 LiveRoom.startedAt 优先,斗鱼遗留 data['startedAtMs'] 兜底——播放页元信息条 B站/抖音/twitch/acfun/seventeen/showroom/inke/cc 不再显示"—"
+4. **撤回语义**(`danmaku_session_provider`):撤回指令不入列表,命中项按消息 id/观众移除(全部=清空);**overlay 护栏**:只飞 chat(礼物/公告走侧栏,上游同语义)
+5. **轮播房放行**:room_card/play_room_grid 不再给 carousel 落「未开播」遮罩(可播放,上游 4.x 同口径);B站轮播房从"显示未开播且不可进"变为可进可播
+6. **播放页受限说明**:play_meta_bar 新增「受限」统计格(九类文案,不伪造——空串不渲染);merge 遗留 bootstrap 重复导入顺手清理(13 处)
+
+- 验证:新增 `test/purelive_semantics_bridge_test.dart` 12 用例(分段拼接/多现/重叠/防御,撤回三态+非目标安全,carousel/restriction/startedAt 直读优先/遗留兜底,九类文案)全过;**全量 188/188 全过**(基线 176+12);analyze 0 error。**遗留批次三**(外部打开/悬浮窗几何/海量模式/轮播起播 seek)待用户逐项立项
+
 ### 迭代 33(2026-10-03)✅ 上游合并落地:liuchuancong/pure_live b087ee90——分层架构波② + "摘取 4.x"平台大波 + 弹幕大功能
 
 用户指令"先合并上游的下来"。入站 `276fae8a..b087ee90` = **127 提交 / 621 文件(+13888/−6763)**;审查文档 `docs/UPSTREAM_AUDIT_b087ee90.md`(全量 SHA+文件逐字在案,门禁 `audit_document_valid=true`/`violations=[]`;入站尾随空格按 276fae8a 先例记录放行)。合并三原则:解析层跟上游、UI 保 fork zishu、版本/构建/firebase 边界不动。

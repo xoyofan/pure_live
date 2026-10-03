@@ -16,7 +16,12 @@ import 'room_record.dart';
 /// 直播**:宿主在播判据仍是「online 非空」,replay 的 [RoomSummary.online]
 /// 契约同离线一样为空串(见 [RoomSummary.roomState])。
 /// 枚举按 name 序列化,`replay` 追加在末尾不影响旧 JSON 的读写。
-enum RoomState { live, offline, notFound, replay }
+/// 房间状态。
+///
+/// `carousel` 为 2026-10-03 上游合并轮追加:平台明确的"轮播"(主播不在,
+/// 房间循环播放旧视频,如 B 站 live_status 2)——可播放但非实时直播,
+/// 与 pure_live LiveStatus.carousel 对齐(枚举按名比较,追加安全)。
+enum RoomState { live, offline, notFound, replay, carousel }
 
 /// 房间统计列对应的稳定数据字段。
 ///
@@ -165,6 +170,7 @@ class RoomPayload {
     this.cateNo = '',
     this.error,
     this.startedAt,
+    this.restriction = '',
   });
 
   final String site;
@@ -197,6 +203,13 @@ class RoomPayload {
   /// 斗鱼取 betard 的 `show_time`;其余平台暂未提供,保持 null,
   /// 由 UI 侧以占位符呈现。**不得伪造**:拿不到就留空。
   final DateTime? startedAt;
+
+  /// 受限直播口径(pure_live LiveRestriction 的枚举名):
+  /// needsLogin/paid/subscribersOnly/private/appOnly/regionBlocked/
+  /// password/adult/unplayable。空串 = 无限制或平台未标注。
+  /// "受限=仍在播,只是这个客户端看不到"——列表仍显示在播,
+  /// 播放页据此说明原因(上游 4.x 统一口径)。
+  final String restriction;
 
   bool get isLive => roomState == RoomState.live;
 
@@ -498,8 +511,7 @@ class RoomSummary {
     diamondFans: json['diamondFans']?.toString() ?? '',
     chips: [
       for (final item in ((json['chips'] as List?) ?? const []))
-        if (item is Map)
-          SiteChip.fromJson(Map<String, dynamic>.from(item)),
+        if (item is Map) SiteChip.fromJson(Map<String, dynamic>.from(item)),
     ],
   );
 }
@@ -685,7 +697,20 @@ class SiteCapabilities {
 }
 
 /// 弹幕消息类别:chat 为普通弹幕,其余按平台消息逐步接入(P9)。
-enum DanmakuMessageType { chat, gift, enter, welcome, other }
+/// 弹幕消息形态。
+///
+/// `superChat`/`notice`/`retraction` 为 2026-10-03 上游合并轮追加
+/// (bilibili 醒目留言/平台公告/撤回;与 pure_live LiveMessageType 对齐)。
+enum DanmakuMessageType {
+  chat,
+  gift,
+  enter,
+  welcome,
+  other,
+  superChat,
+  notice,
+  retraction,
+}
 
 /// 弹幕富文本段类型:文本 / 表情图。
 enum DanmakuSegmentType { text, emoji }
@@ -815,8 +840,11 @@ class DanmakuSegment {
 
   /// 表情图段:[text] 为 `[表情名]`,[url] 为表情图 CDN(协议未携带时为空,
   /// UI 回退渲染 [text] 原文,web DanmakuRichText 同语义)。
-  const DanmakuSegment.emoji({required this.text, this.url = '', this.name = ''})
-    : type = DanmakuSegmentType.emoji;
+  const DanmakuSegment.emoji({
+    required this.text,
+    this.url = '',
+    this.name = '',
+  }) : type = DanmakuSegmentType.emoji;
 
   final DanmakuSegmentType type;
   final String text;
@@ -849,6 +877,28 @@ class DanmakuSegment {
 enum DanmakuSessionState { connecting, connected, disconnected }
 
 /// 一条归一后的弹幕消息。
+/// 一条撤回指令的目标(对齐 pure_live LiveRetraction):
+/// - [userId] 非空:撤回该观众的消息;
+/// - [messageId] 非空:撤回指定消息;
+/// - [all]:撤回全部(平台清屏)。
+class DanmakuRetraction {
+  const DanmakuRetraction({
+    this.userId = '',
+    this.messageId = '',
+    this.all = false,
+  });
+
+  const DanmakuRetraction.user(this.userId) : messageId = '', all = false;
+
+  const DanmakuRetraction.message(this.messageId) : userId = '', all = false;
+
+  const DanmakuRetraction.all() : userId = '', messageId = '', all = true;
+
+  final String userId;
+  final String messageId;
+  final bool all;
+}
+
 class DanmakuMessage {
   const DanmakuMessage({
     required this.type,
@@ -883,6 +933,7 @@ class DanmakuMessage {
     this.sentAt,
     this.rawType = '',
     this.segments = const [],
+    this.retraction,
   });
 
   final DanmakuMessageType type;
@@ -968,4 +1019,7 @@ class DanmakuMessage {
   /// - huya:MessageNotice 当前协议(web 真源 huyaJce.ts parseMessageNotice
   ///   391-435 行)无表情段,正文括号表情保持纯文本,segments 恒空。
   final List<DanmakuSegment> segments;
+
+  /// [type]==[DanmakuMessageType.retraction] 时的撤回目标;其余消息为 null。
+  final DanmakuRetraction? retraction;
 }

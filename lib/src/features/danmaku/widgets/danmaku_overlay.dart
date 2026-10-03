@@ -7,7 +7,7 @@ import 'package:flutter/scheduler.dart' show Ticker;
 
 import 'dart:ui' as ui;
 
-import 'package:live_parser/live_parser.dart' show DanmakuMessage, DanmakuSegment;
+import 'package:live_parser/live_parser.dart' show DanmakuMessage, DanmakuMessageType, DanmakuSegment;
 
 import '../domain/danmaku_settings.dart';
 import '../domain/danmaku_style.dart';
@@ -158,7 +158,10 @@ class _DanmakuOverlayState extends State<DanmakuOverlay> with SingleTickerProvid
   void _onMessage(DanmakuMessage message) {
     // 总开关关闭:弹幕直接丢弃(屏已清空,不再积压,重开不从旧弹幕洪泛)。
     if (!widget.visible) return;
-    // 空正文跳过(礼物/进场等消息可能无文本)。
+    // 只飞聊天:礼物/公告/醒目留言走侧栏列表,撤回是移除指令,
+    // 上屏的从来只有 chat(2026-10-03 桥全类型透传后的护栏)。
+    if (message.type != DanmakuMessageType.chat) return;
+    // 空正文跳过(空聊天下一条都到不了这)。
     if (message.text.isEmpty) return;
     // 未挂载或 track 未就绪(首帧前)先丢弃,避免用错宽度做分配。
     if (!mounted || _allocator == null) return;

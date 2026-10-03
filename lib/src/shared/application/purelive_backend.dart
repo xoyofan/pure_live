@@ -94,12 +94,76 @@ Future<LiveInputRecipe?> resolvePureLiveOwnedInputRecipe(
   return pureLiveOwnedRecipeOf(resolution);
 }
 
+/// 受限直播口径的展示文案(pure_live LiveRestriction 枚举名 → 中文)。
+/// "受限=仍在播,只是这个客户端看不到"(上游 4.x 统一口径);
+/// 空串/未知名返回 null(不渲染,不伪造)。
+String? restrictionDisplayText(String restriction) => switch (restriction) {
+  'needsLogin' => '需要登录',
+  'paid' => '付费直播',
+  'subscribersOnly' => '订阅可见',
+  'private' => '私密直播',
+  'appOnly' => '仅App内可看',
+  'regionBlocked' => '地区限制',
+  'password' => '密码房间',
+  'adult' => '成人内容',
+  'unplayable' => '平台未提供播放',
+  _ => null,
+};
+
+/// pure_live 撤回指令 → zishu 契约目标;非撤回消息返回 null。
+DanmakuRetraction? pureliveDanmakuRetractionFrom(LiveMessage message) {
+  if (message.type != LiveMessageType.retraction) return null;
+  final target = message.data;
+  if (target is! LiveRetraction) return null;
+  if (target.all) return const DanmakuRetraction.all();
+  final messageId = target.messageId ?? '';
+  if (messageId.isNotEmpty) return DanmakuRetraction.message(messageId);
+  return DanmakuRetraction.user(target.userId ?? '');
+}
+
+/// 平台表情编码 → 富文本段(文本段+表情图段按序)。
+///
+/// zishu 契约 `DanmakuSegment.emoji`(text=[编码], url=图片)由渲染层画图;
+/// 编码在正文中不出现/无 url 的条目跳过。重叠匹配取先出现者,扫描从左到右。
+List<DanmakuSegment> pureliveDanmakuSegmentsFromEmotes(String text, List<LiveEmote> emotes) {
+  if (emotes.isEmpty || text.isEmpty) return const <DanmakuSegment>[];
+  final matches = <({int start, int end, LiveEmote emote})>[];
+  for (final emote in emotes) {
+    if (emote.code.isEmpty || emote.url.isEmpty) continue;
+    var start = text.indexOf(emote.code);
+    while (start != -1) {
+      matches.add((start: start, end: start + emote.code.length, emote: emote));
+      start = text.indexOf(emote.code, start + emote.code.length);
+    }
+  }
+  if (matches.isEmpty) return const <DanmakuSegment>[];
+  matches.sort((a, b) => a.start.compareTo(b.start));
+  final segments = <DanmakuSegment>[];
+  var cursor = 0;
+  for (final m in matches) {
+    if (m.start < cursor) continue; // 与已消费区间重叠,跳过
+    if (m.start > cursor) {
+      segments.add(DanmakuSegment.text(text.substring(cursor, m.start)));
+    }
+    segments.add(DanmakuSegment.emoji(text: m.emote.code, url: m.emote.url, name: m.emote.code));
+    cursor = m.end;
+  }
+  if (cursor < text.length) {
+    segments.add(DanmakuSegment.text(text.substring(cursor)));
+  }
+  return segments;
+}
+
 RoomState _stateOf(LiveRoom room) {
   switch (room.liveStatus) {
     case LiveStatus.live:
       return RoomState.live;
     case LiveStatus.replay:
       return RoomState.replay;
+    case LiveStatus.carousel:
+      // 轮播房(主播不在,循环播旧视频):可播放但非实时直播,
+      // 不再压成 offline——上游 4.x 把它从 offline 分离(2026-10-03)。
+      return RoomState.carousel;
     default:
       return RoomState.offline;
   }
@@ -150,6 +214,12 @@ RoomPayload pureliveRoomToPayload(
   final data = room.data;
   final cateNo = data is Map ? (data['cateNo']?.toString().trim() ?? '') : '';
   final startedAtMs = data is Map ? int.tryParse(data['startedAtMs']?.toString() ?? '') : null;
+  // 开播时间:上游 8 家解析直填 LiveRoom.startedAt(bilibili/douyin/twitch/
+  // acfun/seventeen/showroom/inke/cc),优先直读;斗鱼遗留 startedAtMs 兜底。
+  final directStartedAt = room.startedAt;
+  final startedAt =
+      directStartedAt ??
+      (startedAtMs != null && startedAtMs > 0 ? DateTime.fromMillisecondsSinceEpoch(startedAtMs) : null);
   final bridgedCid = switch (data) {
     Map m => (m['cid']?.toString().trim() ?? ''),
     HuyaUrlDataModel h => h.cid.trim(),
@@ -167,7 +237,9 @@ RoomPayload pureliveRoomToPayload(
     category: room.area ?? '',
     cid: cid,
     cateNo: cateNo,
-    startedAt: startedAtMs != null && startedAtMs > 0 ? DateTime.fromMillisecondsSinceEpoch(startedAtMs) : null,
+    startedAt: startedAt,
+    // 受限直播口径(上游 4.x):枚举名透传,空串=无限制。
+    restriction: room.effectiveRestriction == LiveRestriction.none ? '' : room.effectiveRestriction.name,
     roomState: _stateOf(room),
     streams: streams,
     availableQualities: availableQualities,
@@ -417,17 +489,31 @@ class _PureLiveDanmakuSession implements DanmakuSession {
       final args = room.danmakuData;
       final danmaku = coreSite.getDanmaku();
       danmaku.onMessage = (message) {
-        if (message.type == LiveMessageType.chat) {
-          _messages.add(
-            DanmakuMessage(
-              type: DanmakuMessageType.chat,
-              roomId: roomId,
-              userName: message.userName,
-              userId: message.userId,
-              text: message.message,
-            ),
-          );
-        }
+        // 全类型透传(2026-10-03 上游合并轮):此前只放行 chat,
+        // bilibili 的礼物/公告/撤回/醒目留言、斗鱼礼物、虎牙下播通知
+        // 全在桥上被丢弃。在线人数无 zishu 消费面,维持丢弃。
+        final DanmakuMessageType? type = switch (message.type) {
+          LiveMessageType.chat => DanmakuMessageType.chat,
+          LiveMessageType.gift => DanmakuMessageType.gift,
+          LiveMessageType.superChat => DanmakuMessageType.superChat,
+          LiveMessageType.notice => DanmakuMessageType.notice,
+          LiveMessageType.retraction => DanmakuMessageType.retraction,
+          LiveMessageType.online => null,
+        };
+        if (type == null) return;
+        _messages.add(
+          DanmakuMessage(
+            type: type,
+            roomId: roomId,
+            userName: message.userName,
+            userId: message.userId,
+            text: message.message,
+            id: message.messageId,
+            sentAt: message.sentAt,
+            segments: pureliveDanmakuSegmentsFromEmotes(message.message, message.emotes),
+            retraction: pureliveDanmakuRetractionFrom(message),
+          ),
+        );
       };
       danmaku.onReady = () {
         _states.add(DanmakuSessionState.connected);

@@ -45,18 +45,12 @@ const int kChatFeedMax = 200;
 /// 也与「fixture 阶段不依赖公网」的项目约定一致。
 ///
 /// 单测注入 fake connector:override 本 provider 即可绕过该开关。
-final danmakuRegistryProvider = Provider<SiteRegistry>(
-  (ref) => useRealParser ? buildSiteRegistry() : SiteRegistry(),
-);
+final danmakuRegistryProvider = Provider<SiteRegistry>((ref) => useRealParser ? buildSiteRegistry() : SiteRegistry());
 
 /// 弹幕消息的保序环形追加:FIFO,超出 [max] 丢弃最旧者。
 ///
 /// 纯函数,便于单测确定性验证上限行为。
-List<DanmakuMessage> appendDanmakuFeed(
-  List<DanmakuMessage> list,
-  DanmakuMessage message, {
-  int max = kChatFeedMax,
-}) {
+List<DanmakuMessage> appendDanmakuFeed(List<DanmakuMessage> list, DanmakuMessage message, {int max = kChatFeedMax}) {
   final next = List<DanmakuMessage>.of(list)..add(message);
   if (next.length > max) {
     next.removeRange(0, next.length - max);
@@ -84,11 +78,7 @@ class DanmakuChatState {
   /// 是否处于明确空态(站点不支持弹幕)。
   bool get isUnsupported => !supported;
 
-  DanmakuChatState copyWith({
-    List<DanmakuMessage>? messages,
-    DanmakuSessionState? connection,
-    bool? supported,
-  }) {
+  DanmakuChatState copyWith({List<DanmakuMessage>? messages, DanmakuSessionState? connection, bool? supported}) {
     return DanmakuChatState(
       messages: messages ?? this.messages,
       connection: connection ?? this.connection,
@@ -142,11 +132,7 @@ class DanmakuSessionController extends Notifier<DanmakuChatState> {
     }
 
     // 连接必须推迟到 build() 之后:flutter 约束见文件头。
-    unawaited(
-      Future<void>.microtask(
-        () => _connect(myGeneration, site, roomId, connector),
-      ),
-    );
+    unawaited(Future<void>.microtask(() => _connect(myGeneration, site, roomId, connector)));
 
     return const DanmakuChatState(
       messages: <DanmakuMessage>[],
@@ -167,27 +153,18 @@ class DanmakuSessionController extends Notifier<DanmakuChatState> {
     await session?.close();
   }
 
-  Future<void> _connect(
-    int myGeneration,
-    String site,
-    String roomId,
-    DanmakuConnector connector,
-  ) async {
+  Future<void> _connect(int myGeneration, String site, String roomId, DanmakuConnector connector) async {
     // build 后可能已切房/销毁(onDispose 自增过 generation),直接放弃。
     if (myGeneration != _generation) return;
 
     final DanmakuSession session;
     try {
-      session = await connector.connect(
-        DanmakuSessionRequest(site: site, roomId: roomId),
-      );
+      session = await connector.connect(DanmakuSessionRequest(site: site, roomId: roomId));
     } catch (_) {
       // 连接失败:直接落「未连接」,由侧栏「刷新」手动重连(用户口径
       // 2026-09-20 去掉自动重连 —— twitch 等实例不可达时反复重连是噪音)。
       if (myGeneration == _generation) {
-        state = state.copyWith(
-          connection: DanmakuSessionState.disconnected,
-        );
+        state = state.copyWith(connection: DanmakuSessionState.disconnected);
       }
       return;
     }
@@ -199,9 +176,7 @@ class DanmakuSessionController extends Notifier<DanmakuChatState> {
     }
 
     _session = session;
-    _messageSub = session.messages.listen(
-      (message) => _onMessage(myGeneration, message),
-    );
+    _messageSub = session.messages.listen((message) => _onMessage(myGeneration, message));
     _stateSub = session.states.listen((connectionState) {
       if (myGeneration != _generation) return;
       if (connectionState == DanmakuSessionState.disconnected) {
@@ -209,9 +184,7 @@ class DanmakuSessionController extends Notifier<DanmakuChatState> {
         // 见 live_parser danmaku onDone/onError → disconnected):
         // 直接落「未连接」,交侧栏「刷新」手动重连(用户口径 2026-09-20
         // 去掉自动重连,twitch 等不可达实例反复重连是噪音)。
-        state = state.copyWith(
-          connection: DanmakuSessionState.disconnected,
-        );
+        state = state.copyWith(connection: DanmakuSessionState.disconnected);
         return;
       }
       state = state.copyWith(connection: connectionState);
@@ -224,9 +197,25 @@ class DanmakuSessionController extends Notifier<DanmakuChatState> {
   void _onMessage(int generation, DanmakuMessage message) {
     // fence:旧房间迟到的消息直接丢弃。
     if (generation != _generation) return;
-    state = state.copyWith(
-      messages: appendDanmakuFeed(state.messages, message),
-    );
+    // 撤回(2026-10-03 上游合并轮):不是一条要显示的消息,而是把命中项
+    // 从列表移除(按消息 id/按观众/全部);撤回指令本身不入列表。
+    if (message.type == DanmakuMessageType.retraction) {
+      final target = message.retraction;
+      if (target == null) return;
+      final next = state.messages
+          .where(
+            (m) =>
+                !(target.all ||
+                    (target.messageId.isNotEmpty && m.id.isNotEmpty && m.id == target.messageId) ||
+                    (target.userId.isNotEmpty && m.userId.isNotEmpty && m.userId == target.userId)),
+          )
+          .toList(growable: false);
+      if (next.length != state.messages.length) {
+        state = state.copyWith(messages: next);
+      }
+      return;
+    }
+    state = state.copyWith(messages: appendDanmakuFeed(state.messages, message));
   }
 
   /// 重连:销毁当前会话并重新走一次 connect。
@@ -255,6 +244,4 @@ class DanmakuSessionController extends Notifier<DanmakuChatState> {
 /// **必须 autoDispose**(理由见文件头/类注释):`ref.onDispose` 只在 provider
 /// 被销毁时触发,非 autoDispose 下切房不会销毁,旧连接泄漏且 fence 失效。
 final danmakuSessionProvider = NotifierProvider.autoDispose
-    .family<DanmakuSessionController, DanmakuChatState, DanmakuSessionParams>(
-      DanmakuSessionController.new,
-    );
+    .family<DanmakuSessionController, DanmakuChatState, DanmakuSessionParams>(DanmakuSessionController.new);
