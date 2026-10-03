@@ -9,11 +9,9 @@ import 'package:go_router/go_router.dart';
 import 'package:live_parser/live_parser.dart' show DanmakuMessage, RoomPayload;
 
 import '../../../platforms/common/playback/idle_releasing_live_player.dart';
-import '../../../platforms/common/playback/live_player.dart'
-    show PlayerSnapshot, PlaybackNotice, RecoveryCancellable;
+import '../../../platforms/common/playback/live_player.dart' show PlayerSnapshot, PlaybackNotice, RecoveryCancellable;
 import '../../../platforms/common/playback/playback_log.dart';
-import '../../../platforms/common/playback/playback_retry.dart'
-    show retryProgressLabel;
+import '../../../platforms/common/playback/playback_retry.dart' show retryProgressLabel;
 import '../../../shared/domain/category_display.dart';
 import '../../../shared/presentation/design_tokens.dart';
 import '../../../shared/presentation/category_colors.dart';
@@ -25,8 +23,7 @@ import '../../../shared/application/translation/translation_provider.dart';
 import '../../browse/application/my_category_provider.dart';
 import '../../../shared/presentation/zishu_tokens.dart';
 import '../../../shared/presentation/platform_brands.dart';
-import '../../danmaku/application/danmaku_session_provider.dart'
-    show DanmakuChatState, danmakuSessionProvider;
+import '../../danmaku/application/danmaku_session_provider.dart' show DanmakuChatState, danmakuSessionProvider;
 import '../../danmaku/application/danmaku_settings_provider.dart';
 import '../../danmaku/application/danmaku_tail_forwarder.dart';
 import '../../danmaku/widgets/danmaku_overlay.dart';
@@ -35,8 +32,7 @@ import '../application/play_screen_provider.dart';
 import '../application/sleep_timer_provider.dart';
 import '../application/speech_caption_provider.dart';
 import '../../follow/application/settings_provider.dart';
-import '../widgets/caption_overlay.dart'
-    show CaptionDownloadAction, CaptionDownloadDialog, CaptionOverlay;
+import '../widgets/caption_overlay.dart' show CaptionDownloadAction, CaptionDownloadDialog, CaptionOverlay;
 import '../widgets/pip_surface.dart';
 import '../widgets/play_immersive_side_sheet.dart';
 import '../widgets/play_side_panel.dart';
@@ -133,10 +129,7 @@ class _PlayViewState extends ConsumerState<PlayView> {
     _immersiveSideOpen = false;
     _controlsVisible = true;
     _sidePanelVisible = true;
-    PlaybackLog.write('play_view_params', {
-      'site': widget.site,
-      'room': widget.roomId,
-    });
+    PlaybackLog.write('play_view_params', {'site': widget.site, 'room': widget.roomId});
   }
 
   @override
@@ -169,17 +162,12 @@ class _PlayViewState extends ConsumerState<PlayView> {
       router.pop();
       return;
     }
-    router.go(
-      PlatformBrandCatalog.supportsBrowse(widget.site)
-          ? '/${widget.site}'
-          : '/all',
-    );
+    router.go(PlatformBrandCatalog.supportsBrowse(widget.site) ? '/${widget.site}' : '/all');
   }
 
   /// 播放/暂停切换:与点击视频帧共用同一条通路(快照驱动)。
   void _togglePlayback() {
-    final snapshot =
-        ref.read(playerSnapshotProvider).value ?? const PlayerSnapshot();
+    final snapshot = ref.read(playerSnapshotProvider).value ?? const PlayerSnapshot();
     final player = ref.read(playerProvider);
     if (snapshot.playing) {
       player.pause();
@@ -189,8 +177,7 @@ class _PlayViewState extends ConsumerState<PlayView> {
   }
 
   void _toggleMuted() {
-    final snapshot =
-        ref.read(playerSnapshotProvider).value ?? const PlayerSnapshot();
+    final snapshot = ref.read(playerSnapshotProvider).value ?? const PlayerSnapshot();
     ref.read(playerProvider).setMuted(!snapshot.muted);
   }
 
@@ -220,8 +207,7 @@ class _PlayViewState extends ConsumerState<PlayView> {
     if (!mounted) return;
     final action = await showDialog<CaptionDownloadAction>(
       context: context,
-      builder: (context) =>
-          CaptionDownloadDialog(language: language, info: info),
+      builder: (context) => CaptionDownloadDialog(language: language, info: info),
     );
     if (!mounted || action == null) return;
     if (action == CaptionDownloadAction.download) {
@@ -244,8 +230,7 @@ class _PlayViewState extends ConsumerState<PlayView> {
   /// 则必须留在焦点树内,否则焦点在聊天输入框时打字会被抢(参考实现同样只把
   /// Escape 放进 addHandler,见 pure_live video_keyboard.dart:31-62)。
   bool _onGlobalKey(KeyEvent event) {
-    if (event is! KeyDownEvent ||
-        event.logicalKey != LogicalKeyboardKey.escape) {
+    if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.escape) {
       return false;
     }
     // 常规态放行:不打扰输入框与路由自身的 Esc 语义。
@@ -357,8 +342,7 @@ class _PlayViewState extends ConsumerState<PlayView> {
   /// 不再写死「播放中」)。响应性由 build 内对 playerSnapshotProvider 的
   /// watch 提供;sheet 回调等非 build 路径取当前值即可。
   PlaybackStatus get _sidePanelPlaybackStatus {
-    final snapshot =
-        ref.read(playerSnapshotProvider).value ?? const PlayerSnapshot();
+    final snapshot = ref.read(playerSnapshotProvider).value ?? const PlayerSnapshot();
     return PlaybackStatus(playing: snapshot.playing, muted: snapshot.muted);
   }
 
@@ -372,9 +356,7 @@ class _PlayViewState extends ConsumerState<PlayView> {
         height: MediaQuery.sizeOf(sheetContext).height * 0.72,
         decoration: BoxDecoration(
           color: context.tokens.surface,
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(AppRadius.lg),
-          ),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
         ),
         child: PlaySidePanel(
           site: widget.site,
@@ -390,42 +372,26 @@ class _PlayViewState extends ConsumerState<PlayView> {
   Widget build(BuildContext context) {
     // 注册 F5 刷新(builder 层快捷键经此落地,注销随本 State dispose):
     // 与控制条「刷新视频」同通路(retry —— payload 就位时轻量重开当前线路)。
-    GlobalActions.register(
-      GlobalActionNames.refreshPlay,
-      owner: this,
-      action: _refreshStream,
-    );
+    GlobalActions.register(GlobalActionNames.refreshPlay, owner: this, action: _refreshStream);
     // 订阅播放快照:播放/暂停/静音变化实时刷新侧栏状态条;同时取值驱动
     // 舞台弹幕叠加层停绘(暂停时不为弹幕层持续重绘)。
     final playerSnapshot = ref.watch(playerSnapshotProvider).value;
     final async = ref.watch(playControllerProvider(_params));
     final play = async.value;
     // 设置项「弹幕」总开关:关闭时控制条的弹幕按钮整体隐藏。
-    final danmakuEnabled = ref.watch(
-      settingsProvider.select((settings) => settings.danmakuEnabled),
-    );
-    final speechCaptionEnabled = ref.watch(
-      settingsProvider.select((settings) => settings.speechCaptionEnabled),
-    );
+    final danmakuEnabled = ref.watch(settingsProvider.select((settings) => settings.danmakuEnabled));
+    final speechCaptionEnabled = ref.watch(settingsProvider.select((settings) => settings.speechCaptionEnabled));
     // 舞台弹幕叠加层显隐:控制条按钮/后续快捷键切换(不进设置持久化)。
     final showDanmaku = play?.showDanmaku ?? true;
     // 睡眠定时:app 级 provider(不随播放页 autoDispose),这里只读剩余时间
     // 与到点次数。
     final sleepTimer = ref.watch(sleepTimerProvider);
-    ref.listen<int>(sleepTimerProvider.select((state) => state.firedCount), (
-      previous,
-      next,
-    ) {
+    ref.listen<int>(sleepTimerProvider.select((state) => state.firedCount), (previous, next) {
       // 到点即停播(由 controller 完成),这里只负责告知用户"是被定时停的"。
       if (previous == null || next <= previous) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(
-            content: Text('睡眠定时已到，已停止播放'),
-            duration: Duration(seconds: 3),
-          ),
-        );
+        ..showSnackBar(const SnackBar(content: Text('睡眠定时已到，已停止播放'), duration: Duration(seconds: 3)));
     });
     final brand = PlatformBrandCatalog.byId(widget.site);
     final size = MediaQuery.sizeOf(context);
@@ -434,8 +400,7 @@ class _PlayViewState extends ConsumerState<PlayView> {
     // 呈现态切换时同步控制条可见性:进入隐藏 chrome 的态立即显示并起 3s 倒计时;
     // 回到常规态则恒显。用 listen 而非在 build 里做副作用。
     ref.listen<PlayScreenState>(playScreenProvider, (previous, next) {
-      if (previous?.hidesChrome == next.hidesChrome &&
-          previous?.pip == next.pip) {
+      if (previous?.hidesChrome == next.hidesChrome && previous?.pip == next.pip) {
         return;
       }
       _hoveringControls = false;
@@ -451,17 +416,13 @@ class _PlayViewState extends ConsumerState<PlayView> {
     // - 横屏手机(宽>=768 且高<600):侧栏不再以 328px 常驻右栏存在,
     //   经 play-side-panel-toggle 以底部 sheet 滑出(W12 横屏验收口径)。
     final stackSidePanel = size.width < AppBreakpoints.phone;
-    final isLandscapePhone =
-        size.width >= AppBreakpoints.phone && size.height < 600;
+    final isLandscapePhone = size.width >= AppBreakpoints.phone && size.height < 600;
     final showPanel = _sidePanelVisible && !isLandscapePhone;
     // 侧栏宽度按视口分档(268/328/392/425),对齐 main.css:228-244。
     final sidePanelWidth = AppSpacing.playSidePanelWidthFor(size.width);
     // 舞台圆角(web `.play-frame` 12px,≤640 为 0;沉浸铺满态不裁)。
-    final stageRadius = BorderRadius.circular(
-      size.width < AppBreakpoints.compact ? 0 : 12,
-    );
-    Widget stageInFrame(Widget child) =>
-        ClipRRect(borderRadius: stageRadius, child: child);
+    final stageRadius = BorderRadius.circular(size.width < AppBreakpoints.compact ? 0 : 12);
+    Widget stageInFrame(Widget child) => ClipRRect(borderRadius: stageRadius, child: child);
 
     // 舞台整块挂 MouseRegion:鼠标在视频任意位置移动都唤醒控制条(隐藏
     // chrome 态下重新排程自动隐藏),这是"淡出后移动鼠标即唤出"的入口。
@@ -488,8 +449,7 @@ class _PlayViewState extends ConsumerState<PlayView> {
             _VideoStage(
               async: async,
               showDanmaku: showDanmaku,
-              onRetry: () =>
-                  ref.read(playControllerProvider(_params).notifier).retry(),
+              onRetry: () => ref.read(playControllerProvider(_params).notifier).retry(),
               // 卡顿浮层 X:让播放器停掉重试/恢复闩锁,不换线路。
               // 能力探测:测试替身等不支持取消的实现静默跳过。
               // if-case 绑定而非 `is` 提升:RecoveryCancellable 与 LivePlayer
@@ -569,13 +529,8 @@ class _PlayViewState extends ConsumerState<PlayView> {
                               danmakuEnabled: danmakuEnabled,
                               speechCaptionEnabled: speechCaptionEnabled,
                               screenMode: screen.mode,
-                              onDanmakuToggle: () => ref
-                                  .read(
-                                    playControllerProvider(_params).notifier,
-                                  )
-                                  .toggleDanmaku(),
-                              onCaptionToggle: () =>
-                                  unawaited(_toggleSpeechCaption()),
+                              onDanmakuToggle: () => ref.read(playControllerProvider(_params).notifier).toggleDanmaku(),
+                              onCaptionToggle: () => unawaited(_toggleSpeechCaption()),
                               onToggleWidescreen: _toggleWidescreen,
                               onToggleFullscreen: _toggleFullscreen,
                               onTogglePip: _togglePip,
@@ -606,10 +561,7 @@ class _PlayViewState extends ConsumerState<PlayView> {
       // 与舞台同一 Stack;payload 未就绪时无内容可展示,不挂载(web sideReady)。
       final immersivePanelWidth = size.width < AppBreakpoints.phone
           // 手机:面板宽不超过视口 88%(web `min(320px, 88vw)`)。
-          ? math.min(
-              AppSpacing.playSidePanelWidthFor(size.width),
-              size.width * 0.88,
-            )
+          ? math.min(AppSpacing.playSidePanelWidthFor(size.width), size.width * 0.88)
           : AppSpacing.playSidePanelWidthFor(size.width);
       body = SizedBox.expand(
         // 测试锚点:全屏 / 网页全屏的沉浸容器。
@@ -702,11 +654,7 @@ class _PlayViewState extends ConsumerState<PlayView> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      resizeToAvoidBottomInset: false,
-      body: body,
-    );
+    return Scaffold(backgroundColor: Colors.transparent, resizeToAvoidBottomInset: false, body: body);
   }
 }
 
@@ -749,14 +697,8 @@ class _RoomHeader extends StatelessWidget {
     // 收藏与徽标映射统一用分类号:soop 的 cid 是房间号,按分类号才能
     // 命中「我的分类」判重与跨平台/中文映射表。
     final favoriteCid = cateNo.isNotEmpty ? cateNo : cid;
-    final categoryStyle = CategoryColors.opaqueFor(
-      category: category,
-      site: site,
-      cid: favoriteCid,
-    );
-    final badgeBg =
-        categoryStyle?.background ??
-        (category.trim().isNotEmpty ? brandColor : null);
+    final categoryStyle = CategoryColors.opaqueFor(category: category, site: site, cid: favoriteCid);
+    final badgeBg = categoryStyle?.background ?? (category.trim().isNotEmpty ? brandColor : null);
     final badgeFg =
         categoryStyle?.foreground ??
         (badgeBg == null
@@ -766,11 +708,7 @@ class _RoomHeader extends StatelessWidget {
             : tokens.surfaceSoft);
     // 徽标文字统一走跨平台中文映射(twitch/soop 等海外平台的英文/韩文
     // 原名按 cid/别名归一为中文,与侧栏 formatCategoryHeaderLabel 同口径)。
-    final categoryLabel = formatCategoryHeaderLabel(
-      site,
-      category,
-      favoriteCid,
-    );
+    final categoryLabel = formatCategoryHeaderLabel(site, category, favoriteCid);
     // 自适应高度(web `padding .28rem .5rem .32rem`):内容撑开,不再固定 44。
     return Container(
       // 纵向内边距维持原值:给分类本体加点击内边距会把头部撑高、挤矮侧栏,
@@ -809,14 +747,8 @@ class _RoomHeader extends StatelessWidget {
                     );
                 return Container(
                   // 用户口径(2026-09-20):分类名文字更大、行内上下居中。
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: badgeBg.withValues(alpha: 0.92),
-                    borderRadius: AppRadius.allSm,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(color: badgeBg.withValues(alpha: 0.92), borderRadius: AppRadius.allSm),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -833,13 +765,9 @@ class _RoomHeader extends StatelessWidget {
                               '/$site/category/'
                               '${Uri.encodeComponent(favoriteCid)}',
                             ),
-                            hoverColor: tokens.surfaceRaised.withValues(
-                              alpha: 0.24,
-                            ),
+                            hoverColor: tokens.surfaceRaised.withValues(alpha: 0.24),
                             splashColor: AppStateLayer.splashOf(tokens.accent),
-                            highlightColor: AppStateLayer.pressedOf(
-                              tokens.accent,
-                            ),
+                            highlightColor: AppStateLayer.pressedOf(tokens.accent),
                             focusColor: AppStateLayer.focusOf(tokens.accent),
                             borderRadius: AppRadius.allSm,
                             child: Row(
@@ -848,9 +776,7 @@ class _RoomHeader extends StatelessWidget {
                                 PlatformIcon(id: site, size: 13),
                                 const SizedBox(width: 3),
                                 Text(
-                                  categoryLabel.isNotEmpty
-                                      ? categoryLabel
-                                      : '直播',
+                                  categoryLabel.isNotEmpty ? categoryLabel : '直播',
                                   style: context.textBody.copyWith(
                                     fontSize: AppFontSize.body,
                                     height: 1,
@@ -894,22 +820,14 @@ class _RoomHeader extends StatelessWidget {
                               ),
                           // 星标压在平台色徽章上:hover 用半透明白灰(不遮徽章本色),
                           // 按下/焦点走 accent 低 alpha。
-                          hoverColor: tokens.surfaceRaised.withValues(
-                            alpha: 0.24,
-                          ),
+                          hoverColor: tokens.surfaceRaised.withValues(alpha: 0.24),
                           splashColor: AppStateLayer.splashOf(tokens.accent),
-                          highlightColor: AppStateLayer.pressedOf(
-                            tokens.accent,
-                          ),
+                          highlightColor: AppStateLayer.pressedOf(tokens.accent),
                           focusColor: AppStateLayer.focusOf(tokens.accent),
                           child: Icon(
-                            favorited
-                                ? Icons.star_rounded
-                                : Icons.star_border_rounded,
+                            favorited ? Icons.star_rounded : Icons.star_border_rounded,
                             size: 13,
-                            color: favorited
-                                ? tokens.brand
-                                : badgeFg.withValues(alpha: 0.85),
+                            color: favorited ? tokens.brand : badgeFg.withValues(alpha: 0.85),
                           ),
                         ),
                       ],
@@ -927,9 +845,7 @@ class _RoomHeader extends StatelessWidget {
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: context.textTitle.copyWith(
-                  fontSize: AppFontSize.subtitle,
-                ),
+                style: context.textTitle.copyWith(fontSize: AppFontSize.subtitle),
               ),
             ),
           ),
@@ -942,9 +858,7 @@ class _RoomHeader extends StatelessWidget {
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
             focusColor: AppStateLayer.focusOf(tokens.accent),
             icon: Icon(
-              sidePanelVisible
-                  ? Icons.keyboard_double_arrow_right_rounded
-                  : Icons.keyboard_double_arrow_left_rounded,
+              sidePanelVisible ? Icons.keyboard_double_arrow_right_rounded : Icons.keyboard_double_arrow_left_rounded,
               size: 18,
               color: tokens.textSecondary,
             ),
@@ -962,12 +876,7 @@ class _RoomHeader extends StatelessWidget {
 /// 停绘,避免频繁切开关导致会话重建/弹幕丢失。playing=false(暂停)时同样
 /// 停绘但消息照常入队——暂停期不为弹幕层持续重绘,恢复播放后继续。
 class _DanmakuLayer extends ConsumerStatefulWidget {
-  const _DanmakuLayer({
-    required this.site,
-    required this.roomId,
-    required this.visible,
-    required this.playing,
-  });
+  const _DanmakuLayer({required this.site, required this.roomId, required this.visible, required this.playing});
 
   final String site;
   final String roomId;
@@ -982,8 +891,7 @@ class _DanmakuLayer extends ConsumerStatefulWidget {
 }
 
 class _DanmakuLayerState extends ConsumerState<_DanmakuLayer> {
-  late final StreamController<DanmakuMessage> _controller =
-      StreamController<DanmakuMessage>.broadcast();
+  late final StreamController<DanmakuMessage> _controller = StreamController<DanmakuMessage>.broadcast();
 
   /// 尾部转发器:按对象身份追踪已转发位置,把环形缓冲快照换算成新增弹幕。
   /// 不能按 length 比较——缓冲灌满后 length 恒为上限,叠加层会永远收不到
@@ -1002,13 +910,7 @@ class _DanmakuLayerState extends ConsumerState<_DanmakuLayer> {
       (prev, next) => _pushTail(next.messages),
     );
     // 首帧已存在的消息(如热重载/重建)也补发一次。
-    _pushTail(
-      ref
-          .read(
-            danmakuSessionProvider((site: widget.site, roomId: widget.roomId)),
-          )
-          .messages,
-    );
+    _pushTail(ref.read(danmakuSessionProvider((site: widget.site, roomId: widget.roomId))).messages);
   }
 
   void _pushTail(List<DanmakuMessage> messages) {
@@ -1033,20 +935,19 @@ class _DanmakuLayerState extends ConsumerState<_DanmakuLayer> {
     final settings = ref.watch(danmakuSettingsProvider);
     // 飘屏正文中文化:开启时原文先上屏,译文返回原位替换(条目已离场则
     // 丢弃)。关闭时传 null,overlay 零额外开销。
-    final translateOn = ref.watch(
-      settingsProvider.select((s) => s.translationEnabled),
-    );
+    final translateOn = ref.watch(settingsProvider.select((s) => s.translationEnabled));
     return DanmakuOverlay(
       messages: _controller.stream,
       enabled: widget.visible && widget.playing,
+      // 总开关(弹幕按钮)关闭 = 清屏并丢弃后续入队;视频暂停仍走 enabled
+      // 的冻结语义(用户口径 2026-10-03:关是清理不是暂停)。
+      visible: widget.visible,
       opacity: settings.opacity / 100,
       fontSize: settings.fontSize.toDouble(),
       speedFactor: settings.speed,
       displayAreaRatio: settings.displayAreaRatio,
       translateBody: translateOn
-          ? (text, segments) => ref
-                .read(translationCoordinatorProvider)
-                .translateBody(text: text, segments: segments)
+          ? (text, segments) => ref.read(translationCoordinatorProvider).translateBody(text: text, segments: segments)
           : null,
     );
   }
@@ -1103,8 +1004,7 @@ class _VideoStageState extends ConsumerState<_VideoStage> {
   /// 点击舞台:切换播放/暂停。与舞台内 overlay 同帧构建,播放控制条
   /// 位于本组件上层,因此按钮/滑杆的点击不会落到这里。
   void _onStageTap() {
-    final snapshot =
-        ref.read(playerSnapshotProvider).value ?? const PlayerSnapshot();
+    final snapshot = ref.read(playerSnapshotProvider).value ?? const PlayerSnapshot();
     final player = ref.read(playerProvider);
     if (snapshot.playing) {
       player.pause();
@@ -1117,8 +1017,7 @@ class _VideoStageState extends ConsumerState<_VideoStage> {
   Widget build(BuildContext context) {
     final async = widget.async;
     final play = async.value;
-    final snapshot =
-        ref.watch(playerSnapshotProvider).value ?? const PlayerSnapshot();
+    final snapshot = ref.watch(playerSnapshotProvider).value ?? const PlayerSnapshot();
     final payload = play?.payload;
 
     // 房间切换检测 + 播放闩锁:遮罩只对「本房间已出过画面后的暂停」生效。
@@ -1136,53 +1035,34 @@ class _VideoStageState extends ConsumerState<_VideoStage> {
           ? _StagePlaceholder(
               icon: Icons.error_outline_rounded,
               text: '房间解析失败，请重试',
-              action: RetryButton(
-                onRetry: widget.onRetry,
-                variant: RetryButtonVariant.outlined,
-              ),
+              action: RetryButton(onRetry: widget.onRetry, variant: RetryButtonVariant.outlined),
             )
-          : const _StagePlaceholder(
-              icon: Icons.play_circle_fill_rounded,
-              text: '正在解析房间…',
-            );
+          : const _StagePlaceholder(icon: Icons.play_circle_fill_rounded, text: '正在解析房间…');
     } else if (payload.source == 'fixture') {
       final line = play?.line;
       content = _StagePlaceholder(
         icon: Icons.play_circle_fill_rounded,
         text: 'fixture 数据，G1 接真实流后自动播放',
-        detail: line == null
-            ? '暂无可用线路'
-            : '当前线路：${line.name}（${line.format.toUpperCase()}）',
+        detail: line == null ? '暂无可用线路' : '当前线路：${line.name}（${line.format.toUpperCase()}）',
       );
     } else {
       content = Stack(
         fit: StackFit.expand,
         children: [
-          if (ref.watch(playerProvider)
-              case final IdleReleasingLivePlayer idlePlayer)
-            StreamBuilder<int>(
-              stream: idlePlayer.viewChanges,
-              builder: (_, snapshot) => idlePlayer.buildVideoView(),
-            )
+          if (ref.watch(playerProvider) case final IdleReleasingLivePlayer idlePlayer)
+            StreamBuilder<int>(stream: idlePlayer.viewChanges, builder: (_, snapshot) => idlePlayer.buildVideoView())
           else
             ref.read(playerProvider).buildVideoView(),
           // 暂停遮罩:流已出过画面后用户暂停 → 居中紫薯 logo。仅在
           // 「曾经播过 + 现在没播 + 不在缓冲/报错」时出现,避免解析中/首帧前
           // 闪现 logo。
-          if (_everPlayed &&
-              !snapshot.playing &&
-              !snapshot.buffering &&
-              snapshot.error == null)
-            const _PausedOverlay(),
+          if (_everPlayed && !snapshot.playing && !snapshot.buffering && snapshot.error == null) const _PausedOverlay(),
           if (snapshot.notice != PlaybackNotice.none)
             Center(
               child: _PlaybackNoticeOverlay(
                 notice: snapshot.notice,
                 progress: snapshot.retryAttempt > 0
-                    ? retryProgressLabel(
-                        snapshot.retryAttempt,
-                        snapshot.retryLimit,
-                      )
+                    ? retryProgressLabel(snapshot.retryAttempt, snapshot.retryLimit)
                     : '',
                 // 卡顿浮层 X:取消自动重连(停止重试/恢复,不轮转线路)。
                 onCancel: widget.onCancelRecovery,
@@ -1194,12 +1074,7 @@ class _VideoStageState extends ConsumerState<_VideoStage> {
                 message: snapshot.error!,
                 // 自动重连中显示进度,让"程序在自救"这件事对用户可见;
                 // 未在重连(或已放弃)时为空串,不占位。
-                progress: snapshot.reconnecting
-                    ? retryProgressLabel(
-                        snapshot.retryAttempt,
-                        snapshot.retryLimit,
-                      )
-                    : '',
+                progress: snapshot.reconnecting ? retryProgressLabel(snapshot.retryAttempt, snapshot.retryLimit) : '',
                 onRetry: widget.onRetry,
               ),
             ),
@@ -1276,12 +1151,7 @@ class _PausedOverlay extends StatelessWidget {
       child: Container(
         color: AppOnVideo.pauseScrim,
         alignment: Alignment.center,
-        child: SvgPicture.asset(
-          'assets/ui/icons/play-purple.svg',
-          width: 96,
-          height: 96,
-          semanticsLabel: '播放',
-        ),
+        child: SvgPicture.asset('assets/ui/icons/play-purple.svg', width: 96, height: 96, semanticsLabel: '播放'),
       ),
     );
   }
@@ -1289,12 +1159,7 @@ class _PausedOverlay extends StatelessWidget {
 
 /// 解析中/失败/fixture 数据的舞台占位。
 class _StagePlaceholder extends StatelessWidget {
-  const _StagePlaceholder({
-    required this.icon,
-    required this.text,
-    this.detail,
-    this.action,
-  });
+  const _StagePlaceholder({required this.icon, required this.text, this.detail, this.action});
 
   final IconData icon;
   final String text;
@@ -1310,10 +1175,7 @@ class _StagePlaceholder extends StatelessWidget {
         Icon(icon, size: 56, color: tokens.surfaceRaised),
         const SizedBox(height: AppSpacing.md),
         Text(text, style: context.textSecondary),
-        if (detail != null) ...[
-          const SizedBox(height: AppSpacing.xs),
-          Text(detail!, style: context.textCaption),
-        ],
+        if (detail != null) ...[const SizedBox(height: AppSpacing.xs), Text(detail!, style: context.textCaption)],
         if (action != null) ...[const SizedBox(height: AppSpacing.md), action!],
       ],
     );
@@ -1324,11 +1186,7 @@ class _StagePlaceholder extends StatelessWidget {
 /// [onCancel] 非空时右上角显示 X:取消自动重连(停止重试/恢复,不轮转线路);
 /// 浮层本体不吸收点击(点击穿透到舞台),只有 X 按钮消费点击。
 class _PlaybackNoticeOverlay extends StatelessWidget {
-  const _PlaybackNoticeOverlay({
-    required this.notice,
-    this.progress = '',
-    this.onCancel,
-  });
+  const _PlaybackNoticeOverlay({required this.notice, this.progress = '', this.onCancel});
 
   final PlaybackNotice notice;
   final String progress;
@@ -1352,10 +1210,7 @@ class _PlaybackNoticeOverlay extends StatelessWidget {
         key: const Key('playback-notice-overlay'),
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg,
-              vertical: AppSpacing.md,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
             decoration: BoxDecoration(
               color: context.tokens.surfaceRaised.withValues(alpha: 0.90),
               borderRadius: AppRadius.allMd,
@@ -1364,20 +1219,14 @@ class _PlaybackNoticeOverlay extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
+                const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
                 const SizedBox(height: AppSpacing.sm),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 360),
                   child: Text(
                     _message,
                     textAlign: TextAlign.center,
-                    style: context.textSecondary.copyWith(
-                      color: context.tokens.textPrimary,
-                    ),
+                    style: context.textSecondary.copyWith(color: context.tokens.textPrimary),
                   ),
                 ),
                 if (progress.isNotEmpty) ...[
@@ -1409,11 +1258,7 @@ class _PlaybackNoticeOverlay extends StatelessWidget {
 
 /// 播放错误浮层卡片:错误文案(已由播放器归类为处置建议) + 重连进度 + 重试。
 class _ErrorCard extends StatelessWidget {
-  const _ErrorCard({
-    required this.message,
-    required this.onRetry,
-    this.progress = '',
-  });
+  const _ErrorCard({required this.message, required this.onRetry, this.progress = ''});
 
   final String message;
 
@@ -1473,23 +1318,14 @@ class _SleepTimerBadge extends StatelessWidget {
     final tokens = context.tokens;
     return Container(
       key: const Key('play-sleep-remaining'),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.xs,
-      ),
-      decoration: BoxDecoration(
-        color: tokens.surfaceRaised.withValues(alpha: 0.72),
-        borderRadius: AppRadius.allPill,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+      decoration: BoxDecoration(color: tokens.surfaceRaised.withValues(alpha: 0.72), borderRadius: AppRadius.allPill),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.bedtime_rounded, size: 14, color: tokens.accent),
           const SizedBox(width: AppSpacing.xs),
-          Text(
-            '定时 $remaining',
-            style: context.textCaption.copyWith(color: tokens.textPrimary),
-          ),
+          Text('定时 $remaining', style: context.textCaption.copyWith(color: tokens.textPrimary)),
         ],
       ),
     );

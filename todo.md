@@ -443,6 +443,13 @@
 - [x] **桥接 cid 语义**:`pureliveRoomToPayload` 按 data 类型提分类 id(Map.cid / HuyaUrlDataModel.cid);soop 与抖音 cid=房间号,其余平台 cid=分类 id;收藏判重经 cross key(site+cid+中文名)跨平台聚合不受影响;星标后徽标本体可点进对应平台分类页
 - 验证:analyze 改动文件 0 告警;**全量 152/152 全过**(桥接测试更新:B站 cid=145/无 data 空串/虎牙 HuyaUrlDataModel.cid=2336/抖音 cid=房间号)
 
+### 迭代 32(2026-10-03)✅ 弹幕开关语义修正:关=清屏,不是冻结(用户口径,有意偏离 zishu)
+
+- [x] **根因**:`DanmakuOverlay` 的 `enabled=false` 只是 `_ticker.stop()`,已入队弹幕冻在画布原位(旧注释「已入队弹幕保留」即旧设计);且 `enabled` 同时承载「弹幕开关」与「视频暂停」两个语义,无法区分
+- [x] **修复**:overlay 新增 `visible` 总开关语义——false 时立即清空屏上飘动弹幕并**丢弃**后续入队(重开不洪泛旧弹幕);`enabled` 保留视频暂停的「冻结保留」语义不变;`_DanmakuLayer` 传 `visible: widget.visible`
+- [x] 注:此为用户口径的**有意偏离 zishu**(zishu 同文件仍是冻结语义),后续 zishu 同步该文件时需保留本差异
+- 验证:新增 `test/danmaku_overlay_toggle_test.dart` 2 用例(关=清屏/关闭期丢弃/重开从零;暂停冻结语义不回归);analyze 改动文件 0 告警;**全量 154/154 全过**
+
 
 ### 迭代 27(2026-10-03)✅ 抖音二级分类对齐 zishu + 分类并行预热 + 抽屉二级分类四字宽横铺
 

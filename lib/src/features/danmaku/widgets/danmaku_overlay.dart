@@ -4,9 +4,10 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
+
 import 'dart:ui' as ui;
-import 'package:live_parser/live_parser.dart'
-    show DanmakuMessage, DanmakuSegment;
+
+import 'package:live_parser/live_parser.dart' show DanmakuMessage, DanmakuSegment;
 
 import '../domain/danmaku_settings.dart';
 import '../domain/danmaku_style.dart';
@@ -30,6 +31,7 @@ class DanmakuOverlay extends StatefulWidget {
     super.key,
     required this.messages,
     this.enabled = true,
+    this.visible = true,
     this.durationSeconds = 8.0,
     this.maxVisible = 200,
     this.topPadding = 0,
@@ -45,6 +47,11 @@ class DanmakuOverlay extends StatefulWidget {
 
   /// 开关:`false` 时停止绘制并暂停滚动(已入队弹幕保留)。
   final bool enabled;
+
+  /// 总开关(用户弹幕开关):`false` 时**清屏**——立即移除屏上全部飘动
+  /// 弹幕并丢弃后续入队,重开时从零开始(用户口径 2026-10-03:关=清理,
+  /// 不是冻结在原地;与 [enabled] 的「视频暂停冻结」语义区分)。
+  final bool visible;
 
   /// 单条弹幕从右边缘滚至完全离场的总时长(秒)。速度随画布宽度。
   ///
@@ -80,11 +87,7 @@ class DanmakuOverlay extends StatefulWidget {
   /// 文本段),返回「文本段已译、表情段保留」的段列表;译文返回且该条
   /// 仍在屏内时,原位替换绘制文本。滚动速度与轨道分配按**原文宽度**锁定,
   /// 替换不改变该条的位置与速度(避免中途跳位)。
-  final Future<List<DanmakuSegment>> Function(
-    String text,
-    List<DanmakuSegment> segments,
-  )?
-  translateBody;
+  final Future<List<DanmakuSegment>> Function(String text, List<DanmakuSegment> segments)? translateBody;
 
   /// 速度档 → 滚动总时长(秒)。供 [speedFactor] 与单测共用。
   static double durationForSpeed(int speed) => danmakuDurationForSpeed(speed);
@@ -93,8 +96,7 @@ class DanmakuOverlay extends StatefulWidget {
   State<DanmakuOverlay> createState() => _DanmakuOverlayState();
 }
 
-class _DanmakuOverlayState extends State<DanmakuOverlay>
-    with SingleTickerProviderStateMixin {
+class _DanmakuOverlayState extends State<DanmakuOverlay> with SingleTickerProviderStateMixin {
   /// 滚动时钟:单 [Ticker] 驱动整层重绘,而非每条弹幕一个 AnimationController。
   late final Ticker _ticker;
 
@@ -110,9 +112,8 @@ class _DanmakuOverlayState extends State<DanmakuOverlay>
   DanmakuTrackAllocator? _allocator;
 
   /// 当前生效的滚动总时长:优先 [speedFactor] 映射,否则 [durationSeconds]。
-  double get _duration => widget.speedFactor != null
-      ? DanmakuOverlay.durationForSpeed(widget.speedFactor!)
-      : widget.durationSeconds;
+  double get _duration =>
+      widget.speedFactor != null ? DanmakuOverlay.durationForSpeed(widget.speedFactor!) : widget.durationSeconds;
 
   @override
   void initState() {
@@ -128,6 +129,16 @@ class _DanmakuOverlayState extends State<DanmakuOverlay>
       _subscription?.cancel();
       _subscription = null;
       _subscribe();
+    }
+    if (oldWidget.visible != widget.visible) {
+      if (!widget.visible) {
+        // 总开关关闭 = 清屏:立即移除屏上飘动弹幕(用户口径 2026-10-03,
+        // 关是「清理」不是「暂停」)。
+        setState(_items.clear);
+      } else if (!_ticker.isActive && mounted) {
+        _lastElapsed = Duration.zero;
+        _ticker.start();
+      }
     }
     if (oldWidget.enabled != widget.enabled) {
       if (widget.enabled) {
@@ -145,6 +156,8 @@ class _DanmakuOverlayState extends State<DanmakuOverlay>
   }
 
   void _onMessage(DanmakuMessage message) {
+    // 总开关关闭:弹幕直接丢弃(屏已清空,不再积压,重开不从旧弹幕洪泛)。
+    if (!widget.visible) return;
     // 空正文跳过(礼物/进场等消息可能无文本)。
     if (message.text.isEmpty) return;
     // 未挂载或 track 未就绪(首帧前)先丢弃,避免用错宽度做分配。
@@ -156,17 +169,9 @@ class _DanmakuOverlayState extends State<DanmakuOverlay>
     final textWidth = DanmakuStyle.measureWidth(span);
     final widthRatio = (textWidth / size.width).clamp(0.0, 1.0);
 
-    final lane =
-        _allocator!.tryAllocate(_clock, widthRatio) ??
-        _allocator!.allocateReusingEarliest(_clock, widthRatio);
+    final lane = _allocator!.tryAllocate(_clock, widthRatio) ?? _allocator!.allocateReusingEarliest(_clock, widthRatio);
 
-    final item = _LiveDanmaku(
-      message: message,
-      span: span,
-      textWidth: textWidth,
-      lane: lane,
-      totalSeconds: _duration,
-    );
+    final item = _LiveDanmaku(message: message, span: span, textWidth: textWidth, lane: lane, totalSeconds: _duration);
     setState(() {
       _items.add(item);
       if (_items.length > widget.maxVisible) {
@@ -189,9 +194,7 @@ class _DanmakuOverlayState extends State<DanmakuOverlay>
     }
     if (!mounted || item.translationApplied) return;
     // 无变化(关闭/已是中文/失败回原文):segment 列表值相等则跳过替换。
-    if (message.segments.isEmpty
-        ? translated.isEmpty
-        : listEquals(translated, message.segments)) {
+    if (message.segments.isEmpty ? translated.isEmpty : listEquals(translated, message.segments)) {
       return;
     }
     final newText = [for (final segment in translated) segment.text].join();
@@ -203,10 +206,7 @@ class _DanmakuOverlayState extends State<DanmakuOverlay>
       color: message.color,
       segments: translated,
     );
-    final span = DanmakuStyle.buildSpan(
-      translatedMessage,
-      fontSize: widget.fontSize,
-    );
+    final span = DanmakuStyle.buildSpan(translatedMessage, fontSize: widget.fontSize);
     final width = DanmakuStyle.measureWidth(span);
     if (!mounted || !_items.contains(item) || item.translationApplied) return;
     setState(() {
@@ -216,9 +216,7 @@ class _DanmakuOverlayState extends State<DanmakuOverlay>
 
   void _onTick(Duration elapsed) {
     if (!mounted || !widget.enabled) return;
-    final delta = _lastElapsed == Duration.zero
-        ? Duration.zero
-        : elapsed - _lastElapsed;
+    final delta = _lastElapsed == Duration.zero ? Duration.zero : elapsed - _lastElapsed;
     _lastElapsed = elapsed;
     final dt = delta.inMicroseconds / 1e6;
     if (dt <= 0) return;
@@ -252,16 +250,10 @@ class _DanmakuOverlayState extends State<DanmakuOverlay>
         final top = MediaQuery.textScalerOf(context).scale(widget.topPadding);
         // 显示区域比例裁剪可用轨道高度:仅顶部 (画布高 - 留白) × 比例 区域可放弹幕。
         final availableHeight = (height - top) * widget.displayAreaRatio;
-        final lanes = DanmakuTrackAllocator.lanesForHeight(
-          availableHeight,
-          DanmakuStyle.lineHeightOf(widget.fontSize),
-        );
+        final lanes = DanmakuTrackAllocator.lanesForHeight(availableHeight, DanmakuStyle.lineHeightOf(widget.fontSize));
         final allocator = _allocator;
         if (allocator == null || allocator.laneCount != lanes) {
-          _allocator = DanmakuTrackAllocator(
-            laneCount: lanes,
-            durationSeconds: _duration,
-          );
+          _allocator = DanmakuTrackAllocator(laneCount: lanes, durationSeconds: _duration);
         }
         return IgnorePointer(
           child: RepaintBoundary(
@@ -337,13 +329,8 @@ class _LiveDanmaku {
 
   /// 取缓存段落(字号变化时重建)。
   (ui.Paragraph, ui.Paragraph) paragraphs(double fontSize) {
-    if (_strokeParagraph == null ||
-        _fillParagraph == null ||
-        _builtFontSize != fontSize) {
-      final (stroke, fill) = DanmakuStyle.buildParagraphPair(
-        span,
-        fontSize: fontSize,
-      );
+    if (_strokeParagraph == null || _fillParagraph == null || _builtFontSize != fontSize) {
+      final (stroke, fill) = DanmakuStyle.buildParagraphPair(span, fontSize: fontSize);
       _strokeParagraph = stroke;
       _fillParagraph = fill;
       _builtFontSize = fontSize;
@@ -355,8 +342,7 @@ class _LiveDanmaku {
   double get progress => (elapsedSeconds / totalSeconds).clamp(0.0, 1.0);
 
   /// 当前左边界 x:从 `canvasWidth` 进入,滚到 `-textWidth` 完全离场。
-  double left(double canvasWidth) =>
-      canvasWidth - progress * (canvasWidth + textWidth);
+  double left(double canvasWidth) => canvasWidth - progress * (canvasWidth + textWidth);
 }
 
 class _DanmakuPainter extends CustomPainter {
