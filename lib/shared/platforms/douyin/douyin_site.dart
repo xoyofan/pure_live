@@ -401,23 +401,46 @@ class DouyinSite
     return items;
   }
 
+  /// 首页推荐跨页去重(zishu 参照口径):load_more 偶发与首屏尾巴重叠。
+  final Set<String> _feedSeenRoomIds = <String>{};
+
   @override
   Future<List<LiveRoom>> getRecommendRooms({int page = 1, int pageSize = 30}) async {
     try {
-      final result = await HttpClient.instance.getJson(
-        "https://live.douyin.com/webcast/feed/",
-        queryParameters: {
-          "aid": "6383",
-          "app_name": "douyin_web",
-          "need_map": "1",
-          "is_draw": "1",
-          "inner_from_drawer": "0",
-          "enter_source": "web_homepage_hot_web_live_card",
-          "source_key": "web_homepage_hot_web_live_card",
+      final isFirstPage = page <= 1;
+      if (isFirstPage) _feedSeenRoomIds.clear();
+      // 全参数 + a_bogus 签名(2026-10-03 对齐 zishu 参照):无签名裸请求
+      // 会拿到降级喂料——房间集合/排序与官网首页不一致,id 形态也不同。
+      final url = DouyinUtils.buildRequestUrl(
+        'https://live.douyin.com/webcast/feed/',
+        <String, dynamic>{
+          'aid': '6383',
+          'app_name': 'douyin_web',
+          'live_id': '1',
+          'language': 'zh-CN',
+          'channel': 'channel_pc_web',
+          'need_map': '1',
+          'liveid': '1',
+          'is_draw': '1',
+          'inner_from_drawer': '0',
+          // 首屏尊重调用方容量(夹取 1..60);加载更多恒 8(官方契约)。
+          'custom_count': isFirstPage ? '${pageSize.clamp(1, 60)}' : '8',
+          'action': 'load_more',
+          'action_type': 'loadmore',
+          'enter_source': 'web_homepage_hot_web_live_card',
+          'source_key': 'web_homepage_hot_web_live_card',
+          if (isFirstPage) ...<String, dynamic>{
+            'is_ssr': 'true',
+            'maxtime': '0',
+          },
         },
-        header: await getRequestHeaders(),
       );
-      return parseRecommendRooms(result);
+      final result = await HttpClient.instance.getJson(url, header: await getRequestHeaders());
+      final rooms = parseRecommendRooms(result);
+      return [
+        for (final room in rooms)
+          if (room.roomId != null && _feedSeenRoomIds.add(room.roomId!)) room,
+      ];
     } catch (e) {
       throw Exception(e.toString());
     }

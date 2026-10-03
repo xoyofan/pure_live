@@ -480,6 +480,15 @@
 - [x] **chzzk /live/7c14…**:API 返回 9004「해외 시청 불가능한 컨텐츠」——频道对当前出口区域封锁,适配器诚实映射 mediaUnavailable;结构性限制(迭代8 结论:需韩国住宅网络),非解析缺陷
 - 工具:新增 `tool/probes/link_direct_matrix_probe_test.dart`(三链接直达+解析矩阵)与 `tool/probes/youtube_liveme_home_probe_test.dart`、`navigation_platforms_probe_test.dart`(迭代35 附件);提交 10cf5b4c,重建 16:50 打开 PID 11800
 
+### 迭代 38(2026-10-03)✅ 抖音首页对齐 zishu 参照——全参数签名请求+翻页修复
+
+用户报告"当前抖音首页是不是不正确,看看 zishu 的"。对照诊断(fork vs zishu 参照 live_parser):
+
+- [x] **差异实锤**:fork 推荐流用**无签名裸请求**(7 个精简参数),zishu 用 `signedDouyinGet` 全参数(浏览器指纹/语言/频道/load_more 契约/is_ssr 首屏)。实测无签名版是降级喂料(与官网首页房间集合/排序不一致);更关键的是**翻页完全缺失**——page 参数被无视,首页加载更多永远返回同样的前 20 条
+- [x] **修复**:`getRecommendRooms` 切 `DouyinUtils.buildRequestUrl`(fork 既有 a_bogus+msToken 签名工具)全参数请求;首屏 `custom_count=夹取(pageSize,1..60)+is_ssr+maxtime=0`,加载更多 `custom_count=8`+load_more 契约;跨页去重 `_feedSeenRoomIds`(首屏翻页时重置);id 口径不变(web_rid 优先,长 id_str 兜底,与 zishu 同)
+- [x] 诊断探针入库 `tool/probes/douyin_feed_diag_test.dart`(opt-in: 无签名现状 vs 签名参照逐房间对照)
+- 验证:探针实测签名口径返回官网首页一致喂料;**全量 200/200 全过**;analyze 0 error
+
 ### 迭代 37(2026-10-03)✅ 全平台同类缺陷排查(bigo 型:形状漂移→未开播伪装解析失败):未发现新增,回归工具修复
 
 - [x] **静态审查**(33 适配器):全部有未开播分支(bigo 型零分支仅 bigo 一家,已修);严格 bool 断言的 11 家(chzzk/kilakila/pandalive/picarto/showroom/tiktok/twitcasting/youtube/cc/looklive/niconico)逐个核对——断言全部位于**信封/分页/直播列表路径**,离线详情不经过,无 bigo 型暴露面;niconico/xiaohongshu 零标记虚惊(离线分支在 site 文件)
