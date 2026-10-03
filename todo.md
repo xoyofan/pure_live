@@ -470,6 +470,15 @@
 - 验证:新增 opt-in 探针 `tool/probes/proxy_media_headers_probe_test.dart`(resolver 头部契约 → 代理转发 → 真实 wansu 流实拉 FLV magic 字节)全绿;`resolve_room_diag` 17live 全链路(搜索→详情→四档→2线)绿;analyze 与 HEAD 基线持平(67,零新增);受影响单测(purelive_stats_refresh/soop_category_zh_bridge)21/21。另修 `resolve_room_diag_probe_test.dart` 缺 `LiveRoom` 导入(布局重构遗留编译坏点)
 
 
+### 迭代 36(2026-10-03)✅ 快速切房竞态修复(切房后仍播上一个直播间)+ Windows Release 3.1.19+4108 打包并交付
+
+用户报告"旧的 exe 有卡顿,切换直播间但还是播放上一个直播间"。playback.log 14:21-14:22 实录:关注浮层连续切房(虎牙518518→斗鱼80432→9999→74751),旧播放页被 push 压在栈下继续存活——5 分钟刷新/恢复链/迟到解析仍驱动共享播放器;9999 迟到 52s 的解析完成后开流翻盘,用户停在 74751 却在播 9999。
+
+- [x] **根因**:follow_view 用 context.push 进播放页——riverpod family 按 (site,roomId) 建控制器,旧页面栈下永不 dispose;onDispose 围栏(ref.mounted/恢复注销/leaveRoom)全对但根本没触发。上游 GetX 语义=路由级单控制器(再导航即重 put 旧控制器 onClose),zishu 缺这层
+- [x] **修复**:①app_shell 关注浮层 `_openRoom` 当前已在播放页时改 `pushReplacement`(与侧栏 follow/recommend、搜索直达同一口径——它们此前已修,浮层是唯一漏网点,正是事故路径);不在播放页维持 push 保返回栈;②play_provider build() 解析完成后显式 `ref.mounted` 离场围栏(迟到结果落 resolve_discarded,不再依赖 dispose 后碰 state 抛错的隐式兜底)
+- [x] **版本 3.1.19+4108**:pubspec+version.json(含 windows 平台与 build_number 同步;releases.json 为上游历史索引惯例不动)
+- 验证:全量 **193/193 全过**;analyze 0 error;提交 49aa17c3 推送。打包:`build_local_release.ps1 -Target WindowsX64 -Configuration Release -SkipQuality`(本会话全量回归复用)→ `PureLive-3.1.19-4108-windows-x64-portable.zip`(78.9MB,Inno 缺失仅便携包);启动验证:进程 19572,窗口标题「全平台首页 · 紫薯直播 3.1.19」,包内 version.json 实测 3.1.19+4108
+
 ### 迭代 35(2026-10-03)✅ 批次三落地:轮播起播 seek(zishu 完整版,超上游)+外链全站化+上游外链死链修复
 
 用户指令"继续处理/继续继续"(批次三逐项摸底后落地)。
