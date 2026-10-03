@@ -66,6 +66,21 @@ void main() {
       expect(resolveSearchDirect('douyu', 'https://twitcasting.tv/'), isNull);
     });
 
+    test('twitcasting c:/g:/f:/ig: 前缀频道根 URL → 链接直达(2026-10-03:c:tbk_1 打不开,直达正则漏前缀)', () {
+      for (final (url, roomId) in [
+        ('https://twitcasting.tv/c:tbk_1', 'c:tbk_1'),
+        ('https://www.twitcasting.tv/c:tbk_1/', 'c:tbk_1'),
+        ('https://twitcasting.tv/g:external_group', 'g:external_group'),
+      ]) {
+        final target = resolveSearchDirect('twitcasting', url);
+        expect(target?.kind, DirectKind.link, reason: url);
+        // roomId 保留前缀与原始大小写,解析层 channelName 负责归一小写。
+        expect(target?.roomId, roomId, reason: url);
+      }
+      // 电影/回放多段路径依旧不直达。
+      expect(resolveSearchDirect('twitcasting', 'https://twitcasting.tv/c:tbk_1/movie/841760967'), isNull);
+    });
+
     test('非法 lv 形态不识别(与 validateProgramId 同口径)', () {
       expect(resolveSearchDirect('niconico', 'lv0'), isNull);
       expect(resolveSearchDirect('niconico', 'lv'), isNull);

@@ -422,6 +422,14 @@
 - [x] **桥接层**:`_dataString` 统一提取暂存 → `RoomSummary.identityLabel/promoTag`、`payload.startedAt`(>0 才填);live_parser barrel 补导出 identity_label/douyu·bilibili promo_tag(与既有 remap 导出同款模式)
 - 验证:analyze 改动文件 0 告警;**全量 148/148 全过**(含新增 6 用例:huya 角标/douyu promo/startedAtMs 三态/null 不伪造);getLiveList 实测上游忽略小 pageSize 恒 120 条(hasMore 语义无碍)
 
+### 迭代 29(2026-10-03)✅ twitcasting.tv/c:tbk_1 打不开——直达识别正则漏 `c:`/`g:`/`f:`/`ig:` 前缀
+
+- [x] **取证**:链接本身 200 正常且直播中;页面两校验锚点(twitter:creator / tw-user-header data-user-id)齐全;streamserver.php 正常回 HLS;真网络 `detail('c:tbk_1')` 解析成功(椿,live=true)——解析链健康
+- [x] **根因**:搜索页直达识别 `_twitcastingChannelName` 正则 `^[a-zA-Z0-9_]{1,80}$` 不认冒号,`https://twitcasting.tv/c:tbk_1` 判 null → 直达项不出现;而解析层 `TwitcastingApi.channelName` 明明允许 `(c|g|f|ig):` 前缀,注释声称"同口径"实则失同步(与迭代 niconico lv 直达缺口同类:房间健康,识别层断)
+- [x] **修复**:直达正则对齐 channelName——`^(?:(?:c|g|f|ig):)?[a-zA-Z0-9_]{1,64}$`;movie/回放多段路径依旧不直达(「不静默替换旧场次」口径不变);roomId 带前缀进 play 路由,解析层归一小写
+- 补充:启动参数 `--room <url>` 路径(`_resolveStartupRoom` 取 path 尾段)本就支持 c: 链接,不受影响;存量探针 `twitcasting_public_contract_probe_test.dart` 已与现 API 签名脱节(编译错,opt-in 不入套件,待下次触及时修)
+- 验证:直达识别回归测试(c:/g: URL→DirectTarget、多段 movie 拒绝)+ 真网络探针 `tool/probes/twitcasting_c_prefixed_channel_probe_test.dart`;**全量 149/149 全过**;analyze 改动文件 0 告警
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:

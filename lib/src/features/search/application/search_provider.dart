@@ -33,8 +33,10 @@ final RegExp _seventeenLinkPattern = RegExp(
 /// niconico 节目号裸输入(与 NiconicoWatch.validateProgramId 同口径)。
 final RegExp _niconicoIdPattern = RegExp(r'^lv[1-9][0-9]{0,17}$');
 
-/// TwitCasting 频道根 URL 的频道名形状(与 TwitcastingApi.channelName 同口径)。
-final RegExp _twitcastingChannelName = RegExp(r'^[a-zA-Z0-9_]{1,80}$');
+/// TwitCasting 频道根 URL 的频道名形状(与 TwitcastingApi.channelName 同口径:
+/// `c:`/`g:`/`f:`/`ig:` 前缀可选——频道页 URL 形如 `/c:tbk_1`,漏掉前缀会把
+/// 整类官方/社区频道判成不可直达)。大小写不敏感,归一由解析层小写完成。
+final RegExp _twitcastingChannelName = RegExp(r'^(?:(?:c|g|f|ig):)?[a-zA-Z0-9_]{1,64}$');
 
 /// 直达项类型。
 enum DirectKind { roomId, link }
