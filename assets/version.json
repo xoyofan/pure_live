@@ -1,15 +1,7 @@
 {
-  "version": "3.1.18",
-  "build_number": 4107,
-  "version_num": 301074106,
-  "android_abis": [
-    "armeabi-v7a",
-    "arm64-v8a",
-    "x86_64"
-  ],
-  "version_desc": "version: 3.1.18\n版本更新：\n- 上游合并与解析层统一：解析层对齐上游 pure_live 新布局与契约（站点适配器归位 lib/platforms、房间身份统一 LiveRoom 签名），34 站行为全量复核零回归。\n- 修复 bigo 在播判定死分支；CHZZK 展示真实热门分类目录；SOOP 分类目录与首页徽标中文化；猫耳适配灰度改版。\n- 全站分类中文化：Twitch/TwitCasting/Picarto/SHOWROOM 分类与首页徽标中文展示。\n- 打通 niconico/FC2 owned-input 播放：此前解析成功但黑屏的直播间现在可正常起播（本地中继座位，离场自动回收）。\n- 修复 17.live/TwitCasting 频道链接直达：任意平台档粘贴链接即可直达直播间。\n- 界面漏字修复：部分平台画质名/公告在桌面端显示为英文 key 的问题（nico 分类、17LIVE 画质等）。\n- 瞬态失败自动重试：分类浮层偶发网络失败不再常驻报错，可点击重试。",
-  "prerelease": false,
-  "download_url": "https://github.com/xoyofan/pure_live/releases/tag/v3.1.18",
+  "version": "3.1.19",
+  "version_desc": "version: 3.1.19\n版本更新：\n- 修复快速切房竞态：从关注浮层连续切房时，旧直播间会在栈下继续驱动共享播放器（切房后仍播上一个直播间的声音/画面）；现在播放页内切房一律替换栈顶，旧页面随 autoDispose 完整回收。\n- 迟到解析围栏：切房后被 dispose 的控制器，其迟到的解析结果不再驱动播放器开流。\n- 合入上游 b087ee90：弹幕表情图片/撤回/礼物/公告四类消息形态、受限直播口径说明、轮播房可播、9 家平台开播时间直读、约 20 站解析精度升级。\n- 轮播房起播偏移完整版：从循环稿件已播位置接着看（上游因播放层无 seek 仅完成解析侧）。\n- 修复上游 12 站外部打开死链；外链支持站点从 3 个扩展到 34 个。\n- 17LIVE 取流 403 修复（CDN Referer 强校验）；弹幕表情与徽章渲染增强。",
+  "download_url": "https://github.com/xoyofan/pure_live/releases/tag/v3.1.19",
   "platforms": {
     "android": {
       "version": "3.1.18",
@@ -25,12 +17,12 @@
       ]
     },
     "windows": {
-      "version": "3.1.18",
-      "build_number": 4107,
+      "version": "3.1.19",
+      "build_number": 4108,
       "version_num": 301184107,
       "version_desc": "version: 3.1.18\n版本更新：\n- 上游合并与解析层统一：解析层对齐上游 pure_live 新布局与契约（站点适配器归位 lib/platforms、房间身份统一 LiveRoom 签名），34 站行为全量复核零回归。\n- 修复 bigo 在播判定死分支；CHZZK 展示真实热门分类目录；SOOP 分类目录与首页徽标中文化；猫耳适配灰度改版。\n- 全站分类中文化：Twitch/TwitCasting/Picarto/SHOWROOM 分类与首页徽标中文展示。\n- 打通 niconico/FC2 owned-input 播放：此前解析成功但黑屏的直播间现在可正常起播（本地中继座位，离场自动回收）。\n- 修复 17.live/TwitCasting 频道链接直达：任意平台档粘贴链接即可直达直播间。\n- 界面漏字修复：部分平台画质名/公告在桌面端显示为英文 key 的问题（nico 分类、17LIVE 画质等）。\n- 瞬态失败自动重试：分类浮层偶发网络失败不再常驻报错，可点击重试。",
       "prerelease": false,
-      "download_url": "https://github.com/xoyofan/pure_live/releases/tag/v3.1.18",
+      "download_url": "https://github.com/xoyofan/pure_live/releases/tag/v3.1.19",
       "windows_msix_available": true
     },
     "linux": {
@@ -57,5 +49,13 @@
       "prerelease": false,
       "download_url": "https://github.com/xoyofan/pure_live/releases/tag/v3.1.18"
     }
-  }
+  },
+  "build_number": 4108,
+  "version_num": "3.1.19",
+  "android_abis": [
+    "armeabi-v7a",
+    "arm64-v8a",
+    "x86_64"
+  ],
+  "prerelease": false
 }

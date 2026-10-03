@@ -334,6 +334,17 @@ class PlayController extends AsyncNotifier<PlayState> {
     if (generation != _generation) {
       return state.value ?? PlayState(generation: generation);
     }
+    // 离场 fence(2026-10-03 切房竞态):控制器已被 autoDispose(切房
+    // pushReplacement)时,迟到的解析结果不得继续驱动共享播放器——
+    // 此前依赖"dispose 后碰 state 抛错"的隐式兜底,显式短路更稳。
+    if (!ref.mounted) {
+      PlaybackLog.write('resolve_discarded', {
+        'site': params.site,
+        'room': params.roomId,
+        'reason': 'controller_disposed',
+      });
+      return state.value ?? PlayState(generation: generation);
+    }
     final quality = _pickPlayableQuality(payload, preferredQuality);
     // 传入 site:白名单站点 auto 起播优选 FLV(首帧提速,见 play_selection)。
     final picked = pickStreamLine(quality, preferredFormat, site: params.site);

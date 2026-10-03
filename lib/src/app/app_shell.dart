@@ -121,11 +121,14 @@ class _AppShellState extends ConsumerState<AppShell> {
     });
   }
 
-  /// 关注浮层点主播格:先收浮层,再 push 播放页。
+  /// 关注浮层点主播格:先收浮层,再进播放页。
   ///
-  /// 必须是 push 而非 go:go 会把壳层页也一并从栈里换掉,播放页左上角
-  /// 「返回」就无栈可回(go_router 抛 `GoError: There is nothing to pop`,
-  /// 表现为点返回没反应)。
+  /// 切房口径与侧栏关注/推荐面板、搜索直达一致(2026-10-03 事故修复):
+  /// 当前已在播放页时必须 **pushReplacement**——push 会把旧播放页连同其
+  /// media-kit 会话压在栈下继续存活,旧页的刷新/恢复链仍驱动共享播放器,
+  /// 用户切房后听到/看到的还是上一个直播间(14:21 playback.log 实录);
+  /// go 则把壳层页也换掉,「返回」无栈可回(GoError)。不在播放页(浮层
+  /// 从浏览页打开)时维持 push,下层浏览页保留为返回目标。
   void _openRoom(FollowEntry entry) {
     _closeAll();
     final room = entry.room;
@@ -134,7 +137,22 @@ class _AppShellState extends ConsumerState<AppShell> {
       site: room.site,
       roomId: room.roomId,
     );
-    unawaited(context.push('/${room.site}/play/${room.roomId}'));
+    final location = '/${room.site}/play/${room.roomId}';
+    if (_isOnPlayRoute()) {
+      // pushReplacement 在本 go_router 版本返回 void,无需 unawaited。
+      context.pushReplacement(location);
+      return;
+    }
+    unawaited(context.push(location));
+  }
+
+  /// 当前壳层路由是否播放页(无路由宿主时按否处理,退回 push)。
+  bool _isOnPlayRoute() {
+    try {
+      return GoRouterState.of(context).uri.path.contains('/play/');
+    } catch (_) {
+      return false;
+    }
   }
 
   void _openPlatform(String id, double centerX) {
