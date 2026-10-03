@@ -54,13 +54,14 @@ class LocalStreamProxy {
     PlaybackLog.write('proxy_started', {'port': server.port});
   }
 
-  StreamProxySession openSession(String upstreamUrl) {
+  StreamProxySession openSession(String upstreamUrl, {Map<String, String> headers = const {}}) {
     final id = _nextSessionId++;
-    final session = StreamProxySession._(id, this, upstreamUrl);
+    final session = StreamProxySession._(id, this, upstreamUrl, headers);
     _sessions[id] = session;
     PlaybackLog.write('proxy_session_open', {
       'session': id,
       'upstream': Uri.tryParse(upstreamUrl)?.host,
+      'headers': headers.keys.toList(),
     });
     return session;
   }
@@ -92,13 +93,17 @@ class LocalStreamProxy {
 
 /// 单个播放会话:一个本地 URL ↔ 一个远端 upstream(可热切换)。
 class StreamProxySession {
-  StreamProxySession._(this.id, this._proxy, String upstreamUrl)
-      : _upstreamUrl = upstreamUrl,
-        idleTimeout = const Duration(seconds: 10);
+  StreamProxySession._(this.id, this._proxy, String upstreamUrl, Map<String, String> upstreamHeaders)
+    : _upstreamUrl = upstreamUrl,
+      // upstream 是站点 CDN 直链,Referer/UA 强校验在 CDN 侧(2026-10-03
+      // 17LIVE wansu 403):mpv 只见本地地址,这组头必须由代理自己带上。
+      _upstreamHeaders = Map.unmodifiable(upstreamHeaders),
+      idleTimeout = const Duration(seconds: 10);
 
   final int id;
   final LocalStreamProxy _proxy;
   final FlvStreamSplicer _splicer = FlvStreamSplicer();
+  final Map<String, String> _upstreamHeaders;
   HttpClient? _httpClient;
   HttpClientRequest? _upstreamRequest;
   StreamSubscription<List<int>>? _upstreamSub;
@@ -141,10 +146,7 @@ class StreamProxySession {
     _splicer.beginUpstreamSwitch();
     final outgoing = _outgoing;
     if (outgoing == null || outgoing.isClosed) return false;
-    PlaybackLog.write('proxy_upstream_switch', {
-      'session': id,
-      'upstream': upstreamHost,
-    });
+    PlaybackLog.write('proxy_upstream_switch', {'session': id, 'upstream': upstreamHost});
     await _connectUpstream(generation, secondary: true);
     return !_disposed;
   }
@@ -184,18 +186,11 @@ class StreamProxySession {
     // pipe 完成有两种来路:我们 close outgoing(upstream 失败/会话释放)或
     // mpv 断开连接 —— 都意味着会话终结,统一走清理。
     unawaited(
-      outgoing.stream
-          .pipe(response)
-          .then((_) {})
-          .catchError((Object _) {})
-          .whenComplete(() {
+      outgoing.stream.pipe(response).then((_) {}).catchError((Object _) {}).whenComplete(() {
         if (!_disposed) unawaited(dispose());
       }),
     );
-    PlaybackLog.write('proxy_client_attached', {
-      'session': id,
-      'upstream': upstreamHost,
-    });
+    PlaybackLog.write('proxy_client_attached', {'session': id, 'upstream': upstreamHost});
     await _connectUpstream(_generation, secondary: false);
   }
 
@@ -203,9 +198,8 @@ class StreamProxySession {
     if (_disposed || generation != _generation) return;
     try {
       final httpClient = _httpClient ??= HttpClient();
-      final upstreamRequest = await httpClient
-          .getUrl(Uri.parse(_upstreamUrl))
-          .timeout(_connectTimeout);
+      final upstreamRequest = await httpClient.getUrl(Uri.parse(_upstreamUrl)).timeout(_connectTimeout);
+      _upstreamHeaders.forEach(upstreamRequest.headers.set);
       _upstreamRequest = upstreamRequest;
       final response = await upstreamRequest.close().timeout(_connectTimeout);
       if (response.statusCode != HttpStatus.ok) {
@@ -224,8 +218,7 @@ class StreamProxySession {
           if (out.isNotEmpty) _outgoing?.add(out);
         },
         onDone: () => _onUpstreamFailure(generation, 'upstream_done'),
-        onError: (Object error) =>
-            _onUpstreamFailure(generation, 'upstream_error: $error'),
+        onError: (Object error) => _onUpstreamFailure(generation, 'upstream_error: $error'),
         cancelOnError: true,
       );
     } catch (error) {
@@ -237,11 +230,7 @@ class StreamProxySession {
     if (_disposed || generation != _generation) return;
     _idleTimer?.cancel();
     _idleTimer = null;
-    PlaybackLog.write('proxy_upstream_fail', {
-      'session': id,
-      'upstream': upstreamHost,
-      'reason': _shortReason(reason),
-    });
+    PlaybackLog.write('proxy_upstream_fail', {'session': id, 'upstream': upstreamHost, 'reason': _shortReason(reason)});
     // 先向宿主要替代地址(re-resolve):拿到就热切到新 upstream,mpv 只消耗
     // 缓冲不报错;拿不到(不支持/节流/超时)才终结本地流,让 mpv 走既有
     // 恢复链(致命传输诊断短路 → re-resolve)。
@@ -249,14 +238,8 @@ class StreamProxySession {
     if (recover != null && _outgoing != null && !_outgoing!.isClosed) {
       try {
         final url = await recover(reason).timeout(_recoverTimeout);
-        if (!_disposed &&
-            generation == _generation &&
-            url != null &&
-            url.isNotEmpty) {
-          PlaybackLog.write('proxy_recover_switch', {
-            'session': id,
-            'upstream': Uri.tryParse(url)?.host,
-          });
+        if (!_disposed && generation == _generation && url != null && url.isNotEmpty) {
+          PlaybackLog.write('proxy_recover_switch', {'session': id, 'upstream': Uri.tryParse(url)?.host});
           if (await switchUpstream(url)) return;
         }
       } catch (_) {
@@ -296,6 +279,5 @@ class StreamProxySession {
     }
   }
 
-  static String _shortReason(String reason) =>
-      reason.length > 80 ? reason.substring(0, 80) : reason;
+  static String _shortReason(String reason) => reason.length > 80 ? reason.substring(0, 80) : reason;
 }

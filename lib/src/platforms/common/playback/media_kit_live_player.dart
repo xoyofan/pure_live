@@ -7,19 +7,11 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart'
-    show
-        AppLifecycleState,
-        BoxFit,
-        Color,
-        Widget,
-        WidgetsBinding,
-        WidgetsBindingObserver,
-        visibleForTesting;
+    show AppLifecycleState, BoxFit, Color, Widget, WidgetsBinding, WidgetsBindingObserver, visibleForTesting;
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:live_parser/live_parser.dart' show StreamLine, UpstreamProxy;
-import 'package:window_manager/window_manager.dart'
-    show DragToResizeArea, WindowListener, windowManager;
+import 'package:window_manager/window_manager.dart' show DragToResizeArea, WindowListener, windowManager;
 
 import 'buffering_stall_tracker.dart';
 import 'live_player.dart';
@@ -56,11 +48,7 @@ bool needsVideoKick({
 
 class MediaKitLivePlayer
     with WidgetsBindingObserver
-    implements
-        LivePlayer,
-        LineRecoveryAware,
-        VideoHardwareAccelerationAware,
-        RecoveryCancellable {
+    implements LivePlayer, LineRecoveryAware, VideoHardwareAccelerationAware, RecoveryCancellable {
   /// [player] 是单测注入点:VM 测试无法加载原生 libmpv(`Player()` 会构造
   /// `NativePlayer` 并 `DynamicLibrary.open`),只能注入 `Player(platformPlayer:)`
   /// 的假后端来驱动事件与命令。生产调用点一律不传,行为与原先完全一致。
@@ -74,8 +62,7 @@ class MediaKitLivePlayer
     this.videoHardwareAccelerationEnabled = true,
     PlaybackRetryPolicy policy = const PlaybackRetryPolicy(),
     PlaybackRecoveryPolicy recoveryPolicy = const PlaybackRecoveryPolicy(),
-    PlaybackResiliencePolicy resiliencePolicy =
-        const PlaybackResiliencePolicy(),
+    PlaybackResiliencePolicy resiliencePolicy = const PlaybackResiliencePolicy(),
     this.stabilityInterval = const Duration(seconds: 5),
     this.streamProxy,
   }) : _player =
@@ -88,11 +75,7 @@ class MediaKitLivePlayer
            // mpv_tuning.json 注入 vf)的检测报告在 info 级;info 生成噪音由
            // 调优表 msg-level=all=warn 在 mpv 侧截住,lavfi 单独放行,IPC
            // 实际增量≈0;Dart 侧仅识别 blackdetect 报告行,其余 info 丢弃。
-           Player(
-             configuration: const PlayerConfiguration(
-               logLevel: MPVLogLevel.info,
-             ),
-           ),
+           Player(configuration: const PlayerConfiguration(logLevel: MPVLogLevel.info)),
        _adFilter = adFilter ?? TwitchAdFilter() {
     _policy = policy;
     _recoveryPolicy = recoveryPolicy;
@@ -135,14 +118,11 @@ class MediaKitLivePlayer
   static const AdStallHoldPolicy _adHoldPolicy = AdStallHoldPolicy();
   late final VideoController _videoController = VideoController(
     _player,
-    configuration: VideoControllerConfiguration(
-      hwdec: videoHardwareAccelerationEnabled ? 'auto-safe' : 'no',
-    ),
+    configuration: VideoControllerConfiguration(hwdec: videoHardwareAccelerationEnabled ? 'auto-safe' : 'no'),
   );
 
   /// 向 UI 广播的快照流。
-  final StreamController<PlayerSnapshot> _output =
-      StreamController<PlayerSnapshot>.broadcast();
+  final StreamController<PlayerSnapshot> _output = StreamController<PlayerSnapshot>.broadcast();
 
   /// 最近一次发出的快照,用于合并去重。
   PlayerSnapshot _latest = const PlayerSnapshot();
@@ -312,10 +292,7 @@ class MediaKitLivePlayer
   ///   (实测 2s 预读时 demuxer_cache_duration 恒≈2.3s,字节上限够不着),
   static const List<(String, String)> kLiveTuningProperties = [
     ('force-seekable', 'yes'),
-    (
-      'protocol_whitelist',
-      'httpproxy,udp,rtp,tcp,tls,data,file,http,https,crypto,rtmp,rtmps,rtsp,srt',
-    ),
+    ('protocol_whitelist', 'httpproxy,udp,rtp,tcp,tls,data,file,http,https,crypto,rtmp,rtmps,rtsp,srt'),
     ('demuxer-lavf-probesize', '2097152'),
     ('demuxer-lavf-analyzeduration', '2'),
     ('network-timeout', '15'),
@@ -429,20 +406,17 @@ class MediaKitLivePlayer
   static String? _hostOf(StreamLine line) => Uri.tryParse(line.url)?.host;
 
   /// 当前首条线路的 host:`stall_begin` / `stall_end` 的归属源。
-  String? get _currentHost =>
-      _currentLines.isEmpty ? null : _hostOf(_currentLines.first);
+  String? get _currentHost => _currentLines.isEmpty ? null : _hostOf(_currentLines.first);
 
   /// 超长诊断截断,防止单条 mpv 日志把文件撑爆。
-  static String _clamp(String text) =>
-      text.length > 160 ? '${text.substring(0, 160)}…' : text;
+  static String _clamp(String text) => text.length > 160 ? '${text.substring(0, 160)}…' : text;
 
   /// warn 日志噪音归一:数字序列替换为 `#` 后转小写。
   ///
   /// 传输层重连行内嵌持续变化的 byte offset/秒数("Will reconnect at
   /// 701644 in 0 second(s)"),逐字比对永不相等;归一后同型行折叠为一条。
   /// 首条原文仍全量落盘,归一只影响抑制判定,不丢信息。
-  static String _normalizeLogText(String text) =>
-      text.toLowerCase().replaceAll(RegExp(r'\d+'), '#');
+  static String _normalizeLogText(String text) => text.toLowerCase().replaceAll(RegExp(r'\d+'), '#');
 
   /// 落盘所有已抑制型别的汇总(新型出现 / open 重置 / 5s 稳定性采样时调用)。
   ///
@@ -470,17 +444,9 @@ class MediaKitLivePlayer
       _warnCounts[key] = 0;
       final shape = _warnShapes[key];
       if (shape == null) continue;
-      PlaybackLog.write('mpv_log_suppressed', {
-        'prefix': shape.$1,
-        'text': _clamp(shape.$2),
-        'count': count,
-      });
+      PlaybackLog.write('mpv_log_suppressed', {'prefix': shape.$1, 'text': _clamp(shape.$2), 'count': count});
       if (count >= _transportFlapThreshold) {
-        PlaybackLog.write('transport_flap', {
-          'host': _currentHost,
-          'count': count,
-          'text': _clamp(shape.$2),
-        });
+        PlaybackLog.write('transport_flap', {'host': _currentHost, 'count': count, 'text': _clamp(shape.$2)});
       }
     }
   }
@@ -493,9 +459,7 @@ class MediaKitLivePlayer
 
   /// 时间戳混沌型判定(归一化 key,已小写):PTS 回跳/重置类 warn。
   static bool _isDecodeChaosKey(String key) =>
-      key.contains('invalid video timestamp') ||
-      key.contains('invalid audio pts') ||
-      key.contains('timestamp reset');
+      key.contains('invalid video timestamp') || key.contains('invalid audio pts') || key.contains('timestamp reset');
 
   /// 5s 汇总窗口内同型 warn 条数达到该值即视为传输层重连风暴。
   static const int _transportFlapThreshold = 50;
@@ -565,10 +529,7 @@ class MediaKitLivePlayer
     unawaited(_applyHardwareAcceleration(platform, enabled));
   }
 
-  Future<void> _applyHardwareAcceleration(
-    NativePlayer platform,
-    bool enabled,
-  ) async {
+  Future<void> _applyHardwareAcceleration(NativePlayer platform, bool enabled) async {
     try {
       await platform.setProperty('hwdec', enabled ? 'auto-safe' : 'no');
       PlaybackLog.write('video_hwdec', {'enabled': enabled});
@@ -649,16 +610,10 @@ class MediaKitLivePlayer
         _flushWarnSuppression();
         _warnCounts[key] = 0;
         _warnShapes[key] = (entry.prefix, entry.text);
-        PlaybackLog.write('mpv_log', {
-          'prefix': entry.prefix,
-          'text': _clamp(entry.text),
-        });
+        PlaybackLog.write('mpv_log', {'prefix': entry.prefix, 'text': _clamp(entry.text)});
       }),
     );
-    void bind<T>(
-      Stream<T> source,
-      PlayerSnapshot Function(PlayerSnapshot, T) patch,
-    ) {
+    void bind<T>(Stream<T> source, PlayerSnapshot Function(PlayerSnapshot, T) patch) {
       _subscriptions.add(
         source.listen((value) {
           // 围栏:open 在途期间的事件可能是旧源残留(completed/error),
@@ -739,22 +694,14 @@ class MediaKitLivePlayer
         });
       }
       if (!classification.terminal) return s;
-      if (classification.kind == PlayerErrorKind.source &&
-          classification.code == 'source_open') {
+      if (classification.kind == PlayerErrorKind.source && classification.code == 'source_open') {
         _sourceOpenFailures++;
-        final failedHost = _currentLines.isEmpty
-            ? null
-            : _hostOf(_currentLines.first);
+        final failedHost = _currentLines.isEmpty ? null : _hostOf(_currentLines.first);
         if (failedHost != null) {
           _cdnCircuitBreaker.recordFailure(failedHost, DateTime.now());
         }
-        PlaybackLog.write('source_open_failure', {
-          'count': _sourceOpenFailures,
-          'host': failedHost,
-        });
-        if (_resiliencePolicy.shouldRecoverSource(
-          consecutiveSourceOpenFailures: _sourceOpenFailures,
-        )) {
+        PlaybackLog.write('source_open_failure', {'count': _sourceOpenFailures, 'host': failedHost});
+        if (_resiliencePolicy.shouldRecoverSource(consecutiveSourceOpenFailures: _sourceOpenFailures)) {
           // 首次终局 source_open 失败即升级 re-resolve,不再等下一轮退避重开:
           // 签名 URL 失效后重开必然再失败,盲重试只烧退避预算(2026-09-27
           // 18:23 虎牙事故:同一 wsSecret 重试 4 次白烧 39s,recover 613ms 出帧)。
@@ -776,9 +723,7 @@ class MediaKitLivePlayer
       return s.copyWith(
         error: playerErrorHint(classification.kind),
         errorKind: classification.kind,
-        notice:
-            classification.kind == PlayerErrorKind.source &&
-                classification.code == 'source_open'
+        notice: classification.kind == PlayerErrorKind.source && classification.code == 'source_open'
             ? PlaybackNotice.sourceOpenFailed
             : s.notice,
       );
@@ -792,16 +737,15 @@ class MediaKitLivePlayer
     final proxy = streamProxy;
     if (proxy == null || !proxy.isRunning) return null;
     if (line.format != 'flv') return null;
-    final session = proxy.openSession(line.url);
+    // 站点 CDN 头(UA/Referer 等)必须由代理转发给上游:mpv 只见本地地址,
+    // 直连时的 httpHeaders 对 127.0.0.1 无意义(17LIVE wansu Referer 强校验)。
+    final session = proxy.openSession(line.url, headers: line.headers);
     _proxySession = session;
     // upstream 断流(token 被掐/节点死)时先经恢复链 re-resolve 热切新地址,
     // mpv 无感;失败才终结本地流走既有恢复。节流与 re-resolve 恢复同源
     // ([_recoveryPolicy]),不会高频空转。
     session.onUpstreamFailed = _recoverProxyUpstream;
-    PlaybackLog.write('proxy_line_wrap', {
-      'host': _hostOf(line),
-      'session': session.id,
-    });
+    PlaybackLog.write('proxy_line_wrap', {'host': _hostOf(line), 'session': session.id});
     return session;
   }
 
@@ -828,17 +772,11 @@ class MediaKitLivePlayer
       if (first.format != 'flv') {
         // 新首选不是 FLV 直链(如主播切档后只剩 HLS):代理无法热切,
         // 交给 mpv 恢复链整组重开。
-        PlaybackLog.write('proxy_recover_fail', {
-          'reason': 'not_flv',
-          'format': first.format,
-        });
+        PlaybackLog.write('proxy_recover_fail', {'reason': 'not_flv', 'format': first.format});
         return null;
       }
       _currentLines = lines;
-      PlaybackLog.write('proxy_recover_ok', {
-        'host': _hostOf(first),
-        'lines': lines.length,
-      });
+      PlaybackLog.write('proxy_recover_ok', {'host': _hostOf(first), 'lines': lines.length});
       return first.url;
     } catch (error) {
       PlaybackLog.write('proxy_recover_fail', {'reason': '$error'});
@@ -902,10 +840,7 @@ class MediaKitLivePlayer
         _resyncAfterOpen();
         return;
       }
-      PlaybackLog.write('external_pause_recover', {
-        'host': _currentHost,
-        'retries': _stallRetries,
-      });
+      PlaybackLog.write('external_pause_recover', {'host': _currentHost, 'retries': _stallRetries});
       _reopenIfStalled();
     });
     PlaybackLog.write('external_pause_watchdog', {
@@ -1020,11 +955,7 @@ class MediaKitLivePlayer
     _lastStabilityTimePos = timePos;
     if (last == null) return;
     if (timePos >= last - _timePosRegressionThreshold) return;
-    PlaybackLog.write('time_pos_regression', {
-      'host': _currentHost,
-      'from': last,
-      'to': timePos,
-    });
+    PlaybackLog.write('time_pos_regression', {'host': _currentHost, 'from': last, 'to': timePos});
   }
 
   Future<void> _logVideoStability(NativePlayer platform, int generation) async {
@@ -1090,14 +1021,9 @@ class MediaKitLivePlayer
     _firstFrameWatchGeneration = generation;
     unawaited(() async {
       try {
-        await _videoController.waitUntilFirstFrameRendered.timeout(
-          const Duration(seconds: 3),
-        );
+        await _videoController.waitUntilFirstFrameRendered.timeout(const Duration(seconds: 3));
         if (!_disposed && generation == _sourceGeneration) {
-          PlaybackLog.write('video_first_frame_rendered', {
-            'generation': generation,
-            'host': _currentHost,
-          });
+          PlaybackLog.write('video_first_frame_rendered', {'generation': generation, 'host': _currentHost});
         }
       } catch (error) {
         if (!_disposed && generation == _sourceGeneration) {
@@ -1146,11 +1072,7 @@ class MediaKitLivePlayer
     if (_stallTimer != null || _givenUp) return;
     final backoff = _policy.backoffForWithLines(_stallRetries, _currentLines.length);
     _stallTimer = Timer(backoff, _reopenIfStalled);
-    PlaybackLog.write('stall_watchdog', {
-      'armed': true,
-      'backoffMs': backoff.inMilliseconds,
-      'retries': _stallRetries,
-    });
+    PlaybackLog.write('stall_watchdog', {'armed': true, 'backoffMs': backoff.inMilliseconds, 'retries': _stallRetries});
   }
 
   void _cancelHealthTimer() {
@@ -1241,11 +1163,7 @@ class MediaKitLivePlayer
       return;
     }
     _videoKicked = true;
-    PlaybackLog.write('video_kick', {
-      'reason': 'no_video_size',
-      'width': state.width,
-      'height': state.height,
-    });
+    PlaybackLog.write('video_kick', {'reason': 'no_video_size', 'width': state.width, 'height': state.height});
     unawaited(_runVideoKick());
   }
 
@@ -1325,22 +1243,14 @@ class MediaKitLivePlayer
     // 重解析拿到的还是同一批广告地址)。预算封顶见 [AdStallHoldPolicy]。
     final now = DateTime.now();
     final adStalled = _adFilter.isAdStalled(_currentLines.first.url);
-    if (_adHoldPolicy.shouldHold(
-      adStalled: adStalled,
-      now: now,
-      holdSince: _adHoldSince,
-    )) {
+    if (_adHoldPolicy.shouldHold(adStalled: adStalled, now: now, holdSince: _adHoldSince)) {
       _adHoldSince ??= now;
-      PlaybackLog.write('ad_stall_hold', {
-        'host': _hostOf(_currentLines.first),
-      });
+      PlaybackLog.write('ad_stall_hold', {'host': _hostOf(_currentLines.first)});
       _stallTimer = Timer(_adHoldPolicy.recheckInterval, _reopenIfStalled);
       return;
     }
     _adHoldSince = null;
-    if (_resiliencePolicy.shouldRecoverSource(
-      consecutiveSourceOpenFailures: _sourceOpenFailures,
-    )) {
+    if (_resiliencePolicy.shouldRecoverSource(consecutiveSourceOpenFailures: _sourceOpenFailures)) {
       PlaybackLog.write('recover_early', {
         'reason': 'source_open',
         'failures': _sourceOpenFailures,
@@ -1410,10 +1320,7 @@ class MediaKitLivePlayer
       fresh = null;
     }
     if (!_disposed && !_givenUp && fresh != null && fresh.isNotEmpty) {
-      PlaybackLog.write('escalate_recover_ok', {
-        'lines': fresh.length,
-        'host': _hostOf(fresh.first),
-      });
+      PlaybackLog.write('escalate_recover_ok', {'lines': fresh.length, 'host': _hostOf(fresh.first)});
       _stallRetries = 0;
       _sourceOpenFailures = 0;
       // resetRetries 默认 true:新地址开启新一轮有界重试,并复位本 episode
@@ -1421,10 +1328,7 @@ class MediaKitLivePlayer
       await open(fresh.first, fresh.skip(1).toList());
       return;
     }
-    PlaybackLog.write('escalate_recover_fail', {
-      'host': _currentHost,
-      'reason': fresh == null ? 'error' : 'empty',
-    });
+    PlaybackLog.write('escalate_recover_fail', {'host': _currentHost, 'reason': fresh == null ? 'error' : 'empty'});
     // 解析失败:退化回同 URL 重开,不放弃。
     _reopenIfStalled();
   }
@@ -1457,9 +1361,7 @@ class MediaKitLivePlayer
     final handler = _lineRecovery;
     final now = DateTime.now();
     final canAttempt =
-        handler != null &&
-        !_disposed &&
-        _recoveryPolicy.canRecover(now: now, lastRecoverAt: _lastRecoverAt);
+        handler != null && !_disposed && _recoveryPolicy.canRecover(now: now, lastRecoverAt: _lastRecoverAt);
     if (canAttempt) {
       _lastRecoverAt = now;
       PlaybackLog.write('recover_request', {'lastKind': _lastErrorKind.name});
@@ -1474,25 +1376,16 @@ class MediaKitLivePlayer
         fresh = null;
       }
       if (!_disposed && !_givenUp && fresh != null && fresh.isNotEmpty) {
-        PlaybackLog.write('recover_ok', {
-          'lines': fresh.length,
-          'host': _hostOf(fresh.first),
-        });
+        PlaybackLog.write('recover_ok', {'lines': fresh.length, 'host': _hostOf(fresh.first)});
         _stallRetries = 0;
         _sourceOpenFailures = 0;
         // resetRetries 保持默认 true:新地址开启新一轮有界重试。
         await open(fresh.first, fresh.skip(1).toList());
         return;
       }
-      PlaybackLog.write('recover_fail', {
-        'reason': _givenUp
-            ? 'cancelled_by_user'
-            : (failReason ?? 'empty_lines'),
-      });
+      PlaybackLog.write('recover_fail', {'reason': _givenUp ? 'cancelled_by_user' : (failReason ?? 'empty_lines')});
     } else {
-      PlaybackLog.write('recover_skip', {
-        'reason': handler == null ? 'no_handler' : 'throttled_or_disposed',
-      });
+      PlaybackLog.write('recover_skip', {'reason': handler == null ? 'no_handler' : 'throttled_or_disposed'});
     }
     if (_disposed) return;
     // 放弃闩锁:置位后看门狗/终止错误/列表结束都不再触发重开(补 R3),
@@ -1526,16 +1419,11 @@ class MediaKitLivePlayer
     try {
       await platform.waitForPlayerInitialization;
       ensureLiveTuningConfigExists();
-      final tuning = resolveLiveTuningProperties(
-        jsonContent: readLiveTuningFile(),
-      );
+      final tuning = resolveLiveTuningProperties(jsonContent: readLiveTuningFile());
       for (final (name, value) in tuning) {
         await platform.setProperty(name, value);
       }
-      await _applyHardwareAcceleration(
-        platform,
-        videoHardwareAccelerationEnabled,
-      );
+      await _applyHardwareAcceleration(platform, videoHardwareAccelerationEnabled);
       // 把实际生效的缓冲参数落盘:下一次会话可直接核对"配置是否真的注入",
       // 不必再从二进制/源码反推(排查卡顿时缺的正是这一环)。
       PlaybackLog.write('mpv_tuning', {
@@ -1543,8 +1431,7 @@ class MediaKitLivePlayer
         for (final (name, value) in tuning) name: value,
       });
       // 每次 open 只按当前线路主机重设代理,避免上一个源的代理策略残留。
-      final cacheDir =
-          '${Directory.systemTemp.path}${Platform.pathSeparator}zishu_demuxer_cache';
+      final cacheDir = '${Directory.systemTemp.path}${Platform.pathSeparator}zishu_demuxer_cache';
       await Directory(cacheDir).create(recursive: true);
       await platform.setProperty('demuxer-cache-dir', cacheDir);
       // 音频输出必须显式指定:mpv `ao=auto` 在部分 Windows 环境会退化成 null
@@ -1567,19 +1454,11 @@ class MediaKitLivePlayer
     final platform = _player.platform;
     if (platform is! NativePlayer) return;
     final host = Uri.tryParse(line.url)?.host ?? '';
-    final proxy = UpstreamProxy.needsProxy(host)
-        ? UpstreamProxy.hostPort
-        : null;
+    final proxy = UpstreamProxy.needsProxy(host) ? UpstreamProxy.hostPort : null;
     try {
       await platform.waitForPlayerInitialization;
-      await platform.setProperty(
-        'http-proxy',
-        proxy == null || proxy.isEmpty ? '' : 'http://$proxy',
-      );
-      PlaybackLog.write('mpv_proxy', {
-        'host': host,
-        'proxy': proxy == null || proxy.isEmpty ? 'direct' : proxy,
-      });
+      await platform.setProperty('http-proxy', proxy == null || proxy.isEmpty ? '' : 'http://$proxy');
+      PlaybackLog.write('mpv_proxy', {'host': host, 'proxy': proxy == null || proxy.isEmpty ? 'direct' : proxy});
     } catch (_) {
       // 设置失败不阻断播放:直连失败时仍有看门狗与恢复重解析兜底。
     }
@@ -1606,21 +1485,14 @@ class MediaKitLivePlayer
   }
 
   @override
-  Future<void> open(
-    StreamLine line, [
-    List<StreamLine> fallbacks = const [],
-    bool resetRetries = true,
-  ]) {
+  Future<void> open(StreamLine line, [List<StreamLine> fallbacks = const [], bool resetRetries = true]) {
     // 同步自增代际:后续任何 await 回来后若代际已变,说明有更新的 open/stop
     // 覆盖了本次指令,直接作废(不写快照、不动计时器)。
     final myGen = ++_sourceGeneration;
     _lastVideoParams = null;
     // 死开流看门狗随代际重布防:上代的计时器作废,新代在宽限期后复核参数。
     _deadOpenTimer?.cancel();
-    _deadOpenTimer = Timer(
-      _policy.deadOpenGrace,
-      () => _onDeadOpenTimeout(myGen),
-    );
+    _deadOpenTimer = Timer(_policy.deadOpenGrace, () => _onDeadOpenTimeout(myGen));
     _videoParamsSeen = false;
     _videoStabilityTimer?.cancel();
     _videoStabilityTimer = null;
@@ -1633,11 +1505,7 @@ class MediaKitLivePlayer
     final requestedAt = DateTime.now();
     return _enqueueLifecycle(() async {
       if (myGen != _sourceGeneration) {
-        PlaybackLog.write('open_superseded', {
-          'gen': myGen,
-          'current': _sourceGeneration,
-          'phase': 'queued',
-        });
+        PlaybackLog.write('open_superseded', {'gen': myGen, 'current': _sourceGeneration, 'phase': 'queued'});
         return;
       }
       if (resetRetries) {
@@ -1666,11 +1534,7 @@ class MediaKitLivePlayer
         wrappedLines.add(prepared);
       }
       _currentLines = wrappedLines;
-      final orderedLines = _cdnCircuitBreaker.order(
-        _currentLines,
-        (item) => _hostOf(item) ?? item.url,
-        DateTime.now(),
-      );
+      final orderedLines = _cdnCircuitBreaker.order(_currentLines, (item) => _hostOf(item) ?? item.url, DateTime.now());
       var reordered = false;
       for (var i = 0; i < orderedLines.length; i++) {
         if (!identical(orderedLines[i], _currentLines[i])) reordered = true;
@@ -1724,10 +1588,7 @@ class MediaKitLivePlayer
         _warnCounts.clear();
         _warnShapes.clear();
         _decodeChaosCount = 0;
-        PlaybackLog.write('open', {
-          'lines': _currentLines.length,
-          'host': _hostOf(line),
-        });
+        PlaybackLog.write('open', {'lines': _currentLines.length, 'host': _hostOf(line)});
         if (wrappedAny) {
           PlaybackLog.write('ad_filter_wrap', {'lines': _currentLines.length});
         }
@@ -1760,9 +1621,7 @@ class MediaKitLivePlayer
       );
       try {
         final playlist = Playlist(
-          playlistLines
-              .map((item) => Media(item.url, httpHeaders: item.headers))
-              .toList(growable: false),
+          playlistLines.map((item) => Media(item.url, httpHeaders: item.headers)).toList(growable: false),
         );
         // 记下发时刻:首个出帧事件时落盘 open_to_first_frame。
         _openStartedAt = DateTime.now();
@@ -1770,19 +1629,13 @@ class MediaKitLivePlayer
       } catch (error) {
         // 被更新的指令顶掉:连错误都不该写(否则旧源的异常会覆写新房文案)。
         if (myGen != _sourceGeneration) {
-          PlaybackLog.write('open_superseded', {
-            'gen': myGen,
-            'current': _sourceGeneration,
-            'phase': 'failed',
-          });
+          PlaybackLog.write('open_superseded', {'gen': myGen, 'current': _sourceGeneration, 'phase': 'failed'});
           return;
         }
         // 原始异常(ArgumentError / PlatformException 等)不是 mpv 日志,直接展示
         // 对用户无意义;归类后给处置建议,归类不出则退到兜底文案。
         final classification = PlayerErrorClassifier.classify('$error');
-        final kind = classification.isError
-            ? classification.kind
-            : PlayerErrorKind.native;
+        final kind = classification.isError ? classification.kind : PlayerErrorKind.native;
         _lastErrorKind = kind;
         _eventsFenced = false;
         _emit((s) => s.copyWith(error: playerErrorHint(kind), errorKind: kind));
@@ -1833,10 +1686,7 @@ class MediaKitLivePlayer
     // 与重试耗尽同一闩锁:置位后看门狗/终局错误/列表结束都不再重开,
     // 仅由 open(resetRetries: true)(手动 retry/切源)解除。**不轮转线路**。
     _givenUp = true;
-    PlaybackLog.write('recovery_cancelled', {
-      'host': _currentHost,
-      'retries': _stallRetries,
-    });
+    PlaybackLog.write('recovery_cancelled', {'host': _currentHost, 'retries': _stallRetries});
     _emit(
       (s) => s.copyWith(
         buffering: false,
@@ -1929,17 +1779,14 @@ class MediaKitLivePlayer
   }
 
   @override
-  Future<void> setFullscreen(bool fullscreen) =>
-      _windowPresentation.setFullscreen(fullscreen);
+  Future<void> setFullscreen(bool fullscreen) => _windowPresentation.setFullscreen(fullscreen);
 
   @override
   Future<void> toggleFullscreen() => _windowPresentation.toggleFullscreen();
 
   @override
   Future<void> enterPictureInPicture({double? aspectRatio}) =>
-      _windowPresentation.enterPip(
-        aspectRatio: aspectRatio ?? _videoAspectRatio,
-      );
+      _windowPresentation.enterPip(aspectRatio: aspectRatio ?? _videoAspectRatio);
 
   @override
   Future<void> exitPictureInPicture() => _windowPresentation.exitPip();
@@ -1949,10 +1796,7 @@ class MediaKitLivePlayer
     // 仅 Windows 需要桌面包壳;其余平台(含单测 VM 之外的非桌面宿主)透传。
     // `DragToResizeArea` 自身传递性依赖 dart:io,只允许出现在平台层。
     if (!Platform.isWindows) return child;
-    return DragToResizeArea(
-      resizeEdgeColor: const Color(0x00000000),
-      child: child,
-    );
+    return DragToResizeArea(resizeEdgeColor: const Color(0x00000000), child: child);
   }
 
   /// 当前视频宽高比(PiP 小窗据此定尺寸);未出画面时返回 null,由 PiP 侧退回 16:9。
@@ -2055,18 +1899,12 @@ class MediaKitLivePlayer
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    PlaybackLog.write('app_lifecycle', {
-      'state': state.name,
-      'playing': _latest.playing,
-    });
+    PlaybackLog.write('app_lifecycle', {'state': state.name, 'playing': _latest.playing});
   }
 
   void _logWindowEvent(String kind) {
     if (_disposed) return;
-    PlaybackLog.write('window_event', {
-      'kind': kind,
-      'playing': _latest.playing,
-    });
+    PlaybackLog.write('window_event', {'kind': kind, 'playing': _latest.playing});
   }
 }
 

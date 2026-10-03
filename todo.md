@@ -447,6 +447,14 @@
 
 **验证**:analyze lib+tool **0 error**;全套件 **149/149 过**(含上游合并带入测试);audit 0 error;抖音分类探针(8 组 237 项)+分类房间链路(media-ok)复验通过。并行会话同期在途 playback 文件未纳入本提交
 
+### 迭代 31(2026-10-03)✅ 17LIVE 房间打不开——本地流代理/桥接层丢站点媒体头,wansu CDN Referer 强校验 403
+
+- [x] **取证**:playback.log 现场(10:39)解析链 prefetch_ok 2 线正常,`proxy_upstream_fail reason=http_403`(wansu)→ 备线 tencent 404 → source_open_failure → 恢复链循环耗尽;curl 对照:裸请求/UA-only 均 **403**,UA+Referer **200**——wansu CDN 新增 Referer 强校验(解析链 dio 头齐全所以解析成功,取流断)
+- [x] **根因**(双层断供):① `purelive_backend._playbackHeaders` 仅四家(B站/抖音/虎牙/斗鱼)手写分支,长尾站点只回退 UA 无 Referer;② FLV 线经 `LocalStreamProxy` 取流时上游连接**一个头都不带**——mpv 的 httpHeaders 打给 127.0.0.1 本地地址,到不了真上游
+- [x] **修复**:① `_playbackHeaders` 整体委托 `PlaybackHeaderResolver.resolve`(全站点契约一次点亮:17live/pandalive/showroom/chzzk/bigo 等全部 UA+Origin+Referer;四家口径等价;Referer 用规范化的 `detail.roomId` 拼接,直粘链接输入不受影响);② `LocalStreamProxy.openSession` 增 headers 参数,`_connectUpstream` 逐头转发;③ `_wrapLineWithProxy` 传 `line.headers`
+- [x] **PandaTV 同报障结论**(环境级,非代码):`api.pandalive.co.kr` 对现出口 103.151.172.13 定点制裁(제재된 IP)——`live/index`(首页目录)、`member/bj`(房间)拒,`page/www`/`live/bj_list`/静态页放行;官方前端 JS 仍用 `/v1/live/index`,非 API 漂移;与迭代8 表格结论一致。**换 Clash 出口节点即解,代码无解**
+- 验证:新增 opt-in 探针 `tool/probes/proxy_media_headers_probe_test.dart`(resolver 头部契约 → 代理转发 → 真实 wansu 流实拉 FLV magic 字节)全绿;`resolve_room_diag` 17live 全链路(搜索→详情→四档→2线)绿;analyze 与 HEAD 基线持平(67,零新增);受影响单测(purelive_stats_refresh/soop_category_zh_bridge)21/21。另修 `resolve_room_diag_probe_test.dart` 缺 `LiveRoom` 导入(布局重构遗留编译坏点)
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:

@@ -19,9 +19,9 @@ import 'browse_source.dart';
 
 import 'package:pure_live/core/contracts/live_input_recipe.dart';
 import 'package:pure_live/core/contracts/live_site.dart';
+import 'package:pure_live/core/network/playback_header_resolver.dart';
 import 'package:pure_live/platforms/sites.dart';
 import 'package:pure_live/core/contracts/live_danmaku.dart';
-import 'package:pure_live/platforms/douyin/douyin_site.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_message.dart';
 import 'package:pure_live/core/models/live_room.dart';
@@ -39,11 +39,6 @@ const Map<String, String> kPureLiveSiteMap = {
 
 const Map<String, String> kPureLiveSiteNames = {'bilibili': 'BiliBili', 'douyin': '抖音', 'huya': '虎牙', 'douyu': '斗鱼'};
 
-const String _desktopUserAgent =
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-    'AppleWebKit/537.36 (KHTML, like Gecko) '
-    'Chrome/140.0.0.0 Safari/537.36';
-
 /// 站点实例单例表:保留 huya UA 刷新、douyu 签名缓存、douyin cookie 等
 /// 站点内进程级状态(每次新建会丢缓存导致重复签名请求)。
 final Map<String, LiveSite> _pureLiveSiteInstances = {};
@@ -57,38 +52,12 @@ LiveSite _siteInstanceOf(String liveParserSite) {
   });
 }
 
-/// 播放请求头(对齐 pure_live PlaybackHeaderResolver 四家分支,匿名口径)。
-Map<String, String> _playbackHeaders(String site, String roomId) {
-  // 对齐 pure_live PlaybackHeaderResolver(匿名口径)。
-  switch (site) {
-    case 'douyu':
-      return {
-        'origin': 'https://www.douyu.com',
-        'referer': 'https://www.douyu.com/$roomId',
-        'user-agent': _desktopUserAgent,
-      };
-    case 'huya':
-      return {
-        'user-agent': _desktopUserAgent,
-        'origin': 'https://www.huya.com',
-        'referer': roomId.isEmpty ? 'https://www.huya.com/' : 'https://www.huya.com/$roomId',
-      };
-    case 'bilibili':
-      return {
-        'user-agent': _desktopUserAgent,
-        'origin': 'https://live.bilibili.com',
-        'referer': roomId.isEmpty ? 'https://live.bilibili.com/' : 'https://live.bilibili.com/$roomId',
-      };
-    case 'douyin':
-      return {
-        'user-agent': _desktopUserAgent,
-        'origin': 'https://live.douyin.com',
-        'referer': 'https://live.douyin.com/',
-        if (DouyinSite.cookie.isNotEmpty) 'cookie': DouyinSite.cookie,
-      };
-  }
-  return {'user-agent': _desktopUserAgent};
-}
+/// 播放请求头:统一委托 pure_live 的 PlaybackHeaderResolver 站点契约
+/// (UA/Origin/Referer/匿名 Cookie)。此前仅四家手写分支,长尾站点只回退
+/// UA;17LIVE 的 wansu CDN 强校验 Referer(UA-only 实测 403),取流经
+/// 本地代理即断(2026-10-03)。
+Future<Map<String, String>> _playbackHeaders(String site, String roomId) =>
+    PlaybackHeaderResolver.resolve(platform: site, roomId: roomId);
 
 /// owned-input 配方提取:仅当适配器声明「真源但无导出 URL」时返回配方,
 /// 通用 URL 平台(带直链)返回 null——后者由 resolveRoom 的 streams 常规承载。
@@ -234,9 +203,10 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
       }
     }
 
-    // 取流:该档位下全部线路。
+    // 取流:该档位下全部线路。头部用规范化的 detail.roomId 拼 Referer,
+    // 直粘房间链接时 roomIdOrUrl 是 URL,不能直接进 Referer。
     final urls = await coreSite.getPlayUrls(liveroom: detail, quality: chosen);
-    final headers = _playbackHeaders(site, request.roomIdOrUrl);
+    final headers = await _playbackHeaders(site, detail.roomId ?? '');
     final chosenIndex = qualities.indexOf(chosen);
 
     return pureliveRoomToPayload(
