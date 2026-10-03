@@ -430,6 +430,12 @@
 - 补充:启动参数 `--room <url>` 路径(`_resolveStartupRoom` 取 path 尾段)本就支持 c: 链接,不受影响;存量探针 `twitcasting_public_contract_probe_test.dart` 已与现 API 签名脱节(opt-in 不入套件),当日即修——对齐 `getRoomDetailForRecording(LiveRoom)`/`resolveStream({liveroom})` 现签名后真网络复跑全绿(目录 50 条/18 分组/3 档 HLS/媒体清单 449B/录制输入与恢复契约 resolved)
 - 验证:直达识别回归测试(c:/g: URL→DirectTarget、多段 movie 拒绝)+ 真网络探针 `tool/probes/twitcasting_c_prefixed_channel_probe_test.dart`;**全量 149/149 全过**;analyze 改动文件 0 告警
 
+### 迭代 30(2026-10-03)✅ 导航左上角品牌块(logo + 「紫薯直播」文字)移除
+
+- [x] top_nav 桌面顶栏不再渲染 `_Logo`(logo-128.png 图标 + 「紫薯直播」文字 + Tooltip),整类删除;首页入口由「首页」动作承载,回首页路径 /all 不变
+- [x] 范围仅桌面导航左上角:手机端 bottom_nav 的品牌锚点、窗口标题(windows_app title)、`_kAppTitle` 均不动
+- 验证:analyze 改动文件 0 告警;**全量 149/149 全过**(无 golden/测试引用 nav-brand)
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:

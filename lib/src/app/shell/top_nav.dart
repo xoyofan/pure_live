@@ -57,18 +57,10 @@ class _TopNav extends StatelessWidget implements PreferredSizeWidget {
           ),
           Expanded(
             child: Center(
-              child: _PlatformTabs(
-                currentSite: currentSite,
-                onHover: onPlatformHover,
-                onHoverEnd: onPlatformHoverEnd,
-              ),
+              child: _PlatformTabs(currentSite: currentSite, onHover: onPlatformHover, onHoverEnd: onPlatformHoverEnd),
             ),
           ),
-          _TopNavTools(
-            showLabels: showLabels,
-            onFollowHover: onFollowHover,
-            onFollowHoverEnd: onFollowHoverEnd,
-          ),
+          _TopNavTools(showLabels: showLabels, onFollowHover: onFollowHover, onFollowHoverEnd: onFollowHoverEnd),
         ],
       ),
     );
@@ -97,8 +89,8 @@ class _TopNavLeading extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _Logo(showLabel: showLabels),
-        const SizedBox(width: AppSpacing.xs),
+        // 品牌 logo + 「紫薯直播」文字已按用户口径(2026-10-03)从导航左上角移除;
+        // 首页入口仍由「首页」动作承载。
         _NavAction(
           key: const Key('nav-home'),
           icon: Icons.home_rounded,
@@ -132,11 +124,7 @@ class _TopNavLeading extends StatelessWidget {
 }
 
 class _TopNavTools extends StatelessWidget {
-  const _TopNavTools({
-    required this.showLabels,
-    required this.onFollowHover,
-    required this.onFollowHoverEnd,
-  });
+  const _TopNavTools({required this.showLabels, required this.onFollowHover, required this.onFollowHoverEnd});
 
   final bool showLabels;
   final void Function(double centerX) onFollowHover;
@@ -194,72 +182,6 @@ class _TopNavTools extends StatelessWidget {
   }
 }
 
-class _Logo extends StatelessWidget {
-  const _Logo({this.showLabel = true});
-
-  final bool showLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: '紫薯直播',
-      child: InkWell(
-        key: const Key('nav-brand'),
-        borderRadius: AppRadius.allMd,
-        // hover 压暗一档是导航品牌块的 web 真源(`.nav-brand:hover{background:var(--bg-soft)}`,
-        // DESIGN.md §11.2);焦点另走 focusColor。
-        hoverColor: context.tokens.surfaceSoft,
-        focusColor: AppStateLayer.focusOf(context.tokens.accent),
-        splashColor: AppStateLayer.splashOf(context.tokens.accent),
-        highlightColor: AppStateLayer.pressedOf(context.tokens.accent),
-        onTap: () => context.go('/all'),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset(
-                'assets/ui/logo/logo-128.png',
-                width: 30,
-                height: 30,
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => Container(
-                  width: 30,
-                  height: 30,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: context.tokens.accent,
-                    borderRadius: AppRadius.allMd,
-                  ),
-                  child: const Text(
-                    '薯',
-                    style: TextStyle(
-                      color: AppOnBright.white,
-                      fontSize: AppFontSize.title,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-              if (showLabel) ...[
-                const SizedBox(width: AppSpacing.xs),
-                Text(
-                  '紫薯直播',
-                  style: TextStyle(
-                    fontSize: AppFontSize.subtitle,
-                    fontWeight: FontWeight.w600,
-                    color: context.tokens.textPrimary,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// 桌面主导航动作:36px 级点击目标,hover/active 由 InkWell 负责,
 /// 小窗口自动切换为 icon-only,平台名和动作名由 Tooltip 承载。
 class _NavAction extends StatelessWidget {
@@ -309,9 +231,7 @@ class _NavAction extends StatelessWidget {
         }
 
         return MouseRegion(
-          onEnter: (onHoverStart == null && onTap == null)
-              ? null
-              : (_) => onHoverStart?.call(centerX()),
+          onEnter: (onHoverStart == null && onTap == null) ? null : (_) => onHoverStart?.call(centerX()),
           onExit: onHoverEnd == null ? null : (_) => onHoverEnd!(),
           child: Tooltip(
             message: tooltip,
@@ -323,14 +243,9 @@ class _NavAction extends StatelessWidget {
                 focusColor: AppStateLayer.focusOf(context.tokens.accent),
                 splashColor: AppStateLayer.splashOf(context.tokens.accent),
                 highlightColor: AppStateLayer.pressedOf(context.tokens.accent),
-                onTap: onTap != null
-                    ? () => onTap!(centerX())
-                    : (route == null ? null : () => context.go(route!)),
+                onTap: onTap != null ? () => onTap!(centerX()) : (route == null ? null : () => context.go(route!)),
                 child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: showLabel ? AppSpacing.sm : AppSpacing.xs,
-                    vertical: 3,
-                  ),
+                  padding: EdgeInsets.symmetric(horizontal: showLabel ? AppSpacing.sm : AppSpacing.xs, vertical: 3),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -341,9 +256,7 @@ class _NavAction extends StatelessWidget {
                           label,
                           style: TextStyle(
                             fontSize: AppFontSize.bodySecondary,
-                            fontWeight: active
-                                ? FontWeight.w600
-                                : FontWeight.w500,
+                            fontWeight: active ? FontWeight.w600 : FontWeight.w500,
                             color: color,
                           ),
                         ),
