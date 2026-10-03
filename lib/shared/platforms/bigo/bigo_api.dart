@@ -410,8 +410,11 @@ class BigoApi {
     final data = _success(json);
     final owner = _ownerId(data['uid']);
     if (owner != expectedOwnerId) throw const BigoException(BigoFailure.identity);
-    final login = _boolean(data['needLogin']);
-    final password = _boolean(data['passRoom']);
+    // needLogin/passRoom:未开播房的响应把这两键给 null(实测 2026-10-03,
+    // roomStatus=0 场景)——null 视为 false(未受限);其余非 bool 形状漂移
+    // 仍拒绝。
+    final login = data['needLogin'] == null ? false : _boolean(data['needLogin']);
+    final password = data['passRoom'] == null ? false : _boolean(data['passRoom']);
     final paid = _text(data['isPaidShow']);
     if (!{'', '0', '1'}.contains(paid)) throw const BigoException(BigoFailure.schema);
     final alive = _binary(data['alive']);
@@ -420,6 +423,10 @@ class BigoApi {
         : (password || paid == '1')
         ? BigoAccess.restricted
         : BigoAccess.public;
+    final rawRoomType = data['roomType'];
+    // roomType:在播房为字符串、未开播房实测为 int 0(2026-10-03 离线形状),
+    // 双收归一为文本;其余类型仍算形状漂移。
+    final roomType = rawRoomType is int ? '$rawRoomType' : _text(rawRoomType);
     return BigoStudioStatus(
       requestedSiteId: siteId,
       ownerId: owner,
@@ -427,7 +434,7 @@ class BigoApi {
       access: access,
       reportedAlive: access == BigoAccess.public ? alive : null,
       roomStatus: _number(data['roomStatus']),
-      roomType: _text(data['roomType']),
+      roomType: roomType,
       password: password,
       paid: paid == '1',
     );
@@ -458,7 +465,10 @@ class BigoApi {
     final title = data['roomTopic'] == null ? '' : _text(data['roomTopic']);
     final category = data['gameTitle'] == null ? '' : _text(data['gameTitle']);
     final rawAvatar = data['avatar'];
-    final avatar = rawAvatar == null || rawAvatar == '' ? null : _httpsUri(_text(rawAvatar)).toString();
+    // 头像与快照同口径放宽到 http(s)(未开播房的 avatar 实测是 http,2026-10-03):
+    // 读不出来就当作没有,不能因为一张图让整次详情解析失败。
+    final avatarUrl = rawAvatar == null || rawAvatar == '' ? '' : _picture(_text(rawAvatar));
+    final avatar = avatarUrl.isEmpty ? null : avatarUrl;
     // 快照放宽到 http(s)（上游 `_picture`）：读不出来就当作没有，不能因为一张图
     // 让整次详情解析失败。
     final snapshot = _picture(data['snapshot'] == null ? '' : _text(data['snapshot']));
