@@ -480,6 +480,13 @@
 - [x] **chzzk /live/7c14…**:API 返回 9004「해외 시청 불가능한 컨텐츠」——频道对当前出口区域封锁,适配器诚实映射 mediaUnavailable;结构性限制(迭代8 结论:需韩国住宅网络),非解析缺陷
 - 工具:新增 `tool/probes/link_direct_matrix_probe_test.dart`(三链接直达+解析矩阵)与 `tool/probes/youtube_liveme_home_probe_test.dart`、`navigation_platforms_probe_test.dart`(迭代35 附件);提交 10cf5b4c,重建 16:50 打开 PID 11800
 
+### 迭代 37(2026-10-03)✅ 全平台同类缺陷排查(bigo 型:形状漂移→未开播伪装解析失败):未发现新增,回归工具修复
+
+- [x] **静态审查**(33 适配器):全部有未开播分支(bigo 型零分支仅 bigo 一家,已修);严格 bool 断言的 11 家(chzzk/kilakila/pandalive/picarto/showroom/tiktok/twitcasting/youtube/cc/looklive/niconico)逐个核对——断言全部位于**信封/分页/直播列表路径**,离线详情不经过,无 bigo 型暴露面;niconico/xiaohongshu 零标记虚惊(离线分支在 site 文件)
+- [x] **运行时回归**:迁移 `all_sites_playback_probe_test.dart` 到新布局(上游合并弄坏:domains/live/domain 死导入 + 旧 resolvePlayUrls API→双轨 resolvePlayUrlsRaw/getPlayUrls as+TypeError 捕获)并复跑——**media-ok 26/33 与迭代26 基线完全一致**,合并后直播形状零漂移;非 ok 项全为既有结构性(xhs/youtube 无目录、bigo 匿名门、chzzk 区域等)
+- [x] **结论**:除已修的 bigo 外,当前无其他平台的同类缺陷;剩余风险点仅 twitcasting `movie['live'] is! bool`(streamserver 离线态若返回 null 会抛 schema,暂无实证,留观)
+- 重建:PureLive-3.1.19-4108 便携包 16:50 重打;启动 PID 11800
+
 
 ### 迭代 27(2026-10-03)✅ 抖音二级分类对齐 zishu + 分类并行预热 + 抽屉二级分类四字宽横铺
 

@@ -15,10 +15,11 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:pure_live/core/models/live_play_quality.dart';
 import 'package:pure_live/core/models/live_room.dart';
 import 'package:pure_live/core/config/settings_service.dart';
 import 'package:pure_live/core/storage/hive_pref_util.dart';
-import 'package:pure_live/domains/live/domain/live_site.dart';
+import 'package:pure_live/shared/platforms/live_site.dart';
 import 'package:pure_live/domains/live/data/platforms/sites.dart';
 import 'package:pure_live/get/get.dart';
 import 'package:pure_live/domains/live/data/playback_header_resolver.dart';
@@ -35,6 +36,18 @@ const _roomsScanned = 12;
 // These adapters resolve their catalog or media through a headless WebView,
 // which does not exist on a test host; verify them on a device instead.
 const _webViewSites = {'dailymotion', 'nimotv', 'rumble', 'shopeelive'};
+
+/// 新布局播放解析双轨:实现 LivePlayUrlResolver 的站点走 raw 解析(携带
+/// owned-input 配方),其余回落基类 getPlayUrls(Dart 3.13 对无子类型关系
+/// 的 `is` 判恒假,用 as + TypeError 捕获,purelive_backend 同款 workaround)。
+Future<LivePlayUrlResolution> _resolveUrls(dynamic site, LiveRoom detail, LivePlayQuality quality) async {
+  try {
+    return await (site as LivePlayUrlResolver).resolvePlayUrlsRaw(liveroom: detail, quality: quality);
+  } on TypeError {
+    final urls = await site.getPlayUrls(liveroom: detail, quality: quality);
+    return LivePlayUrlResolution(urls: urls);
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -148,7 +161,7 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
       result['qualities'] = qualities.map((q) => q.quality).toList();
       result['stage'] = 'urls';
       // Same entry point as the player: owned inputs carry no exportable URL.
-      final resolution = await site.resolvePlayUrls(liveroom: detail, quality: qualities.first);
+      final resolution = await _resolveUrls(site, detail, qualities.first);
       if (resolution.inputRecipe != null) {
         result['verdict'] = 'owned-input';
         return;
@@ -174,7 +187,7 @@ Future<void> _probeSite(String id, Map<String, Object?> result) async {
         final perQuality = <String, String>{};
         for (final quality in qualities) {
           try {
-            final other = await site.resolvePlayUrls(liveroom: detail, quality: quality);
+            final other = await _resolveUrls(site, detail, quality);
             final otherUri = other.urls.isEmpty ? null : Uri.tryParse(other.urls.first);
             perQuality[quality.quality] = otherUri == null ? 'no-url' : await _checkMedia(otherUri, headers);
           } catch (error) {
