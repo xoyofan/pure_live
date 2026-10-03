@@ -4,10 +4,12 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart'
     show AppLifecycleState, BoxFit, Color, Widget, WidgetsBinding, WidgetsBindingObserver, visibleForTesting;
+import 'package:media_core_ingest/media_core_ingest.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:live_parser/live_parser.dart' show StreamLine, UpstreamProxy;
@@ -1620,6 +1622,10 @@ class MediaKitLivePlayer
         ),
       );
       try {
+        // HLS 线经上游 ingest 管线判定(2026-10-03 对齐 purelive):manifest
+        // 子行是裸名/绝对路径时,mpv 的解析依赖 base URL 不丢失——改由
+        // loopback 中继改写为绝对地址后再开。FLV 与本机中继地址直通。
+        playlistLines = [for (final item in playlistLines) await _ingestRewritten(item)];
         final playlist = Playlist(
           playlistLines.map((item) => Media(item.url, httpHeaders: item.headers)).toList(growable: false),
         );
@@ -1657,6 +1663,58 @@ class MediaKitLivePlayer
     final session = _proxySession;
     if (session == null) return false;
     return session.switchUpstream(url);
+  }
+
+  /// 已启动的 ingest 中继:随 stop/换源/销毁回收。
+  final List<LoopbackIngestRelay> _ingestRelays = <LoopbackIngestRelay>[];
+
+  /// HLS manifest 改写判定:子行需要 base URL 时换 loopback 中继地址,
+  /// 其余(含任何判定失败)一律直通原地址。5s 超时、1MB 上限,失败不致命。
+  Future<StreamLine> _ingestRewritten(StreamLine item) async {
+    if (item.format != 'hls') return item;
+    final uri = Uri.tryParse(item.url);
+    if (uri == null || uri.host == '127.0.0.1' || uri.host == 'localhost') return item;
+    try {
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+      try {
+        final request = await client.getUrl(uri);
+        item.headers.forEach(request.headers.set);
+        final response = await request.close().timeout(const Duration(seconds: 5));
+        if (response.statusCode != HttpStatus.ok) return item;
+        final body = await utf8
+            .decodeStream(response.cast<List<int>>())
+            .timeout(const Duration(seconds: 5), onTimeout: () => '');
+        if (body.length > 1 << 20) return item;
+        final kind = classifyHlsManifest(body);
+        if (!kind.requiresRewrite) {
+          PlaybackLog.write('ingest_plan', {'strategy': 'direct', 'kind': kind.describe()});
+          return item;
+        }
+        final relay = await LoopbackIngestRelay.start(source: uri, headers: item.headers, rootManifest: body);
+        _ingestRelays.add(relay);
+        PlaybackLog.write('ingest_plan', {
+          'strategy': 'manifestRelay',
+          'kind': kind.describe(),
+          'port': relay.inputUri.port,
+        });
+        return StreamLine(name: item.name, url: relay.inputUri.toString(), format: item.format);
+      } finally {
+        client.close(force: true);
+      }
+    } catch (_) {
+      return item; // 判定/中继失败不致命:直通原地址。
+    }
+  }
+
+  /// 回收已启动的 ingest 中继(stop/销毁时)。
+  Future<void> _disposeIngestRelays() async {
+    final relays = List<LoopbackIngestRelay>.of(_ingestRelays);
+    _ingestRelays.clear();
+    for (final relay in relays) {
+      try {
+        await relay.close();
+      } catch (_) {}
+    }
   }
 
   @override
@@ -1723,6 +1781,8 @@ class MediaKitLivePlayer
     _videoKickTimer = null;
     _videoKicked = false;
     // 死开流看门狗同理:离房后黑屏复核已无对象。
+    // ingest 中继(loopback 服务)一并回收:中继不随 Player 生命周期,须显式关。
+    unawaited(_disposeIngestRelays());
     _deadOpenTimer?.cancel();
     _deadOpenTimer = null;
     return _enqueueLifecycle(() async {

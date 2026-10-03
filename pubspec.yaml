@@ -126,6 +126,8 @@ dependencies:
     path: F:/media_core/packages/media_core
   media_core_media_kit:
     path: F:/media_core/packages/media_core_media_kit
+  media_core_ingest:
+    path: F:/media_core/packages/media_core_ingest
   media_core_ui:
     path: F:/media_core/packages/media_core_ui
   media_core_pip:

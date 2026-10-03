@@ -480,6 +480,14 @@
 - [x] **chzzk /live/7c14…**:API 返回 9004「해외 시청 불가능한 컨텐츠」——频道对当前出口区域封锁,适配器诚实映射 mediaUnavailable;结构性限制(迭代8 结论:需韩国住宅网络),非解析缺陷
 - 工具:新增 `tool/probes/link_direct_matrix_probe_test.dart`(三链接直达+解析矩阵)与 `tool/probes/youtube_liveme_home_probe_test.dart`、`navigation_platforms_probe_test.dart`(迭代35 附件);提交 10cf5b4c,重建 16:50 打开 PID 11800
 
+### 迭代 40(2026-10-03)✅ 播放输入机制接入上游 media_core_ingest 管线(用户口径:播放机制用上游,zishu 不自研)
+
+用户拍板"类似播放机制解析等用上游的,zishu 不要做"。调研:上游**今日新建** `media_core_ingest`(提交原话点名"FLV 续签散在宿主"正是本项目踩的坑),把"HLS 中继/FLV 续签/legacy HEVC 改写/分片 token"从各宿主收拢为一个决策入口+两种机制。上游 pure_live 侧尚未消费(新基建,迁移中)。
+
+- [x] **接入**:pubspec 加 `media_core_ingest` path 依赖;`MediaKitLivePlayer` 开流前对 **HLS 线**执行上游决策管线——取 manifest(5s/1MB 界)→`classifyHlsManifest`→`requiresRewrite` 时启动 `LoopbackIngestRelay` 以回环地址开流(子行改写为回环绝对地址);FLV/本机中继/判定失败一律直通(fail-open 不致命);中继随 stop/销毁回收
+- [x] **范围说明**:FLV 续签(斗鱼 5 分钟)暂走迭代39 的排期热切——ingest 当前只收拢 HLS 改写,上游后续把 FLV 续签迁入时再对齐;owned-input 录制侧 FFmpegHlsInputRelay 迁移另行立项
+- 验证:新增 `ingest_relay_glue_test` 3 用例(本地伪上游端到端:根改写为回环绝对地址/分段经中继回流/生命周期回收/分类口径);**全量 203/203 全过**(基线 200+3);analyze 0 error
+
 ### 迭代 39(2026-10-03)✅ 斗鱼 5 分钟重读修复——租约到期前排期热切(连接不断)
 
 用户报告"画面和声音重读了一小段"。playback.log 实录:斗鱼 88660 每**整 5 分钟** `proxy_upstream_fail upstream_done`→事后恢复热切(huosa↔hwa 交替),且每次把正常节点误记负缓存(host_avoid_recorded)。重读=断连后拼接的重叠。

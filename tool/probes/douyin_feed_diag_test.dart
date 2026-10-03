@@ -24,7 +24,9 @@ void main() {
         print('[适配器现状] rooms=${rooms.length}');
         for (final r in rooms.take(8)) {
           // ignore: avoid_print
-          print('  - ${r.roomId} ${(r.title ?? '').substring(0, (r.title ?? '').length > 24 ? 24 : (r.title ?? '').length)}');
+          print(
+            '  - ${r.roomId} ${(r.title ?? '').substring(0, (r.title ?? '').length > 24 ? 24 : (r.title ?? '').length)}',
+          );
         }
       } catch (e) {
         // ignore: avoid_print
@@ -64,7 +66,9 @@ void main() {
             final inner = env is Map ? env['data'] : null;
             if (inner is Map && '${inner['id_str']}' != 'null') {
               // ignore: avoid_print
-              print('  - ${inner['id_str']} ${('${inner['title'] ?? ''}').substring(0, ('${inner['title'] ?? ''}').length > 24 ? 24 : ('${inner['title'] ?? ''}').length)}');
+              print(
+                '  - ${inner['id_str']} ${('${inner['title'] ?? ''}').substring(0, ('${inner['title'] ?? ''}').length > 24 ? 24 : ('${inner['title'] ?? ''}').length)}',
+              );
               n++;
             }
           }
