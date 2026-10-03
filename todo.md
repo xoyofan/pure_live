@@ -466,6 +466,13 @@
 - [x] **产物**:`local-artifacts/3.1.19-4108/PureLive-3.1.19-4108-windows-x64-portable.zip`(16:07 重打);启动验证 PID 22656,窗口「全平台首页 · 紫薯直播 3.1.19」
 - [x] **质量档说明**:`-SkipQuality`——本人源码改动在 7b496c9d 已有全量 194/194 + analyze 0 证据;此后并行会话布局收编增量 lib/ analyze 干净,唯 `integration_test/engine_playback_test.dart` 15 个错误(引用被删旧路径,重构尾巴,归并行会话清理);另 `android/build.gradle.kts:12` 仍解析已不含的 `:flv_lzc` 项目(Android 修复列车待处理)
 
+### 迭代 35(2026-10-03)✅ YouTube 首页恢复 native browse(purelive 覆盖不再顶掉 zishu 目录仓储);liveme 排查为上游结构性无分类
+
+- [x] **取证**:平台条两家都在(navigationPlatforms 35 项);经注册表链路实测——youtube 推荐/分类**恒空**(pure_live 适配层无公开目录),liveme 推荐流健康(12 房 hasMore)但分类树 0 组(上游结构性缺失)
+- [x] **根因**:`buildRegistryWithPureLive` 对全部平台无差别覆盖 browse,PureLiveBrowseRepository 顶掉了 live_parser 原生 `YoutubeBrowseRepository`(抓 /live /gaming /music /news 页,zishu 同源一直健康)→ YouTube 首页与全站聚合永久无数据
+- [x] **修复**:`buildPureLiveRegistration` 增 `browseOverride`;youtube 保留 native browse(播放/统计仍走 purelive);实测注册表链路 youtube 12 房+4 分类、liveme 12 房
+- 重建:PureLive-3.1.19-4108 便携包 16:33 重打;启动 PID 15392。全量 194/194 全过;提交 71811b5b
+
 
 ### 迭代 27(2026-10-03)✅ 抖音二级分类对齐 zishu + 分类并行预热 + 抽屉二级分类四字宽横铺
 
