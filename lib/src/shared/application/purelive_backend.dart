@@ -25,6 +25,7 @@ import 'package:pure_live/core/contracts/live_danmaku.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_message.dart';
 import 'package:pure_live/core/models/live_room.dart';
+import 'package:pure_live/platforms/huya/huya_site.dart' show HuyaUrlDataModel;
 
 import 'purelive_audience.dart';
 import 'purelive_line_format.dart';
@@ -121,8 +122,8 @@ RoomRecord pureliveStatsRecord(LiveRoom room, String site) {
   );
 }
 
-/// 读适配器塞进 `LiveRoom.data` 的桥接暂存字段(soop cateNo / 虎牙
-/// identityLabel / 斗鱼·B站 promoTag / 斗鱼 startedAtMs);缺键或空串
+/// 读适配器塞进 `LiveRoom.data` 的桥接暂存字段(soop cateNo / 分类 cid /
+/// 虎牙 identityLabel / 斗鱼·B站 promoTag / 斗鱼 startedAtMs);缺键或空串
 /// 返回 null(数据诚实:接口没有就不填,不伪造)。
 String? _dataString(LiveRoom room, String key) {
   final data = room.data;
@@ -133,12 +134,13 @@ String? _dataString(LiveRoom room, String key) {
 
 /// 把 pure_live LiveRoom 映射为 live_parser RoomPayload(不含流)。
 ///
-/// soop 分类契约:LiveRoom 无分类号字段,解析层把 CHANNEL `CATE` 放进
-/// `data['cateNo']`;payload.cid 承载房间号(soop 无二级分类 id,zishu
-/// live_parser 同构),真实分类号走 [RoomPayload.cateNo]——播放页收藏星/
-/// 分类跳转按 cateNo,不得拿 cid 冒充。其余平台拿不到分类上下文,cid
-/// 维持空串(与既有行为一致)。斗鱼 `data['startedAtMs']`(betard
-/// show_time)换算 payload.startedAt,播放页元信息条显示真实开播时间。
+/// 分类契约(zishu live_parser 同构):LiveRoom 无分类 id 字段,适配器把
+/// 详情接口的分类号塞进 `data['cid']`(B站 area_id / 斗鱼 betard cate_id /
+/// 虎牙 liveData.gid,虎牙经 HuyaUrlDataModel.cid);payload.cid = 分类 id
+/// → 播放页收藏星/分类跳转。soop 与抖音无二级分类 id:cid 即房间号(soop
+/// 另把 CHANNEL `CATE` 填 [RoomPayload.cateNo],收藏分类优先用 cateNo)。
+/// 斗鱼 `data['startedAtMs']`(betard show_time)换算 payload.startedAt,
+/// 播放页元信息条显示真实开播时间。
 RoomPayload pureliveRoomToPayload(
   LiveRoom room,
   String site, {
@@ -148,6 +150,12 @@ RoomPayload pureliveRoomToPayload(
   final data = room.data;
   final cateNo = data is Map ? (data['cateNo']?.toString().trim() ?? '') : '';
   final startedAtMs = data is Map ? int.tryParse(data['startedAtMs']?.toString() ?? '') : null;
+  final bridgedCid = switch (data) {
+    Map m => (m['cid']?.toString().trim() ?? ''),
+    HuyaUrlDataModel h => h.cid.trim(),
+    _ => '',
+  };
+  final cid = site == Sites.soopSite || site == Sites.douyinSite ? (room.roomId ?? '') : bridgedCid;
   return RoomPayload(
     site: site,
     roomId: room.roomId ?? '',
@@ -157,7 +165,7 @@ RoomPayload pureliveRoomToPayload(
     cover: room.cover ?? '',
     avatar: room.avatar ?? '',
     category: room.area ?? '',
-    cid: site == Sites.soopSite ? (room.roomId ?? '') : '',
+    cid: cid,
     cateNo: cateNo,
     startedAt: startedAtMs != null && startedAtMs > 0 ? DateTime.fromMillisecondsSinceEpoch(startedAtMs) : null,
     roomState: _stateOf(room),

@@ -750,7 +750,15 @@ class HuyaSite
         status: normalizedLiveState == 'ON',
         liveStatus: parseHuyaLiveStatus(normalizedLiveState),
         platform: SiteIds.huyaSite,
-        data: HuyaUrlDataModel(url: "", lines: huyaLines, bitRates: huyaBiterates, uid: "", isXingxiu: isXingxiu),
+        data: HuyaUrlDataModel(
+          url: "",
+          lines: huyaLines,
+          bitRates: huyaBiterates,
+          uid: "",
+          isXingxiu: isXingxiu,
+          // 分类 id(liveData.gid,zishu live_parser huya 同口径)。
+          cid: data['liveData']?['gid']?.toString() ?? '',
+        ),
         danmakuData: HuyaDanmakuArgs(
           uid: int.tryParse(data["profileInfo"]?["uid"]?.toString() ?? "") ?? 0,
           topSid: topSid,
@@ -1359,12 +1367,17 @@ class HuyaUrlDataModel {
   List<HuyaLineModel> lines;
   List<HuyaBitRateModel> bitRates;
   final bool isXingxiu;
+
+  /// 分类 id(liveData.gid,详情接口解析时带上;桥接层据此填 payload.cid
+  /// → 播放页收藏星/分类跳转。播放链不消费,可空)。
+  final String cid;
   HuyaUrlDataModel({
     required this.bitRates,
     required this.lines,
     required this.url,
     required this.uid,
     required this.isXingxiu,
+    this.cid = '',
   });
 }
 

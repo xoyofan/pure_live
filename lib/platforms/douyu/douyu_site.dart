@@ -589,7 +589,12 @@ class DouyuSite
       liveStatus: live ? LiveStatus.live : LiveStatus.offline,
       status: live,
       danmakuData: roomInfo["room_id"].toString(),
-      data: showTimeSeconds > 0 ? {"startedAtMs": showTimeSeconds * 1000} : null,
+      // startedAtMs: 本场开播时间;cid: 分类 id(betard cate_id,zishu
+      // live_parser douyu room.cateId 同口径)供桥接层填 payload.cid。
+      data: {
+        if (showTimeSeconds > 0) 'startedAtMs': showTimeSeconds * 1000,
+        'cid': roomInfo['cate_id']?.toString() ?? '',
+      },
       platform: SiteIds.douyuSite,
       link: "https://www.douyu.com/$roomId",
       isRecord: replay,

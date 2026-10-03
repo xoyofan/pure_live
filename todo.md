@@ -436,6 +436,13 @@
 - [x] 范围仅桌面导航左上角:手机端 bottom_nav 的品牌锚点、窗口标题(windows_app title)、`_kAppTitle` 均不动
 - 验证:analyze 改动文件 0 告警;**全量 149/149 全过**(无 golden/测试引用 nav-brand)
 
+### 迭代 31(2026-10-03)✅ 四大平台播放页收藏星(⭐)点亮——payload.cid 按分类 id 补齐(zishu 同构)
+
+- [x] **背景**:迭代27 只点亮了 soop(靠 cateNo);B站/斗鱼/虎牙/抖音播放页的 ⭐ 仍暗——zishu 原生解析给这些平台 payload.cid 填**分类 id**,purelive 桥全是空串,`_RoomHeader` 的 `cid.isNotEmpty` 星标判据恒假
+- [x] **适配器详情流暂存分类 id**(zishu 同字段同源):B站 getInfoByRoom `room_info.area_id` → `data['cid']`;斗鱼 betard `cate_id`(实测在列)→ `data['cid']`;虎牙 profileRoom `liveData.gid` → `HuyaUrlDataModel` 新增可选 `cid` 字段(详情 data 被该模型占用,不能换 map,播放链不消费可空);抖音无二级分类 id,cid 即房间号(zishu douyin 同口径注释)
+- [x] **桥接 cid 语义**:`pureliveRoomToPayload` 按 data 类型提分类 id(Map.cid / HuyaUrlDataModel.cid);soop 与抖音 cid=房间号,其余平台 cid=分类 id;收藏判重经 cross key(site+cid+中文名)跨平台聚合不受影响;星标后徽标本体可点进对应平台分类页
+- 验证:analyze 改动文件 0 告警;**全量 152/152 全过**(桥接测试更新:B站 cid=145/无 data 空串/虎牙 HuyaUrlDataModel.cid=2336/抖音 cid=房间号)
+
 
 ### 迭代 27(2026-10-03)✅ 抖音二级分类对齐 zishu + 分类并行预热 + 抽屉二级分类四字宽横铺
 

@@ -748,6 +748,9 @@ class BiliBiliSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoo
       notice: "",
       platform: SiteIds.bilibiliSite,
       danmakuData: danmakuData,
+      // 分类 id(area_id,zishu live_parser bilibili 同口径)供桥接层填
+      // payload.cid → 播放页收藏星/分类跳转;列表条目不受影响。
+      data: {"cid": roomInfo['room_info']?['area_id']?.toString() ?? ''},
     );
   }
 

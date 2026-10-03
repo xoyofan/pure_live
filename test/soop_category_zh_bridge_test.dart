@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:live_parser/live_parser.dart' show rememberSoopZhCategory, remapCategoryName;
 import 'package:pure_live/core/models/live_room.dart';
 import 'package:pure_live/platforms/sites.dart';
+import 'package:pure_live/platforms/huya/huya_site.dart' show HuyaUrlDataModel;
 import 'package:pure_live/platforms/soop/soop_site.dart';
 import 'package:pure_live/src/shared/application/purelive_backend.dart';
 
@@ -66,13 +67,36 @@ void main() {
       expect(payload.cid, 'khm11903');
     });
 
-    test('非 soop 平台拿不到分类上下文,cid 维持空串', () {
+    test('B站:data.cid(area_id)→ payload.cid(星标渲染/分类跳转判据)', () {
       final payload = pureliveRoomToPayload(
-        LiveRoom(roomId: '1', platform: 'bilibili', area: '英雄联盟', data: {'cateNo': 'x'}),
+        LiveRoom(roomId: '1', platform: 'bilibili', area: '英雄联盟', data: {'cid': '145'}),
         'bilibili',
       );
-      expect(payload.cid, '');
+      expect(payload.cid, '145');
+      expect(payload.cateNo, '');
       expect(payload.category, '英雄联盟');
+    });
+
+    test('B站:无 data 时 cid 空串(拿不到分类上下文,不伪造)', () {
+      final payload = pureliveRoomToPayload(LiveRoom(roomId: '1', platform: 'bilibili'), 'bilibili');
+      expect(payload.cid, '');
+    });
+
+    test('虎牙:HuyaUrlDataModel.cid(gid)→ payload.cid', () {
+      final payload = pureliveRoomToPayload(
+        LiveRoom(
+          roomId: '333003',
+          platform: 'huya',
+          data: HuyaUrlDataModel(url: '', uid: '', lines: [], bitRates: [], isXingxiu: false, cid: '2336'),
+        ),
+        'huya',
+      );
+      expect(payload.cid, '2336');
+    });
+
+    test('抖音:无二级分类 id,cid 即房间号(zishu 同口径)', () {
+      final payload = pureliveRoomToPayload(LiveRoom(roomId: '9271', platform: 'douyin'), 'douyin');
+      expect(payload.cid, '9271');
     });
 
     test('streams/availableQualities 原样透传', () {
