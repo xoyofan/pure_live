@@ -117,6 +117,15 @@ void main() {
       expect(pureliveRoomToPayload(_room(), 'bilibili').startedAt, isNull);
     });
 
+    test('轮播起播偏移 startAtMs 桥接与序列化往返', () {
+      // 桥层从 raw 契约取 startAt;payload 序列化按毫秒携带,0 不写键。
+      final payload = pureliveRoomToPayload(_room(status: LiveStatus.carousel), 'bilibili');
+      expect(payload.startAtMs, 0); // 默认零,非轮播源无偏移
+      final restored = RoomPayload.fromJson(payload.copyWith(startAtMs: 905).toJson());
+      expect(restored.startAtMs, 905);
+      expect(RoomPayload.fromJson(payload.toJson()).startAtMs, 0);
+    });
+
     test('播放在播/回放状态不回归', () {
       expect(pureliveRoomToPayload(_room(status: LiveStatus.live), 'bilibili').roomState, RoomState.live);
       expect(pureliveRoomToPayload(_room(status: LiveStatus.replay), 'bilibili').roomState, RoomState.replay);

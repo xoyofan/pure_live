@@ -470,6 +470,17 @@
 - 验证:新增 opt-in 探针 `tool/probes/proxy_media_headers_probe_test.dart`(resolver 头部契约 → 代理转发 → 真实 wansu 流实拉 FLV magic 字节)全绿;`resolve_room_diag` 17live 全链路(搜索→详情→四档→2线)绿;analyze 与 HEAD 基线持平(67,零新增);受影响单测(purelive_stats_refresh/soop_category_zh_bridge)21/21。另修 `resolve_room_diag_probe_test.dart` 缺 `LiveRoom` 导入(布局重构遗留编译坏点)
 
 
+### 迭代 35(2026-10-03)✅ 批次三落地:轮播起播 seek(zishu 完整版,超上游)+外链全站化+上游外链死链修复
+
+用户指令"继续处理/继续继续"(批次三逐项摸底后落地)。
+
+1. **轮播起播 seek——上游 4-5 步的完整版**:上游卡在其播放层无 seek(只做了解析侧 1-3 步,LivePlayUrlResolution.startAt 已入契约);zishu 补全整链——桥 resolveRoom 切契约扩展 resolvePlayUrls(实现站拿 raw,其余站回落),RoomPayload.startAtMs(毫秒,toJson/fromJson/copyWith 全链)+Seekable 能力接口(沿 RecoveryCancellable 模式,替身零改动;MediaKit 实现 mpv seek,IdleReleasing 转发)+play_provider 开流成功后按偏移 seek 一次(控制器按房间 family 生成,成员位=每房间一次,切画质/线路不回跳)
+2. **外链全站化**:zishu roomExternalUrl 从手拼三站(douyu/huya/bilibili)升级为委托上游 RoomExternalOpener.resolve(LiveSiteExternalRoomResolver 契约,34 站全量;sourceUrl 优先口径不变)
+3. **上游外链死链修复(12 站)**:上游 externalRoomTarget 用类字段 id(平台名)拼路径——douyu.com/douyu 式死链;批量改用 liveroom.roomId(空号返回 null 不伪造)
+4. **摸底不立项两项**(zishu 已覆盖):小窗几何记忆=resolvePipBounds 存档+屏内校验+横竖屏分档已有;弹幕海量模式=zishu overlay maxVisible=200 比上游常态更宽
+
+- 验证:桥测试+轮播 startAtMs 往返新用例;新增 room_external_url_test.dart 4 用例(sourceUrl 优先/头部三站不回归/长尾点亮/空号安全);**全量 193/193 全过**(基线 188+5);analyze 0 error。Dart 提示:可空局部 is 无关接口 的交叉提升在本仓 analyzer 配置下不生效,能力探测用显式形态 Seekable? seekable = x is Seekable ? x as Seekable : null(与 Dart 3.13 is 恒假坑同族,已记)
+
 ### 迭代 34(2026-10-03)✅ 上游新语义扩充到 zishu UI——桥接层全类型弹幕+受限口径+轮播房+开播时间直读(批次一+二)
 
 用户指令"处理"(接迭代33 后的 UI 语义差距分析)。缺口集中在 purelive 桥(渲染层本已就绪):zishu 契约本有 emoji 分段/徽章/礼物枚举,桥却只放行 chat。

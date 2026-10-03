@@ -22,7 +22,11 @@ class YYSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResol
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     final id = sanitizedExternalRoomId(liveroom.roomId);
     if (id == null) return null;
-    final path = Uri.encodeComponent(id);
+    // fork 修正(2026-10-03):上游用类字段 id(平台名)拼路径——所有站点
+    // 都会得到 douyu.com/douyu 式死链;改用房间号,空号返回 null 不伪造。
+    final roomId = liveroom.roomId?.trim() ?? '';
+    if (roomId.isEmpty) return null;
+    final path = Uri.encodeComponent(roomId);
     if (!RegExp(r'^[0-9]+$').hasMatch(id)) return null;
     return RoomExternalTarget(web: 'https://www.yy.com/$path');
   }

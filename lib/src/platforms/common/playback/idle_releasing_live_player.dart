@@ -8,8 +8,7 @@ import 'playback_log.dart';
 import 'media_kit_live_player.dart';
 
 /// 稳定播放器代理，通过活动房间租约管理 native 播放器生命周期。
-class IdleReleasingLivePlayer
-    implements LivePlayer, LineRecoveryAware, RecoveryCancellable {
+class IdleReleasingLivePlayer implements LivePlayer, LineRecoveryAware, RecoveryCancellable, Seekable {
   IdleReleasingLivePlayer({
     required LivePlayer Function() createPlayer,
     Future<void> Function(LivePlayer)? releasePlayer,
@@ -73,9 +72,7 @@ class IdleReleasingLivePlayer
     await stop;
     if (_closed || _active != null || stopGeneration != _sequence) return;
     _timer?.cancel();
-    PlaybackLog.write('player_idle_scheduled', {
-      'delay_ms': idleDelay.inMilliseconds,
-    });
+    PlaybackLog.write('player_idle_scheduled', {'delay_ms': idleDelay.inMilliseconds});
     _timer = Timer(idleDelay, () {
       if (!_closed && _active == null) unawaited(_disposeIdle());
     });
@@ -131,9 +128,7 @@ class IdleReleasingLivePlayer
       }
       _viewGeneration++;
       if (!_viewChanges.isClosed) _viewChanges.add(_viewGeneration);
-      PlaybackLog.writeResourceSample('player_dispose_start', {
-        'generation': releaseSequence,
-      });
+      PlaybackLog.writeResourceSample('player_dispose_start', {'generation': releaseSequence});
       final disposeWatch = Stopwatch()..start();
       await _release(player);
       disposeWatch.stop();
@@ -199,20 +194,25 @@ class IdleReleasingLivePlayer
   @override
   Stream<PlayerSnapshot> get snapshots => _snapshots.stream;
   @override
-  Widget buildVideoView({BoxFit fit = BoxFit.contain}) =>
-      _inner?.buildVideoView(fit: fit) ?? const SizedBox.shrink();
+  Widget buildVideoView({BoxFit fit = BoxFit.contain}) => _inner?.buildVideoView(fit: fit) ?? const SizedBox.shrink();
   @override
-  Future<void> open(
-    StreamLine line, [
-    List<StreamLine> fallbacks = const [],
-    bool resetRetries = true,
-  ]) async {
+  Future<void> open(StreamLine line, [List<StreamLine> fallbacks = const [], bool resetRetries = true]) async {
     _timer?.cancel();
     _timer = null;
     PlaybackLog.write('player_idle_cancelled', {'reason': 'open_requested'});
     final player = await _getOrCreate();
     if (player == null) return;
     await player.open(line, fallbacks, resetRetries);
+  }
+
+  @override
+  Future<void> seekTo(Duration position) async {
+    final Seekable? seekable = _inner is Seekable ? _inner as Seekable : null;
+    if (seekable != null) {
+      await seekable.seekTo(position);
+      return;
+    }
+    // 无内层/不支持 seek:空操作(起播偏移语义仅点播式源有意义)。
   }
 
   @override

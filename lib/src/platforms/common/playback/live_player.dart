@@ -19,13 +19,7 @@ const Object _kErrorUnset = Object();
 
 /// 播放过程中向用户公开的脱敏状态。UI 只映射稳定枚举，不展示 mpv 原始诊断、
 /// 完整 URL、query/token 或 HTTP headers。
-enum PlaybackNotice {
-  none,
-  networkJitter,
-  sourceOpenFailed,
-  reconnecting,
-  recoveringNewUrl,
-}
+enum PlaybackNotice { none, networkJitter, sourceOpenFailed, reconnecting, recoveringNewUrl }
 
 /// 播放状态快照:由实现把底层事件流归一后发出。
 /// 带字段级相等性,便于下游做去重与 UI 局部重建。
@@ -79,9 +73,7 @@ class PlayerSnapshot {
   /// 是否正处于自动重连过程中(有错误且计数已推进)。
   bool get reconnecting => retryAttempt > 0 && error != null;
 
-  Size? get size => width == null || height == null
-      ? null
-      : Size(width!.toDouble(), height!.toDouble());
+  Size? get size => width == null || height == null ? null : Size(width!.toDouble(), height!.toDouble());
 
   /// [error] 传 `null` 表示**显式清空**错误;不传则保持原值(见 [_kErrorUnset])。
   /// 清空时 [errorKind] 一并归位,避免"没错误却有类别"的漂移态。
@@ -98,9 +90,7 @@ class PlayerSnapshot {
     int? retryLimit,
     PlaybackNotice? notice,
   }) {
-    final clearing = identical(error, _kErrorUnset)
-        ? this.error == null
-        : error == null;
+    final clearing = identical(error, _kErrorUnset) ? this.error == null : error == null;
     return PlayerSnapshot(
       playing: playing ?? this.playing,
       buffering: buffering ?? this.buffering,
@@ -133,19 +123,8 @@ class PlayerSnapshot {
           other.notice == notice;
 
   @override
-  int get hashCode => Object.hash(
-    playing,
-    buffering,
-    volume,
-    muted,
-    width,
-    height,
-    error,
-    errorKind,
-    retryAttempt,
-    retryLimit,
-    notice,
-  );
+  int get hashCode =>
+      Object.hash(playing, buffering, volume, muted, width, height, error, errorKind, retryAttempt, retryLimit, notice);
 
   @override
   String toString() =>
@@ -170,11 +149,7 @@ abstract class LivePlayer {
   /// 某条断流/超时时 mpv 自动跳到下一条(参考 pure_live 的线路自动切换),
   /// 无需 Flutter 侧轮询即可跨线路容错。无回退线路时退化为单线播放。
   /// [resetRetries] 为 false 时不清空自动重连计数(看门狗内部重连使用)。
-  Future<void> open(
-    StreamLine line, [
-    List<StreamLine> fallbacks = const [],
-    bool resetRetries = true,
-  ]);
+  Future<void> open(StreamLine line, [List<StreamLine> fallbacks = const [], bool resetRetries = true]);
 
   Future<void> play();
 
@@ -256,3 +231,9 @@ abstract interface class RecoveryCancellable {
   void cancelRecovery();
 }
 
+/// 点播式起播偏移能力(B 站轮播房循环稿件等):实现方可把已开播的媒体
+/// seek 到指定位置。播放链用 `is Seekable` 探测后调用,不支持的实现
+/// (含测试替身)零改动——与 [RecoveryCancellable] 同款能力接口模式。
+abstract interface class Seekable {
+  Future<void> seekTo(Duration position);
+}

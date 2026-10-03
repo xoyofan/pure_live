@@ -48,7 +48,7 @@ bool needsVideoKick({
 
 class MediaKitLivePlayer
     with WidgetsBindingObserver
-    implements LivePlayer, LineRecoveryAware, VideoHardwareAccelerationAware, RecoveryCancellable {
+    implements LivePlayer, LineRecoveryAware, VideoHardwareAccelerationAware, RecoveryCancellable, Seekable {
   /// [player] 是单测注入点:VM 测试无法加载原生 libmpv(`Player()` 会构造
   /// `NativePlayer` 并 `DynamicLibrary.open`),只能注入 `Player(platformPlayer:)`
   /// 的假后端来驱动事件与命令。生产调用点一律不传,行为与原先完全一致。
@@ -1648,6 +1648,13 @@ class MediaKitLivePlayer
       _eventsFenced = false;
       _resyncAfterOpen();
     });
+  }
+
+  @override
+  Future<void> seekTo(Duration position) async {
+    // 轮播房循环稿件的起播偏移:mpv 对 HLS 点播可 seek(force-seekable=yes);
+    // 未出画面时 seek 亦安全——mpv 会挂起到 demuxer 就绪。
+    await _player.seek(position);
   }
 
   @override

@@ -41,6 +41,10 @@ import 'play_recommend_panel.dart';
 import '../../follow/widgets/follow_platform_filter.dart';
 import '../../follow/widgets/follow_room_list.dart';
 
+import 'package:pure_live/core/models/live_room.dart' show LiveRoom;
+import 'package:pure_live/domains/live/presentation/playback/services/room_external_opener.dart'
+    show RoomExternalOpener;
+
 part 'side_panel/side_panel_header.dart';
 part 'side_panel/chat_tab.dart';
 part 'side_panel/chat_row.dart';
@@ -57,11 +61,7 @@ part 'side_panel/settings_panel.dart';
 /// **全局 KeepAlive provider** —— 顶部(AreaShell)/左侧(舞台)/右侧(侧栏)
 /// 三块由此解耦:右侧点击只换舞台内容,右侧自身的 active 态不重置。
 class PlaySidePanelPrefs {
-  const PlaySidePanelPrefs({
-    this.tabIndex = 0,
-    this.followGrid = false,
-    this.followSite = 'all',
-  });
+  const PlaySidePanelPrefs({this.tabIndex = 0, this.followGrid = false, this.followSite = 'all'});
 
   /// 侧栏 tab:0=聊天 1=关注 2=推荐 3=设置。默认聊天(对齐 web)。
   final int tabIndex;
@@ -72,11 +72,7 @@ class PlaySidePanelPrefs {
   /// 关注面板平台筛选('all' 或平台 id)。
   final String followSite;
 
-  PlaySidePanelPrefs copyWith({
-    int? tabIndex,
-    bool? followGrid,
-    String? followSite,
-  }) => PlaySidePanelPrefs(
+  PlaySidePanelPrefs copyWith({int? tabIndex, bool? followGrid, String? followSite}) => PlaySidePanelPrefs(
     tabIndex: tabIndex ?? this.tabIndex,
     followGrid: followGrid ?? this.followGrid,
     followSite: followSite ?? this.followSite,
@@ -84,21 +80,16 @@ class PlaySidePanelPrefs {
 }
 
 /// 全局(非 autoDispose):离开播放页也保留,下次进房延续上次的 tab/视图。
-final playSidePanelPrefsProvider =
-    NotifierProvider<PlaySidePanelPrefsController, PlaySidePanelPrefs>(
-      PlaySidePanelPrefsController.new,
-    );
+final playSidePanelPrefsProvider = NotifierProvider<PlaySidePanelPrefsController, PlaySidePanelPrefs>(
+  PlaySidePanelPrefsController.new,
+);
 
 class PlaySidePanelPrefsController extends Notifier<PlaySidePanelPrefs> {
   @override
   PlaySidePanelPrefs build() => const PlaySidePanelPrefs();
 
   void update({int? tabIndex, bool? followGrid, String? followSite}) {
-    state = state.copyWith(
-      tabIndex: tabIndex,
-      followGrid: followGrid,
-      followSite: followSite,
-    );
+    state = state.copyWith(tabIndex: tabIndex, followGrid: followGrid, followSite: followSite);
   }
 }
 
@@ -180,8 +171,7 @@ class _PlaySidePanelState extends ConsumerState<PlaySidePanel> {
     if (followed) {
       notifier.remove(key);
     } else if (list.length >= _kFollowCap) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('关注已达上限（200）')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('关注已达上限（200）')));
     } else {
       final site = widget.site ?? widget.payload?.site ?? '';
       final roomId = widget.roomId ?? widget.payload?.roomId ?? '';
@@ -218,8 +208,7 @@ class _PlaySidePanelState extends ConsumerState<PlaySidePanel> {
     final ok = await openExternalUrl(url);
     if (!mounted) return;
     if (!ok) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('未能打开浏览器：$url')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('未能打开浏览器：$url')));
     }
   }
 
@@ -245,10 +234,7 @@ class _PlaySidePanelState extends ConsumerState<PlaySidePanel> {
       child: DefaultTabController(
         // 初始 tab 从会话级偏好恢复:切房(pushReplacement)重建侧栏后,
         // 右侧仍停在上次的 tab(如「关注」),不再退回聊天。
-        initialIndex: ref
-            .watch(playSidePanelPrefsProvider)
-            .tabIndex
-            .clamp(0, 3),
+        initialIndex: ref.watch(playSidePanelPrefsProvider).tabIndex.clamp(0, 3),
         length: 4,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -281,9 +267,7 @@ class _PlaySidePanelState extends ConsumerState<PlaySidePanel> {
             SizedBox(
               height: 32,
               child: TabBar(
-                onTap: (index) => ref
-                    .read(playSidePanelPrefsProvider.notifier)
-                    .update(tabIndex: index),
+                onTap: (index) => ref.read(playSidePanelPrefsProvider.notifier).update(tabIndex: index),
                 tabs: const [
                   KeyedSubtree(
                     key: Key('play-side-tab-chat'),
@@ -307,11 +291,7 @@ class _PlaySidePanelState extends ConsumerState<PlaySidePanel> {
                 indicatorColor: tokens.accent,
                 indicatorWeight: 2,
                 dividerColor: tokens.border,
-                labelStyle: const TextStyle(
-                  fontSize: AppFontSize.body,
-                  fontWeight: FontWeight.w600,
-                  height: 1.15,
-                ),
+                labelStyle: const TextStyle(fontSize: AppFontSize.body, fontWeight: FontWeight.w600, height: 1.15),
                 unselectedLabelStyle: const TextStyle(
                   fontSize: AppFontSize.body,
                   fontWeight: FontWeight.w500,
@@ -323,9 +303,7 @@ class _PlaySidePanelState extends ConsumerState<PlaySidePanel> {
                 // 侧栏 tab 是键盘 Tab 链上的一站(Windows 可达性验收项),
                 // 必须可见。Material 系用覆盖色表达,不动盒模型;水波纹仍按
                 // web 真源关掉(NoSplash),按下靠 highlight 覆盖色。
-                overlayColor: WidgetStateProperty.resolveWith<Color?>((
-                  Set<WidgetState> states,
-                ) {
+                overlayColor: WidgetStateProperty.resolveWith<Color?>((Set<WidgetState> states) {
                   if (states.contains(WidgetState.focused)) {
                     return tokens.accent.withValues(alpha: 0.24);
                   }
@@ -342,11 +320,7 @@ class _PlaySidePanelState extends ConsumerState<PlaySidePanel> {
             Expanded(
               child: TabBarView(
                 children: [
-                  _ChatTab(
-                    site: site,
-                    roomId: roomId,
-                    playbackStatus: widget.playbackStatus,
-                  ),
+                  _ChatTab(site: site, roomId: roomId, playbackStatus: widget.playbackStatus),
                   const _FollowPanel(),
                   _RecommendPanel(
                     site: site,
@@ -375,10 +349,10 @@ String? roomExternalUrl(String site, String roomId, RoomPayload? payload) {
   if (id.isEmpty) return null;
   final source = payload?.sourceUrl.trim() ?? '';
   if (source.isNotEmpty) return source;
-  return switch (site) {
-    'douyu' => 'https://www.douyu.com/$id',
-    'huya' => 'https://www.huya.com/$id',
-    'bilibili' => 'https://live.bilibili.com/$id',
-    _ => null,
-  };
+  // 站点自报官方地址(上游 LiveSiteExternalRoomResolver 契约,34 站全量;
+  // 2026-10-03 前只手拼 douyu/huya/bilibili 三站)。douyin/huya 的客户端
+  // scheme 依赖详情数据,最小 LiveRoom 下自然回落 web 地址。
+  final target = RoomExternalOpener.resolve(site, LiveRoom(roomId: id, platform: site));
+  final web = target?.web.trim() ?? '';
+  return web.isEmpty ? null : web;
 }

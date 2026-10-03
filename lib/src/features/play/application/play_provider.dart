@@ -588,7 +588,30 @@ class PlayController extends AsyncNotifier<PlayState> {
     if (!ref.mounted || generation != _generation || openToken != _latestPlayerOpenToken) {
       return;
     }
+    // 轮播房起播偏移(2026-10-03):payload.startAtMs>0 时开流成功后 seek 一次,
+    // 从循环稿件已播位置接着看(上游 4-5 步卡在其播放层无 seek,zishu 的
+    // media_kit 有 Seekable 能力,补全整链)。控制器按房间 family 生成,
+    // 成员位即"每房间一次"——切画质/线路不回跳,换房新控制器自然重置。
+    await _applyStartOffset(player);
     await _applyRoomVolume(player);
+  }
+
+  /// 本控制器(=本房间)是否已完成起播偏移。
+  bool _startOffsetApplied = false;
+
+  Future<void> _applyStartOffset(LivePlayer player) async {
+    if (_startOffsetApplied) return;
+    final offsetMs = state.value?.payload?.startAtMs ?? 0;
+    if (offsetMs <= 0) return;
+    final Seekable? seekable = player is Seekable ? player as Seekable : null;
+    if (seekable == null) return;
+    _startOffsetApplied = true;
+    try {
+      await seekable.seekTo(Duration(milliseconds: offsetMs));
+    } catch (_) {
+      // 点播式源偶发 seek 失败(分片未就绪):放弃本次偏移,从 0 播不致命。
+      _startOffsetApplied = false;
+    }
   }
 
   /// 把本房间的有效音量套到播放器。

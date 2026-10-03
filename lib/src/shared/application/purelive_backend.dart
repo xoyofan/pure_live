@@ -210,6 +210,7 @@ RoomPayload pureliveRoomToPayload(
   String site, {
   List<StreamQuality> streams = const <StreamQuality>[],
   List<QualityOption> availableQualities = const <QualityOption>[],
+  int startAtMs = 0,
 }) {
   final data = room.data;
   final cateNo = data is Map ? (data['cateNo']?.toString().trim() ?? '') : '';
@@ -238,6 +239,7 @@ RoomPayload pureliveRoomToPayload(
     cid: cid,
     cateNo: cateNo,
     startedAt: startedAt,
+    startAtMs: startAtMs,
     // 受限直播口径(上游 4.x):枚举名透传,空串=无限制。
     restriction: room.effectiveRestriction == LiveRestriction.none ? '' : room.effectiveRestriction.name,
     roomState: _stateOf(room),
@@ -283,15 +285,18 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
       }
     }
 
-    // 取流:该档位下全部线路。头部用规范化的 detail.roomId 拼 Referer,
-    // 直粘房间链接时 roomIdOrUrl 是 URL,不能直接进 Referer。
-    final urls = await coreSite.getPlayUrls(liveroom: detail, quality: chosen);
+    // 取流:该档位下全部线路。走契约扩展 resolvePlayUrls(实现站拿 raw
+    // resolution,其余站回落 getPlayUrls)——轮播房的 startAt 起播偏移
+    // 只有 raw 契约携带(B 站循环稿件 play_time,2026-10-03)。
+    final resolution = await coreSite.resolvePlayUrls(liveroom: detail, quality: chosen);
+    final urls = resolution.urls;
     final headers = await _playbackHeaders(site, detail.roomId ?? '');
     final chosenIndex = qualities.indexOf(chosen);
 
     return pureliveRoomToPayload(
       detail,
       site,
+      startAtMs: resolution.startAt.inMilliseconds,
       streams: [
         StreamQuality(
           name: chosen.quality,

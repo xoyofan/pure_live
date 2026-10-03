@@ -171,6 +171,7 @@ class RoomPayload {
     this.error,
     this.startedAt,
     this.restriction = '',
+    this.startAtMs = 0,
   });
 
   final String site;
@@ -210,6 +211,10 @@ class RoomPayload {
   /// "受限=仍在播,只是这个客户端看不到"——列表仍显示在播,
   /// 播放页据此说明原因(上游 4.x 统一口径)。
   final String restriction;
+
+  /// 起播偏移(毫秒):"点播稿件"式源(如 B 站轮播房循环稿件的 play_time)
+  /// 从该位置接着播;直播/回放恒为 0。播放链在开流成功后按此 seek 一次。
+  final int startAtMs;
 
   bool get isLive => roomState == RoomState.live;
 
@@ -254,6 +259,7 @@ class RoomPayload {
     'fetchedAt': fetchedAt.toIso8601String(),
     if (error != null) 'error': error,
     if (startedAt != null) 'startedAt': startedAt!.toIso8601String(),
+    if (startAtMs > 0) 'startAtMs': startAtMs,
   };
 
   factory RoomPayload.fromJson(Map<String, dynamic> json) => RoomPayload(
@@ -285,12 +291,14 @@ class RoomPayload {
         DateTime.fromMillisecondsSinceEpoch(0),
     error: json['error']?.toString(),
     startedAt: DateTime.tryParse(json['startedAt']?.toString() ?? ''),
+    startAtMs: int.tryParse(json['startAtMs']?.toString() ?? '') ?? 0,
   );
 
   RoomPayload copyWith({
     List<StreamQuality>? streams,
     DateTime? fetchedAt,
     String? error,
+    int? startAtMs,
   }) => RoomPayload(
     site: site,
     roomId: roomId,
@@ -309,6 +317,7 @@ class RoomPayload {
     fetchedAt: fetchedAt ?? this.fetchedAt,
     error: error ?? this.error,
     startedAt: startedAt,
+    startAtMs: startAtMs ?? this.startAtMs,
   );
 
   String encode() => jsonEncode(toJson());
