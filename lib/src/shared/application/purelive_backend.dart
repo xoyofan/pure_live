@@ -556,7 +556,13 @@ class _PureLiveDanmakuSession implements DanmakuSession {
 
 /// 组装一个 pure_live 后端的站点注册项(browse/search/danmaku 全挂,
 /// capabilities 如实声明)。由宿主 buildRegistryWithPureLive 按 id 覆盖。
-SiteRegistration buildPureLiveRegistration(String liveParserSite, {RoomSummaryRefresher? nativeStatsRefresher}) {
+/// [browseOverride] 非空时用它替换默认的 PureLiveBrowseRepository
+/// (youtube 等纯 live 适配层无目录/推荐的站点保留 native browse)。
+SiteRegistration buildPureLiveRegistration(
+  String liveParserSite, {
+  RoomSummaryRefresher? nativeStatsRefresher,
+  BrowseRepository? browseOverride,
+}) {
   // _siteInstanceOf 对未支持站点直接抛 StateError,此处无需判空。
   _siteInstanceOf(liveParserSite);
   return SiteRegistration(
@@ -572,7 +578,7 @@ SiteRegistration buildPureLiveRegistration(String liveParserSite, {RoomSummaryRe
     resolver: nativeStatsRefresher == null
         ? PureLiveRoomResolver(liveParserSite)
         : _NativeStatsPureLiveResolver(liveParserSite, nativeStatsRefresher),
-    browse: PureLiveBrowseRepository(liveParserSite),
+    browse: browseOverride ?? PureLiveBrowseRepository(liveParserSite),
     search: PureLiveSearchRepository(liveParserSite),
     danmaku: PureLiveDanmakuConnector(liveParserSite),
   );

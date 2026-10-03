@@ -36,9 +36,17 @@ SiteRegistry buildRegistryWithPureLive({String douyinCookie = '', String xhsCook
       if (site.id == Sites.allSite) continue;
       // 统计刷新委托:native 解析器自带实测过的观看/贵宾/超粉/钻粉快照
       // (pure_live 适配层无 vip/svip 数据源),播放/线路仍走 purelive。
-      final nativeResolver = registry.byId(site.id)?.resolver;
+      final native = registry.byId(site.id);
+      final nativeResolver = native?.resolver;
       final nativeStats = nativeResolver is RoomSummaryRefresher ? nativeResolver : null;
-      registry.register(buildPureLiveRegistration(site.id, nativeStatsRefresher: nativeStats));
+      // YouTube:pure_live 适配层无公开目录/推荐(实测恒空),保留 native
+      // browse(zishu YoutubeBrowseRepository,抓 /live /gaming /music /news
+      // 页);播放/统计仍走 purelive。否则首页与全站聚合永久无 YouTube 数据
+      // (2026-10-03 用户口径「youtube liveme 首页无」)。
+      final nativeBrowse = site.id == Sites.youtubeSite ? native?.browse : null;
+      registry.register(
+        buildPureLiveRegistration(site.id, nativeStatsRefresher: nativeStats, browseOverride: nativeBrowse),
+      );
     }
   }
   return registry;
