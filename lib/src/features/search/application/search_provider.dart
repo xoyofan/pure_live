@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:live_parser/live_parser.dart';
+import 'package:pure_live/core/network/web_search_room_parser.dart';
 
 import '../../../shared/application/search_source.dart';
 import '../application/search_source_provider.dart';
@@ -17,33 +18,15 @@ const Duration kSearchDebounce = Duration(milliseconds: 300);
 /// 纯数字输入 → 房间号直达。
 final RegExp _roomIdPattern = RegExp(r'^\d+$');
 
-/// 含 douyu.com 的输入 → 链接直达,从链接中提取房间号。
-final RegExp _douyuLinkPattern = RegExp(r'douyu\.com/(\d+)');
-
-/// 含 niconico 观察页的输入 → 链接直达,提取节目号(`lv…`)。
-final RegExp _niconicoLinkPattern = RegExp(r'live\.nicovideo\.jp/watch/(lv[1-9][0-9]{0,17})');
-
-/// 含 17.live 直播页的输入 → 链接直达,提取房间号(语言前缀 `/en/` 等可选,
-/// 与 SeventeenLiveLink.parse 同口径)。
-final RegExp _seventeenLinkPattern = RegExp(
-  r'17\.live/(?:[a-z]{2}(?:-[a-z]{2,4})?/)?live/([1-9][0-9]{0,11})',
-  caseSensitive: false,
-);
-
 /// niconico 节目号裸输入(与 NiconicoWatch.validateProgramId 同口径)。
 final RegExp _niconicoIdPattern = RegExp(r'^lv[1-9][0-9]{0,17}$');
-
-/// TwitCasting 频道根 URL 的频道名形状(与 TwitcastingApi.channelName 同口径:
-/// `c:`/`g:`/`f:`/`ig:` 前缀可选——频道页 URL 形如 `/c:tbk_1`,漏掉前缀会把
-/// 整类官方/社区频道判成不可直达)。大小写不敏感,归一由解析层小写完成。
-final RegExp _twitcastingChannelName = RegExp(r'^(?:(?:c|g|f|ig):)?[a-zA-Z0-9_]{1,64}$');
 
 /// 直达项类型。
 enum DirectKind { roomId, link }
 
-/// 直达目标:纯数字房间号,或 douyu.com / niconico 链接解析出的房间。
+/// 直达目标:纯数字房间号,或链接解析出的房间。
 class DirectTarget {
-  const DirectTarget({required this.kind, required this.roomId, this.url});
+  const DirectTarget({required this.kind, required this.roomId, this.url, this.site = ''});
 
   final DirectKind kind;
 
@@ -52,6 +35,10 @@ class DirectTarget {
 
   /// [DirectKind.link] 时的原始输入,用于副行展示。
   final String? url;
+
+  /// [DirectKind.link] 时解析出的平台 id(上游 [WebSearchRoomParser] 统一
+  /// 识别,覆盖全部平台);空串 = 未知,打开时回落 siteHint 域名推断。
+  final String site;
 }
 
 /// 命中项 UI 侧包装:携带平台归属,彻底去掉对 fixture 的反查。
@@ -235,10 +222,11 @@ class SearchController extends Notifier<SearchState> {
   DirectTarget? _resolveDirect(String site, String keyword) => resolveSearchDirect(site, keyword);
 }
 
-/// 直达识别(纯函数):纯数字 → 房间号;含 douyu.com / niconico 观察页 /
-/// 17.live 直播页 → 链接直达;TwitCasting 频道根 URL → 频道直达(电影/回放
-/// 链接不识别,与 pure_live「不静默替换旧场次」口径一致);选定 niconico
-/// 平台时 `lv…` 裸节目号 → 房间号直达(全站模式下不识别,避免普通搜索词误判)。
+/// 直达识别(纯函数):纯数字 → 房间号;链接输入统一走上游
+/// [WebSearchRoomParser](覆盖 douyu/huya/bilibili/douyin/soop/twitch/
+/// twitcasting/niconico/17live 等全部平台,含站点保留段排除),不再逐平台
+/// 手搓正则(2026-10-03 用户口径);选定 niconico 平台时 `lv…` 裸节目号 →
+/// 房间号直达(全站模式下不识别,避免普通搜索词误判)。
 DirectTarget? resolveSearchDirect(String site, String keyword) {
   if (_roomIdPattern.hasMatch(keyword)) {
     return DirectTarget(kind: DirectKind.roomId, roomId: keyword);
@@ -247,37 +235,24 @@ DirectTarget? resolveSearchDirect(String site, String keyword) {
   if (niconicoId != null && site == 'niconico') {
     return DirectTarget(kind: DirectKind.roomId, roomId: keyword);
   }
-  final douyu = _douyuLinkPattern.firstMatch(keyword);
-  if (douyu != null) {
-    return DirectTarget(kind: DirectKind.link, roomId: douyu.group(1)!, url: keyword);
+  final WebSearchRoomTarget parsed;
+  try {
+    final result = WebSearchRoomParser.parse(keyword);
+    if (result == null) return null;
+    parsed = result;
+  } on Object {
+    return null;
   }
-  final niconico = _niconicoLinkPattern.firstMatch(keyword);
-  if (niconico != null) {
-    return DirectTarget(kind: DirectKind.link, roomId: niconico.group(1)!, url: keyword);
+  // 既有口径守门(上游解析器比搜索页直达更宽,不能改它的共享契约):
+  // * 裸 lv 节目号仅选定 niconico 时识别——全站档防普通搜索词误判;
+  // * 17.live 仅直播页直达,profile 页不作为房间打开。
+  if (parsed.platform == 'niconico' && _niconicoIdPattern.hasMatch(keyword) && site != 'niconico') {
+    return null;
   }
-  final seventeen = _seventeenLinkPattern.firstMatch(keyword);
-  if (seventeen != null) {
-    return DirectTarget(kind: DirectKind.link, roomId: seventeen.group(1)!, url: keyword);
+  if (parsed.platform == '17live' && (Uri.tryParse(keyword)?.pathSegments.contains('profile') ?? false)) {
+    return null;
   }
-  final twitcasting = _twitcastingChannelRoot(keyword);
-  if (twitcasting != null) {
-    return DirectTarget(kind: DirectKind.link, roomId: twitcasting, url: keyword);
-  }
-  return null;
-}
-
-/// TwitCasting 频道根 URL → 频道名(与 TwitcastingApi.channelFromUri 同口径:
-/// host 白名单 + 单段 path + 频道名形状;movie/archive 多段路径返回 null)。
-String? _twitcastingChannelRoot(String keyword) {
-  final uri = Uri.tryParse(keyword.trim());
-  if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) return null;
-  if (!{'twitcasting.tv', 'www.twitcasting.tv'}.contains(uri.host.toLowerCase())) return null;
-  final segments = [
-    for (final segment in uri.pathSegments)
-      if (segment.isNotEmpty) segment,
-  ];
-  if (segments.length != 1 || !_twitcastingChannelName.hasMatch(segments.single)) return null;
-  return segments.single;
+  return DirectTarget(kind: DirectKind.link, roomId: parsed.roomId, url: keyword, site: parsed.platform);
 }
 
 /// 搜索页全局 provider(keep-alive:返回搜索页保留上次输入与结果)。

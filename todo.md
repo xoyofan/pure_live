@@ -450,6 +450,15 @@
 - [x] 注:此为用户口径的**有意偏离 zishu**(zishu 同文件仍是冻结语义),后续 zishu 同步该文件时需保留本差异
 - 验证:新增 `test/danmaku_overlay_toggle_test.dart` 2 用例(关=清屏/关闭期丢弃/重开从零;暂停冻结语义不回归);analyze 改动文件 0 告警;**全量 154/154 全过**
 
+### 迭代 33(2026-10-03)✅ twitch.tv/siaohu_0124 解析失败——直达识别整体切上游统一解析器(WebSearchRoomParser),不再逐平台打补丁
+
+- [x] **取证**:频道直播中(GQL 实测 晓嫭 live);`resolveRoom('twitch', login)` 全链路 OK(5 档/1 线路/Just Chatting);URL 形态抛 "Twitch stream metadata is missing"——URL 原样灌进 GQL login 查询
+- [x] **用户口径**:同类问题上游 pure_live 有统一处理,不该逐平台打补丁——`WebSearchRoomParser.parse`(lib/core/network)覆盖 douyu/huya/bilibili/douyin/soop/twitch/twitcasting/niconico/17live/快手/CC/acfun 等**全部平台**,还内置站点保留段排除(videos/directory/search…)
+- [x] **重构**:搜索直达 `resolveSearchDirect` 撤掉 douyu/niconico/17live/twitcasting/twitch 五组手搓正则,链接输入统一走 `WebSearchRoomParser`;`DirectTarget` 新增 `site` 字段(解析器给出的平台),`_openDirect` 优先用它、缺失回落 siteHint 域名推断
+- [x] **守门保留**(解析器是共享契约不动,直达层叠加既有口径):裸 `lv…` 仅选定 niconico 档识别(全站档防误判);17.live 仅直播页直达、profile 页不作为房间打开
+- [x] **解析层兜底**:TwitchSite 新增 `loginFromInput`(频道链接→login,含 www./m. 与尾斜杠)——URL 万一仍达适配器(启动参数等)不再灌进 GQL
+- 验证:直达识别 10 用例全过(既有 douyu/niconico/17live/twitcasting c: 无回归 + twitch 新例含 site 断言 + videos/directory 负例);真网络探针 login/URL 两形态均 ok;analyze 改动文件 0 告警;**全量 194/194 全过**
+
 
 ### 迭代 27(2026-10-03)✅ 抖音二级分类对齐 zishu + 分类并行预热 + 抽屉二级分类四字宽横铺
 

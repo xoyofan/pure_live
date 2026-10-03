@@ -53,11 +53,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
   /// 当前生效档位:由 `SearchState.type`(用户显式选择)推导;该档在本平台
   /// 不可用时回退默认档(房间优先,同 web `syncDefaultTab`)。现有平台能力
   /// 矩阵中不存在「仅主播」站,回退只是显示层兜底,不改变查询档位。
-  _SearchTab _resolveTab(
-    SearchType type, {
-    required bool anchorOk,
-    required bool roomOk,
-  }) {
+  _SearchTab _resolveTab(SearchType type, {required bool anchorOk, required bool roomOk}) {
     if (type == SearchType.rooms && roomOk) return _SearchTab.room;
     if (type == SearchType.anchors && anchorOk) return _SearchTab.anchor;
     if (roomOk) return _SearchTab.room;
@@ -99,11 +95,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
       return;
     }
     _inputFocus.unfocus();
-    PlaybackLog.logRoomNav(
-      source: 'search_hit',
-      site: item.site,
-      roomId: item.hit.id,
-    );
+    PlaybackLog.logRoomNav(source: 'search_hit', site: item.site, roomId: item.hit.id);
     _go('/${item.site}/play/${item.hit.id}');
   }
 
@@ -113,19 +105,18 @@ class _SearchViewState extends ConsumerState<SearchView> {
     _go('/${item.site}/anchor/${item.hit.id}');
   }
 
-  /// 打开直达项:链接直达按 URL 域名推断平台(认不出的历史行为回落
+  /// 打开直达项:链接直达优先用解析器给出的平台(WebSearchRoomParser 统一
+  /// 识别全部平台),缺失回落按 URL 域名推断(认不出的历史行为回落
   /// douyu);房间号直达跟随当前所选平台。
   void _openDirect(DirectTarget target) {
-    final site = target.kind == DirectKind.link
-        ? (target.url == null ? '' : siteHintFromInput(target.url!))
-        : ref.read(searchProvider).site;
+    final site = switch (target.kind) {
+      DirectKind.link =>
+        target.site.isNotEmpty ? target.site : (target.url == null ? '' : siteHintFromInput(target.url!)),
+      DirectKind.roomId => ref.read(searchProvider).site,
+    };
     if (site.isEmpty) return;
     _inputFocus.unfocus();
-    PlaybackLog.logRoomNav(
-      source: 'search_direct',
-      site: site,
-      roomId: target.roomId,
-    );
+    PlaybackLog.logRoomNav(source: 'search_direct', site: site, roomId: target.roomId);
     _go('/$site/play/${target.roomId}');
   }
 
@@ -169,12 +160,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
         children: [
           if (supported)
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                AppSpacing.sm,
-                AppSpacing.lg,
-                0,
-              ),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 0),
               child: _SearchTabBar(
                 tab: tab,
                 anchorEnabled: anchorOk,
@@ -182,35 +168,16 @@ class _SearchViewState extends ConsumerState<SearchView> {
                 // 切档写回 provider,并以现有关键词按新档位重新查询。
                 onChanged: (next) => ref
                     .read(searchProvider.notifier)
-                    .setType(
-                      next == _SearchTab.room
-                          ? SearchType.rooms
-                          : SearchType.anchors,
-                    ),
+                    .setType(next == _SearchTab.room ? SearchType.rooms : SearchType.anchors),
               ),
             )
           else
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                AppSpacing.md,
-                AppSpacing.lg,
-                0,
-              ),
-              child: Text(
-                '该平台暂不支持主播/房间搜索',
-                style: context.textSecondary.copyWith(
-                  color: tokens.textSecondary,
-                ),
-              ),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
+              child: Text('该平台暂不支持主播/房间搜索', style: context.textSecondary.copyWith(color: tokens.textSecondary)),
             ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              AppSpacing.sm,
-              AppSpacing.lg,
-              0,
-            ),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, 0),
             child: _buildSearchField(tokens, search, tab),
           ),
           const SearchPlatformChips(),
@@ -220,11 +187,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
     );
   }
 
-  Widget _buildSearchField(
-    ZishuTokens tokens,
-    SearchState search,
-    _SearchTab tab,
-  ) {
+  Widget _buildSearchField(ZishuTokens tokens, SearchState search, _SearchTab tab) {
     final field = TextField(
       // 测试锚点:定位/输入搜索关键词。
       key: const Key('search-input'),
@@ -239,11 +202,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
         // 占位文案随档位切换,对齐 web `inputPlaceholder`(SearchDialog.vue:255)。
         hintText: tab == _SearchTab.room ? '搜索房间名 / 房间号 / 直播间链接' : '搜索主播名',
         hintStyle: context.textBody.copyWith(color: tokens.textSecondary),
-        prefixIcon: Icon(
-          Icons.search_rounded,
-          size: 20,
-          color: tokens.textSecondary,
-        ),
+        prefixIcon: Icon(Icons.search_rounded, size: 20, color: tokens.textSecondary),
         suffixIcon: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -251,11 +210,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
             if (search.query.isNotEmpty)
               IconButton(
                 tooltip: '清空',
-                icon: Icon(
-                  Icons.close_rounded,
-                  size: 18,
-                  color: tokens.textSecondary,
-                ),
+                icon: Icon(Icons.close_rounded, size: 18, color: tokens.textSecondary),
                 onPressed: () {
                   _input.clear();
                   ref.read(searchProvider.notifier).setQuery('');
@@ -295,10 +250,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
             // 主题背景色做反差字色(与 parse_benchmark_view 的 brand 按钮同法);
             // 不引用 AppColors.* —— 静态守则要求主题色一律走 context.tokens。
             foregroundColor: tokens.background,
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg,
-              vertical: AppSpacing.md,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
           ),
           child: const Text('进入直播间'),
         ),
@@ -322,32 +274,20 @@ class _SearchViewState extends ConsumerState<SearchView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (search.searching)
-          LinearProgressIndicator(
-            minHeight: 2,
-            color: tokens.accent,
-            backgroundColor: tokens.surfaceRaised,
-          ),
+          LinearProgressIndicator(minHeight: 2, color: tokens.accent, backgroundColor: tokens.surfaceRaised),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.lg),
             children: [
               if (direct != null) ...[
-                SearchDirectTile(
-                  target: direct,
-                  onTap: () => _openDirect(direct),
-                ),
+                SearchDirectTile(target: direct, onTap: () => _openDirect(direct)),
                 const SizedBox(height: AppSpacing.md),
               ],
               if (search.searching && search.hits.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
                   child: Center(
-                    child: Text(
-                      '搜索中…',
-                      style: context.textSecondary.copyWith(
-                        color: tokens.textSecondary,
-                      ),
-                    ),
+                    child: Text('搜索中…', style: context.textSecondary.copyWith(color: tokens.textSecondary)),
                   ),
                 ),
               for (final (index, item) in search.hits.indexed)
@@ -395,15 +335,8 @@ class _SearchTabBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        if (anchorEnabled)
-          _tab(
-            context,
-            _SearchTab.anchor,
-            '主播',
-            const Key('search-tab-anchor'),
-          ),
-        if (roomEnabled)
-          _tab(context, _SearchTab.room, '房间', const Key('search-tab-room')),
+        if (anchorEnabled) _tab(context, _SearchTab.anchor, '主播', const Key('search-tab-anchor')),
+        if (roomEnabled) _tab(context, _SearchTab.room, '房间', const Key('search-tab-room')),
       ],
     );
   }
@@ -421,11 +354,7 @@ class _SearchTabBar extends StatelessWidget {
       highlightColor: AppStateLayer.pressedOf(tokens.accent),
       focusColor: AppStateLayer.focusOf(tokens.accent),
       child: Padding(
-        padding: const EdgeInsets.only(
-          right: AppSpacing.lg,
-          top: AppSpacing.xs,
-          bottom: AppSpacing.xs,
-        ),
+        padding: const EdgeInsets.only(right: AppSpacing.lg, top: AppSpacing.xs, bottom: AppSpacing.xs),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -437,11 +366,7 @@ class _SearchTabBar extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.xs),
-            Container(
-              height: 2,
-              width: AppSpacing.xl,
-              color: active ? tokens.accent : const Color(0x00000000),
-            ),
+            Container(height: 2, width: AppSpacing.xl, color: active ? tokens.accent : const Color(0x00000000)),
           ],
         ),
       ),
@@ -460,18 +385,12 @@ class _EscHint extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: 2,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 2),
       decoration: BoxDecoration(
         borderRadius: AppRadius.allSm,
         border: Border.all(color: tokens.border),
       ),
-      child: Text(
-        isDialog ? 'Esc 关闭' : 'Esc 返回',
-        style: context.textCaption.copyWith(color: tokens.textSecondary),
-      ),
+      child: Text(isDialog ? 'Esc 关闭' : 'Esc 返回', style: context.textCaption.copyWith(color: tokens.textSecondary)),
     );
   }
 }
@@ -493,16 +412,10 @@ class _EmptyHint extends StatelessWidget {
         children: [
           Icon(icon, size: 40, color: tokens.textSecondary),
           const SizedBox(height: AppSpacing.md),
-          Text(
-            title,
-            style: context.textBody.copyWith(color: tokens.textSecondary),
-          ),
+          Text(title, style: context.textBody.copyWith(color: tokens.textSecondary)),
           if (subtitle != null) ...[
             const SizedBox(height: AppSpacing.xs),
-            Text(
-              subtitle!,
-              style: context.textCaption.copyWith(color: tokens.textSecondary),
-            ),
+            Text(subtitle!, style: context.textCaption.copyWith(color: tokens.textSecondary)),
           ],
         ],
       ),

@@ -81,6 +81,22 @@ void main() {
       expect(resolveSearchDirect('twitcasting', 'https://twitcasting.tv/c:tbk_1/movie/841760967'), isNull);
     });
 
+    test('twitch 频道根 URL → 链接直达(统一解析器,平台随解析给出)', () {
+      for (final url in [
+        'https://www.twitch.tv/siaohu_0124',
+        'https://twitch.tv/siaohu_0124/',
+        'https://m.twitch.tv/siaohu_0124',
+      ]) {
+        final target = resolveSearchDirect('douyu', url);
+        expect(target?.kind, DirectKind.link, reason: url);
+        expect(target?.roomId, 'siaohu_0124', reason: url);
+        expect(target?.site, 'twitch', reason: url);
+      }
+      // 站点自身段落(videos/directory 等)不是频道。
+      expect(resolveSearchDirect('douyu', 'https://www.twitch.tv/directory'), isNull);
+      expect(resolveSearchDirect('douyu', 'https://www.twitch.tv/videos/1234567'), isNull);
+    });
+
     test('非法 lv 形态不识别(与 validateProgramId 同口径)', () {
       expect(resolveSearchDirect('niconico', 'lv0'), isNull);
       expect(resolveSearchDirect('niconico', 'lv'), isNull);

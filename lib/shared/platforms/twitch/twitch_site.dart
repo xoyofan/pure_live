@@ -715,7 +715,30 @@ class TwitchSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomR
     return _loadRoomDetail(liveroom.roomId!);
   }
 
-  Future<LiveRoom> _loadRoomDetail(String roomId) async {
+  /// 房间输入归一:完整频道链接(`https://www.twitch.tv/<login>`,含
+  /// www./m. 前缀与尾斜杠)→ login;裸 login 原样返回。多段站点路径
+  /// (videos/directory 等)或非频道形状原样透传,由 GQL 查询失败给出
+  /// 错误(用户口径 2026-10-03:siaohu_0124 链接直达,URL 不得灌进 GQL)。
+  @visibleForTesting
+  static String loginFromInput(String input) {
+    final text = input.trim();
+    final uri = Uri.tryParse(text);
+    if (uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        {'twitch.tv', 'www.twitch.tv', 'm.twitch.tv'}.contains(uri.host.toLowerCase())) {
+      final segments = [
+        for (final segment in uri.pathSegments)
+          if (segment.trim().isNotEmpty) segment,
+      ];
+      if (segments.length == 1 && RegExp(r'^[a-zA-Z0-9_]{3,25}$').hasMatch(segments.single)) {
+        return segments.single.toLowerCase();
+      }
+    }
+    return text;
+  }
+
+  Future<LiveRoom> _loadRoomDetail(String rawRoomId) async {
+    final roomId = loginFromInput(rawRoomId);
     final roomInfo = await _getRoomInfo(roomId);
     if (roomInfo.length < 2) {
       throw StateError('Twitch room metadata response is incomplete');
