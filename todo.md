@@ -427,7 +427,7 @@
 - [x] **取证**:链接本身 200 正常且直播中;页面两校验锚点(twitter:creator / tw-user-header data-user-id)齐全;streamserver.php 正常回 HLS;真网络 `detail('c:tbk_1')` 解析成功(椿,live=true)——解析链健康
 - [x] **根因**:搜索页直达识别 `_twitcastingChannelName` 正则 `^[a-zA-Z0-9_]{1,80}$` 不认冒号,`https://twitcasting.tv/c:tbk_1` 判 null → 直达项不出现;而解析层 `TwitcastingApi.channelName` 明明允许 `(c|g|f|ig):` 前缀,注释声称"同口径"实则失同步(与迭代 niconico lv 直达缺口同类:房间健康,识别层断)
 - [x] **修复**:直达正则对齐 channelName——`^(?:(?:c|g|f|ig):)?[a-zA-Z0-9_]{1,64}$`;movie/回放多段路径依旧不直达(「不静默替换旧场次」口径不变);roomId 带前缀进 play 路由,解析层归一小写
-- 补充:启动参数 `--room <url>` 路径(`_resolveStartupRoom` 取 path 尾段)本就支持 c: 链接,不受影响;存量探针 `twitcasting_public_contract_probe_test.dart` 已与现 API 签名脱节(编译错,opt-in 不入套件,待下次触及时修)
+- 补充:启动参数 `--room <url>` 路径(`_resolveStartupRoom` 取 path 尾段)本就支持 c: 链接,不受影响;存量探针 `twitcasting_public_contract_probe_test.dart` 已与现 API 签名脱节(opt-in 不入套件),当日即修——对齐 `getRoomDetailForRecording(LiveRoom)`/`resolveStream({liveroom})` 现签名后真网络复跑全绿(目录 50 条/18 分组/3 档 HLS/媒体清单 449B/录制输入与恢复契约 resolved)
 - 验证:直达识别回归测试(c:/g: URL→DirectTarget、多段 movie 拒绝)+ 真网络探针 `tool/probes/twitcasting_c_prefixed_channel_probe_test.dart`;**全量 149/149 全过**;analyze 改动文件 0 告警
 
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论

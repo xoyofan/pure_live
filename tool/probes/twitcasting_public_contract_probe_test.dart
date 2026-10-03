@@ -33,7 +33,7 @@ void main() {
           expect(categoryRooms.length, lessThanOrEqualTo(60));
           final rooms = await site.getRecommendRooms(pageSize: 60);
           expect(rooms, isNotEmpty);
-          final room = await site.getRoomDetailForRecording(roomId: rooms.first.roomId!, platform: 'twitcasting');
+          final room = await site.getRoomDetailForRecording(rooms.first);
           expect(room.isPlayableNow, isTrue);
           final qualities = await site.getPlayQualites(liveroom: room);
           expect(qualities, isNotEmpty);
@@ -45,7 +45,7 @@ void main() {
           expect(recovered.urls, isNotEmpty);
           expect(recovered.appliedQualityData, qualities.first.selectionId);
           final recorded = await StreamResolverService(siteResolver: (_) => site)
-              .resolveStream(roomId: room.roomId!, platform: 'twitcasting', preferredQuality: 'best');
+              .resolveStream(liveroom: room, preferredQuality: 'best');
           expect(Uri.parse(recorded.url).scheme, 'https');
           final result = {
             'utc': DateTime.now().toUtc().toIso8601String(),
