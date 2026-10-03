@@ -5,19 +5,18 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pure_live/core/index.dart';
-import 'package:pure_live/app/bootstrap/desktop_exit_flow.dart';
+import 'package:pure_live/core/platform/desktop_exit_port.dart';
 import 'package:pure_live/core/platform/desktop_tray_service.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:pure_live/app/router/app_navigation.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
-import 'package:pure_live/player/presentation/windows_pip_driver.dart';
+import 'package:pure_live/core/player/presentation/windows_pip_driver.dart';
 import 'package:pure_live/core/storage/hive_pref_util.dart';
 import 'package:pure_live/core/platform/platform_utils.dart';
 import 'package:pure_live/core/platform/share_command_codec.dart';
-import 'package:pure_live/app/router/navigation_observer.dart';
 import 'package:pure_live/core/platform/share_command_handler.dart';
 import 'package:pure_live/core/widgets/share_command_import_dialog.dart';
-import 'package:pure_live/services/settings/window_size_controller.dart';
+import 'package:pure_live/core/config/window_size_controller.dart';
+import 'package:pure_live/domains/live/domain/global_player_service.dart';
 
 class DesktopTrayMenuCoordinator {
   Future<void>? _activeTransaction;
@@ -200,7 +199,7 @@ class DesktopManager {
           break;
 
         case 'exit_app':
-          await DesktopExitFlow.exitDesktopApplication();
+          await DesktopExitPort.requestExit();
           break;
       }
     } catch (e) {
@@ -211,7 +210,7 @@ class DesktopManager {
   static Future<void> handleWindowClose() async {
     if (!PlatformUtils.isDesktop) return;
 
-    await DesktopExitFlow.showExitDialog();
+    await DesktopExitPort.requestExitDialog();
   }
 
   static Future<void> handleTrayIconClick() async {
@@ -285,12 +284,32 @@ class CustomTitleBar extends StatelessWidget {
 
     return Obx(() {
       final isFullscreen = GlobalPlayerService.instance.player.isWindowFullscreen.value;
-      final bgColor = isFullscreen || isDark ? Colors.black : theme.scaffoldBackgroundColor;
+      // With a wallpaper behind it, the title bar keeps a translucent wash of
+      // the colour it would otherwise paint: the picture reaches the top edge of
+      // the window while the app name and the window controls stay readable over
+      // any artwork.
+      final Color titleBarColor = isFullscreen || isDark ? Colors.black : theme.scaffoldBackgroundColor;
+      final bool wallpaperBehind = !isFullscreen && AppCanvasScope.ownedByBackgroundOf(context);
+      final bgColor = wallpaperBehind ? titleBarColor.withValues(alpha: kWallpaperSurfaceOpacity) : titleBarColor;
       final iconColor = isFullscreen || isDark ? Colors.white.withValues(alpha: 0.75) : Colors.black;
       final currentRoute = RouteObserverController.to.currentRoute.value;
       final currentRouteIskSplash = currentRoute == RoutePath.kSplash;
       final currentSize = SettingsService.to.window.windowSize.value;
       final showSizeText = SettingsService.to.window.isTracking.value;
+      // Styles come from the theme captured above, not from `AppTextStyles`:
+      // that resolves through the app-wide context, which is momentarily
+      // inactive while a route is replaced - and this Obx rebuilds from a
+      // microtask, so it can land in exactly that window.
+      final appNameStyle = (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
+        fontSize: SettingsService.to.font.fontSizeBodyMedium.v,
+        fontWeight: FontWeight.w600,
+        color: iconColor,
+        decoration: TextDecoration.none,
+      );
+      final sizeTextStyle = (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
+        fontSize: SettingsService.to.font.fontSizeBodySmall.v,
+        color: iconColor.withValues(alpha: 0.6),
+      );
 
       return Container(
         height: 32,
@@ -314,12 +333,8 @@ class CustomTitleBar extends StatelessWidget {
                             'The system browser did not open. Check the default browser settings.',
                           ),
                           appName: i18nOr('app_name', 'PureLive'),
-                          appNameStyle: AppTextStyles.t13.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: iconColor,
-                            decoration: TextDecoration.none,
-                          ),
-                          sizeTextStyle: AppTextStyles.t12.copyWith(color: iconColor.withValues(alpha: 0.6)),
+                          appNameStyle: appNameStyle,
+                          sizeTextStyle: sizeTextStyle,
                           projectUri: Uri.parse(VersionUtil.projectUrl),
                           iconColor: iconColor,
                           hoverColor: isDark

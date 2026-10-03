@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pure_live/core/models/live_message.dart';
-import 'package:pure_live/platforms/picarto/picarto_danmaku.dart';
+import 'package:pure_live/shared/platforms/picarto/picarto_danmaku.dart';
 
 void main() {
   group('PicartoDanmaku.parseFrame(chat 批次帧)', () {

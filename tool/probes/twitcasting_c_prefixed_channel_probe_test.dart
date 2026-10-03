@@ -2,7 +2,7 @@
 // 三个断点:1) 直达识别是否漏掉 c: 链接;2) channelName 对裸 URL 的行为;
 // 3) 真实网络下 detail('c:tbk_1') 是否可解析。无 cookie,无媒体分段。
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/platforms/twitcasting/twitcasting_api.dart';
+import 'package:pure_live/shared/platforms/twitcasting/twitcasting_api.dart';
 import 'package:pure_live/src/features/search/application/search_provider.dart';
 
 void main() {

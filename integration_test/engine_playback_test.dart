@@ -24,7 +24,7 @@ import 'package:pure_live/get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:pure_live/player/adapters/fvp_adapter.dart';
 import 'package:pure_live/core/common/playback_header_resolver.dart';
-import 'package:pure_live/player/core/playback_proxy_policy.dart';
+import 'package:pure_live/core/player/core/playback_proxy_policy.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();

@@ -10,8 +10,8 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pure_live/core/network/http_client.dart';
-import 'package:pure_live/platforms/niconico/niconico_site.dart';
-import 'package:pure_live/platforms/niconico/niconico_watch.dart';
+import 'package:pure_live/shared/platforms/niconico/niconico_site.dart';
+import 'package:pure_live/shared/platforms/niconico/niconico_watch.dart';
 
 const _proxy = 'PROXY 127.0.0.1:7897';
 

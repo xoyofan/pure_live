@@ -6,7 +6,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/platforms/sites.dart';
+import 'package:pure_live/domains/live/data/platforms/sites.dart';
 import 'package:pure_live/core/models/live_area.dart';
 
 const _timeout = Duration(seconds: 60);

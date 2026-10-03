@@ -4,8 +4,8 @@ import 'dart:typed_data';
 import 'package:fixnum/fixnum.dart' as $fix;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pure_live/core/models/live_message.dart';
-import 'package:pure_live/platforms/acfun/acfun_danmaku.dart';
-import 'package:pure_live/platforms/acfun/proto/acfun.pb.dart' as pb;
+import 'package:pure_live/shared/platforms/acfun/acfun_danmaku.dart';
+import 'package:pure_live/shared/platforms/acfun/proto/acfun.pb.dart' as pb;
 
 void main() {
   group('AcFunDanmaku 封帧与加密', () {

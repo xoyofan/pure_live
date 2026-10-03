@@ -7,10 +7,10 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
-import 'package:pure_live/services/settings_service.dart';
+import 'package:pure_live/core/config/settings_service.dart';
 import 'package:pure_live/core/storage/hive_pref_util.dart';
-import 'package:pure_live/platforms/seventeen_danmaku.dart';
-import 'package:pure_live/platforms/sites.dart';
+import 'package:pure_live/shared/platforms/seventeen_danmaku.dart';
+import 'package:pure_live/domains/live/data/platforms/sites.dart';
 import 'package:pure_live/get/get.dart';
 
 void main() {

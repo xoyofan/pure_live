@@ -1,4 +1,6 @@
 import 'package:logger/logger.dart';
+import 'package:pure_live/get/get.dart';
+import 'package:pure_live/core/config/log_controller.dart';
 
 /// Host-provided persistence for CoreLog. The Flutter app registers an
 /// implementation that forwards to the in-app log store/server; the sidecar

@@ -14,18 +14,23 @@ import 'package:pure_live/core/storage/hive_pref_util.dart';
 import 'package:pure_live/core/network/web_socket_util.dart';
 import 'package:pure_live/core/platform/platform_utils.dart';
 import 'package:pure_live/app/bootstrap/initial_services.dart';
-import 'package:pure_live/features/recorder/ffmpeg/ffmpeg_manager.dart';
+import 'package:pure_live/domains/recorder/data/ffmpeg/ffmpeg_manager.dart';
 import 'package:windows_single_instance/windows_single_instance.dart';
 import 'package:pure_live/core/platform/mobile_manager.dart';
 import 'package:pure_live/app/desktop/desktop_manager.dart';
-import 'package:pure_live/features/recorder/services/recorder_proxy_routing.dart';
-import 'package:pure_live/services/settings/backup_controller.dart';
-import 'package:pure_live/player/kernel/player_kernel_service.dart';
+import 'package:pure_live/core/config/migrations/settings_upgrade_migration.dart';
+import 'package:pure_live/core/platform/initial_room_handoff.dart';
 import 'package:pure_live/core/platform/windows_multi_instance_launcher.dart';
-import 'package:pure_live/services/migration/settings_upgrade_migration.dart';
-import 'package:pure_live/services/parser_runtime_binding.dart';
-import 'package:pure_live/core/contracts/live_room_context.dart';
-import 'package:pure_live/features/live/playback/controllers/player_room_context_bridge.dart';
+import 'package:pure_live/core/player/kernel/player_kernel_service.dart';
+import 'package:pure_live/core/stream/upstream_proxy_routing.dart';
+import 'package:pure_live/features/backup/backup_controller.dart';
+import 'package:pure_live/domains/live/presentation/playback/controllers/player_room_context_bridge.dart';
+import 'package:pure_live/core/stream/upstream_proxy_routing.dart';
+import 'package:pure_live/core/player/kernel/player_kernel_service.dart';
+import 'package:pure_live/core/config/migrations/settings_upgrade_migration.dart';
+import 'package:pure_live/core/config/parser_runtime_binding.dart';
+import 'package:pure_live/features/backup/backup_controller.dart';
+import 'package:pure_live/shared/platforms/live_room_context.dart';
 
 /// Keep decoded cover/avatar memory bounded independently from the encoded
 /// HTTP/disk cache. A 960x540 RGBA cover is roughly 2 MiB after decoding, so
@@ -41,19 +46,11 @@ void configureDecodedImageCache({required bool desktop}) {
 class AppInitializer {
   static final AppInitializer _instance = AppInitializer._internal();
   bool _isInitialized = false;
-  LiveRoom? _initialRoom;
 
   factory AppInitializer() => _instance;
   AppInitializer._internal();
 
   bool get isInitialized => _isInitialized;
-
-  /// Returns a command-line room once, after the home navigator is mounted.
-  LiveRoom? takeInitialRoom() {
-    final room = _initialRoom;
-    _initialRoom = null;
-    return room;
-  }
 
   Future<void> initialize(List<String> args) async {
     if (_isInitialized) return;
@@ -61,7 +58,8 @@ class AppInitializer {
     WidgetsFlutterBinding.ensureInitialized();
     configureDecodedImageCache(desktop: PlatformUtils.isDesktop);
     final String instanceId = WindowsMultiInstanceLauncher.instanceIdFromArgs(args);
-    _initialRoom = WindowsMultiInstanceLauncher.roomFromArgs(args);
+    // 一次性交接放在 Core，Features 读它时不必反向认识 App。
+    InitialRoomHandoff.offer(WindowsMultiInstanceLauncher.roomFromArgs(args));
     await _initWindowsSingleInstance(args, instanceId);
 
     await AppPathManager().initialize(instanceId: instanceId);
@@ -102,7 +100,7 @@ class AppInitializer {
       final restored = await Get.find<BackupController>().recoverAndDelete(File(configFilePath));
       log('Windows multi-instance settings ${restored ? 'restored' : 'restore failed'}: $configFilePath');
     }
-    configureRecorderProxyRouting((_) {
+    configureUpstreamProxyRouting((_) {
       final proxy = SettingsService.to.proxy;
       return buildProxyDirective(
         enabled: proxy.enableAppProxy.v,

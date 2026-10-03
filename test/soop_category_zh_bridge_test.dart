@@ -11,9 +11,9 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_parser/live_parser.dart' show rememberSoopZhCategory, remapCategoryName;
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/platforms/sites.dart';
-import 'package:pure_live/platforms/huya/huya_site.dart' show HuyaUrlDataModel;
-import 'package:pure_live/platforms/soop/soop_site.dart';
+import 'package:pure_live/domains/live/data/platforms/sites.dart';
+import 'package:pure_live/shared/platforms/huya/huya_site.dart' show HuyaUrlDataModel;
+import 'package:pure_live/shared/platforms/soop/soop_site.dart';
 import 'package:pure_live/src/shared/application/purelive_backend.dart';
 
 void main() {

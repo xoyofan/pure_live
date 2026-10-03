@@ -11,7 +11,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pure_live/platforms/sites.dart';
+import 'package:pure_live/domains/live/data/platforms/sites.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../presentation/platform_brands.dart';
@@ -22,11 +22,7 @@ import '../presentation/platform_brands.dart';
 /// 用 `Image.asset` 直读;`assets/ui/platform-icons/` 只覆盖 9 个平台,盖不住
 /// 全量目录,文字字形兜底不再适用。
 class PlatformEntry {
-  const PlatformEntry({
-    required this.id,
-    required this.name,
-    required this.logo,
-  });
+  const PlatformEntry({required this.id, required this.name, required this.logo});
 
   final String id;
   final String name;
@@ -44,15 +40,11 @@ class PlatformPrefs {
 
   /// 默认态:全部可见,按 pure_live `_supportedSites` 目录序。
   static final PlatformPrefs defaults = PlatformPrefs(
-    visibleIds: [
-      for (final site in Sites.supportSites) _catalogId(site.id),
-    ],
+    visibleIds: [for (final site in Sites.supportSites) _catalogId(site.id)],
   );
 
   /// 目录内的全量契约 id(校验存量/入参用)。
-  static final Set<String> allIds = Sites.supportSites
-      .map((site) => _catalogId(site.id))
-      .toSet();
+  static final Set<String> allIds = Sites.supportSites.map((site) => _catalogId(site.id)).toSet();
 
   bool isVisible(String id) => visibleIds.contains(id);
 }
@@ -71,11 +63,7 @@ String _catalogId(String siteId) => _kCatalogIdAlias[siteId] ?? siteId;
 final platformCatalogProvider = Provider<List<PlatformEntry>>((ref) {
   return [
     for (final site in Sites.supportSites)
-      PlatformEntry(
-        id: _catalogId(site.id),
-        name: _siteName(site),
-        logo: site.logo,
-      ),
+      PlatformEntry(id: _catalogId(site.id), name: _siteName(site), logo: site.logo),
   ];
 });
 
@@ -143,9 +131,7 @@ class PlatformPrefsController extends Notifier<PlatformPrefs> {
 
   /// 目录序插入位置:第一个目录位次比 [id] 靠后的可见项之前,没有则末尾。
   int _catalogInsertIndex(List<String> ids, String id) {
-    final catalogIds = [
-      for (final site in Sites.supportSites) _catalogId(site.id),
-    ];
+    final catalogIds = [for (final site in Sites.supportSites) _catalogId(site.id)];
     final target = catalogIds.indexOf(id);
     for (var i = 0; i < ids.length; i++) {
       if (catalogIds.indexOf(ids[i]) > target) return i;
@@ -182,10 +168,7 @@ class PlatformPrefsController extends Notifier<PlatformPrefs> {
 }
 
 /// 平台偏好 provider(默认全可见,读盘后为用户次序)。
-final platformPrefsProvider =
-    NotifierProvider<PlatformPrefsController, PlatformPrefs>(
-      PlatformPrefsController.new,
-    );
+final platformPrefsProvider = NotifierProvider<PlatformPrefsController, PlatformPrefs>(PlatformPrefsController.new);
 
 /// 当前**可见**平台(按用户次序):设置「平台」分区开关/排序的直接投影。
 final visiblePlatformsProvider = Provider<List<PlatformEntry>>((ref) {
@@ -200,7 +183,6 @@ final visiblePlatformsProvider = Provider<List<PlatformEntry>>((ref) {
 
 /// 导航入口清单:「全平台」固定首位 + 用户可见平台。顶栏平台 tab、手机
 /// 平台条与侧栏平台块**共用**这一个 provider,设置里的隐藏/排序三处同步。
-final navigationPlatformsProvider = Provider<List<PlatformEntry>>((ref) => [
-  const PlatformEntry(id: 'all', name: '全平台', logo: ''),
-  ...ref.watch(visiblePlatformsProvider),
-]);
+final navigationPlatformsProvider = Provider<List<PlatformEntry>>(
+  (ref) => [const PlatformEntry(id: 'all', name: '全平台', logo: ''), ...ref.watch(visiblePlatformsProvider)],
+);

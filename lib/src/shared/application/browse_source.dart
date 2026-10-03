@@ -2,7 +2,7 @@
 library;
 
 import 'package:live_parser/live_parser.dart';
-import 'package:pure_live/core/contracts/live_input_recipe.dart';
+import 'package:pure_live/shared/platforms/live_input_recipe.dart';
 
 /// 栏目浏览数据源。
 abstract interface class BrowseSource {
@@ -13,23 +13,14 @@ abstract interface class BrowseSource {
   /// [limit] = 本次请求条数;`null` 表示调用方不指定,由实现取默认口径
   /// (真实解析 30)。首页「按平台区块」路径下发首屏列数(见
   /// `PlatformRoomsQuery.limit`),单平台页旧路径不指定,保持既有行为。
-  Future<RoomListResult> fetchRooms({
-    required String site,
-    String? cid,
-    int page,
-    int? limit,
-  });
+  Future<RoomListResult> fetchRooms({required String site, String? cid, int page, int? limit});
 }
 
 /// 房间解析数据源(播放页)。
 abstract interface class RoomSource {
   /// [preferredQuality] 为生效的默认画质(平台级设置);解析侧可据此只取该档
   /// 流地址(懒取流),其余档位以占位线路返回,由播放页切换时按需重解析。
-  Future<RoomPayload> resolveRoom({
-    required String site,
-    required String roomIdOrUrl,
-    String? preferredQuality,
-  });
+  Future<RoomPayload> resolveRoom({required String site, required String roomIdOrUrl, String? preferredQuality});
 }
 
 /// owned-input 播放配方解析能力(可选)。
@@ -63,11 +54,7 @@ abstract interface class OwnedInputResolver {
 /// 继承 [RoomSource]:能恢复者必能解析,同时让调用点 `is` 探测后可
 /// 直接调用(类型提升要求子类型关系)。
 abstract interface class RoomRecoverer implements RoomSource {
-  Future<RoomPayload> recoverRoom({
-    required String site,
-    required String roomIdOrUrl,
-    String? preferredQuality,
-  });
+  Future<RoomPayload> recoverRoom({required String site, required String roomIdOrUrl, String? preferredQuality});
 }
 
 /// 轻量房间状态刷新能力(可选)。
@@ -88,10 +75,7 @@ abstract interface class RoomRecoverer implements RoomSource {
 ///
 /// 继承 [RoomSource]:让调用点 `is` 探测获得类型提升(同 [RoomRecoverer])。
 abstract interface class RoomRefresher implements RoomSource {
-  Future<RoomRecord> refreshRoom({
-    required String site,
-    required String roomId,
-  });
+  Future<RoomRecord> refreshRoom({required String site, required String roomId});
 }
 
 /// 关注平台一次返回的直播快照。
@@ -115,12 +99,7 @@ abstract interface class FollowLiveRefresher {
 
 /// 关注导入进度。
 class FollowImportProgress {
-  const FollowImportProgress({
-    required this.page,
-    required this.imported,
-    this.total = 0,
-    this.refreshing = false,
-  });
+  const FollowImportProgress({required this.page, required this.imported, this.total = 0, this.refreshing = false});
 
   final int page;
   final int imported;
@@ -130,7 +109,5 @@ class FollowImportProgress {
 
 /// 平台关注列表导入能力(可选)。
 abstract interface class FollowImportSource {
-  Future<List<RoomSummary>> importDouyinFollows({
-    void Function(FollowImportProgress progress)? onProgress,
-  });
+  Future<List<RoomSummary>> importDouyinFollows({void Function(FollowImportProgress progress)? onProgress});
 }

@@ -1,9 +1,12 @@
 import 'dart:io' as io;
+import 'dart:typed_data';
 
 import 'package:dio/io.dart';
 import 'package:dio/dio.dart';
 import 'package:pure_live/core/network/core_error.dart';
 import 'package:pure_live/core/network/custom_interceptor.dart';
+import 'package:pure_live/core/config/settings_service.dart';
+import 'package:pure_live/core/network/proxy_routing.dart';
 
 class HttpClient {
   /// Proxy directive provider injected by the host. The Flutter app registers
@@ -104,6 +107,30 @@ class HttpClient {
         cancelToken: cancel,
       );
       return result;
+    } catch (e) {
+      throw _handleError(e, _errorGet);
+    }
+  }
+
+  /// GET [url] and return the raw body.
+  ///
+  /// Random-image endpoints are addressed directly and answer with a picture,
+  /// but a misconfigured one answers JSON or an HTML page instead; the caller
+  /// gets the bytes and decides, so nothing is sniffed or decoded here.
+  Future<Uint8List> getBytes(
+    String url, {
+    Map<String, dynamic>? queryParameters,
+    Map<String, dynamic>? header,
+    CancelToken? cancel,
+  }) async {
+    try {
+      final result = await dio.get<List<int>>(
+        url,
+        queryParameters: queryParameters,
+        options: Options(responseType: ResponseType.bytes, headers: header),
+        cancelToken: cancel,
+      );
+      return Uint8List.fromList(result.data ?? const <int>[]);
     } catch (e) {
       throw _handleError(e, _errorGet);
     }

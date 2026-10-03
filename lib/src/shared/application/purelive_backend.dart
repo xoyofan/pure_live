@@ -17,15 +17,15 @@ import 'package:live_parser/live_parser.dart' hide LiveSite;
 
 import 'browse_source.dart';
 
-import 'package:pure_live/core/contracts/live_input_recipe.dart';
-import 'package:pure_live/core/contracts/live_site.dart';
-import 'package:pure_live/core/network/playback_header_resolver.dart';
-import 'package:pure_live/platforms/sites.dart';
-import 'package:pure_live/core/contracts/live_danmaku.dart';
+import 'package:pure_live/shared/platforms/live_input_recipe.dart';
+import 'package:pure_live/shared/platforms/live_site.dart';
+import 'package:pure_live/domains/live/data/playback_header_resolver.dart';
+import 'package:pure_live/domains/live/data/platforms/sites.dart';
+import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_message.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/platforms/huya/huya_site.dart' show HuyaUrlDataModel;
+import 'package:pure_live/shared/platforms/huya/huya_site.dart' show HuyaUrlDataModel;
 
 import 'purelive_audience.dart';
 import 'purelive_line_format.dart';

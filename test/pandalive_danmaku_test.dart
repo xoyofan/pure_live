@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pure_live/core/models/live_message.dart';
-import 'package:pure_live/platforms/pandalive/pandalive_danmaku.dart';
+import 'package:pure_live/shared/platforms/pandalive/pandalive_danmaku.dart';
 
 void main() {
   group('PandaliveDanmaku.parseFrame(Centrifugo pub 帧)', () {

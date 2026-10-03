@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pure_live/core/models/live_message.dart';
-import 'package:pure_live/platforms/twitcasting/twitcasting_danmaku.dart';
+import 'package:pure_live/shared/platforms/twitcasting/twitcasting_danmaku.dart';
 
 void main() {
   group('TwitcastingDanmaku.parseFrame(pubsub 评论帧)', () {

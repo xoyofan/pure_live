@@ -9,7 +9,7 @@ import 'browse_source.dart';
 import 'fixture_sources.dart';
 
 import 'package:live_parser/live_parser.dart' show buildSiteRegistry;
-import 'package:pure_live/platforms/sites.dart';
+import 'package:pure_live/domains/live/data/platforms/sites.dart';
 import 'package:pure_live/core/network/parser_config.dart' show ParserConfig;
 import 'package:pure_live/core/network/site_ids.dart' show SiteIds;
 import 'package:pure_live/src/shared/application/zishu_parser_config.dart' show ZishuParserConfig;
@@ -54,10 +54,7 @@ final browseSourceProvider = Provider<BrowseSource>((ref) {
   );
   // zishu 运行时把用户凭证接进 pure_live 解析核心(ParserConfig): 旧 UI 的
   // bindParserRuntimeToApp 不跑, 不注入则 bilibili 等适配器匿名(-352 风控)。
-  ParserConfig.instance = ZishuParserConfig({
-    SiteIds.bilibiliSite: bilibiliCookie,
-    SiteIds.douyinSite: douyinCookie,
-  });
+  ParserConfig.instance = ZishuParserConfig({SiteIds.bilibiliSite: bilibiliCookie, SiteIds.douyinSite: douyinCookie});
   return ParserBrowseSource(
     douyinCookie: douyinCookie,
     xhsCookie: xhsCookie,

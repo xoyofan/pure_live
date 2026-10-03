@@ -153,8 +153,8 @@ bool Win32Window::Show() {
   // 1. 获取程序启动时的信息
   STARTUPINFO si;
   GetStartupInfo(&si);
-  int show_command = (si.dwFlags & STARTF_USESHOWWINDOW) 
-                     ? si.wShowWindow 
+  int show_command = (si.dwFlags & STARTF_USESHOWWINDOW)
+                     ? si.wShowWindow
                      : SW_SHOWNORMAL;
   return ShowWindow(window_handle_, show_command);
 }

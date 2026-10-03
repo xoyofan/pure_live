@@ -4,12 +4,11 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pure_live/core/models/live_message.dart';
-import 'package:pure_live/platforms/seventeenlive/seventeen_danmaku.dart';
+import 'package:pure_live/shared/platforms/seventeenlive/seventeen_danmaku.dart';
 
 void main() {
   group('SeventeenDanmaku.parseFrame(Ably action15 信封)', () {
-    Uint8List gzipOf(Map<String, Object?> json) =>
-        Uint8List.fromList(gzip.encode(utf8.encode(jsonEncode(json))));
+    Uint8List gzipOf(Map<String, Object?> json) => Uint8List.fromList(gzip.encode(utf8.encode(jsonEncode(json))));
 
     test('type3 commentMsg 解码为聊天消息(实测 gzip 载荷形态)', () {
       final data = base64.encode(
@@ -34,10 +33,35 @@ void main() {
     });
 
     test('type38 在线人数/type18 进场忽略(实测帧均为非 3)', () {
-      final viewers = base64.encode(gzipOf({'type': 38, 'liveinfo': {'liveViewerCount': 9}}));
+      final viewers = base64.encode(
+        gzipOf({
+          'type': 38,
+          'liveinfo': {'liveViewerCount': 9},
+        }),
+      );
       final enter = base64.encode(gzipOf({'type': 18, 'content': 'entered'}));
-      expect(SeventeenDanmaku.parseFrame(jsonEncode({'action': 15, 'messages': [{'data': viewers}]})), isEmpty);
-      expect(SeventeenDanmaku.parseFrame(jsonEncode({'action': 15, 'messages': [{'data': enter}]})), isEmpty);
+      expect(
+        SeventeenDanmaku.parseFrame(
+          jsonEncode({
+            'action': 15,
+            'messages': [
+              {'data': viewers},
+            ],
+          }),
+        ),
+        isEmpty,
+      );
+      expect(
+        SeventeenDanmaku.parseFrame(
+          jsonEncode({
+            'action': 15,
+            'messages': [
+              {'data': enter},
+            ],
+          }),
+        ),
+        isEmpty,
+      );
     });
 
     test('非 action15 帧(ATTACHED 11/心跳 0)忽略', () {
@@ -47,8 +71,23 @@ void main() {
     });
 
     test('明文 JSON 载荷(未压缩形态)也支持', () {
-      final data = base64.encode(utf8.encode(jsonEncode({'type': 3, 'content': 'plain', 'displayUser': {'displayName': 'u'}})));
-      final messages = SeventeenDanmaku.parseFrame(jsonEncode({'action': 15, 'messages': [{'data': data}]}));
+      final data = base64.encode(
+        utf8.encode(
+          jsonEncode({
+            'type': 3,
+            'content': 'plain',
+            'displayUser': {'displayName': 'u'},
+          }),
+        ),
+      );
+      final messages = SeventeenDanmaku.parseFrame(
+        jsonEncode({
+          'action': 15,
+          'messages': [
+            {'data': data},
+          ],
+        }),
+      );
       expect(messages.single.message, 'plain');
     });
   });

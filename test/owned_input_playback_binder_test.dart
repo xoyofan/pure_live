@@ -8,18 +8,18 @@
 // 验证分派契约与 lease 语义,零网络。
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/core/contracts/live_input_recipe.dart';
-import 'package:pure_live/player/core/features_bridge.dart';
-import 'package:pure_live/player/core/live_input_playback_binder.dart';
-import 'package:pure_live/player/core/playback_source.dart';
-import 'package:pure_live/player/core/playback_source_transport.dart';
-import 'package:pure_live/platforms/bigo/bigo_input_recipe.dart';
-import 'package:pure_live/platforms/fc2live/fc2_input_recipe.dart';
-import 'package:pure_live/platforms/niconico/niconico_input_recipe.dart';
+import 'package:pure_live/shared/platforms/live_input_recipe.dart';
+import 'package:pure_live/core/player/core/features_bridge.dart';
+import 'package:pure_live/core/player/core/playback_input_lease.dart';
+import 'package:pure_live/domains/live/domain/live_input_playback_binder.dart';
+import 'package:pure_live/core/player/core/playback_source.dart';
+import 'package:pure_live/domains/live/data/stream/playback_source_transport.dart';
+import 'package:pure_live/shared/platforms/bigo/bigo_input_recipe.dart';
+import 'package:pure_live/shared/platforms/fc2live/fc2_input_recipe.dart';
+import 'package:pure_live/shared/platforms/niconico/niconico_input_recipe.dart';
 
 class _FakeLease extends PlaybackInputLease {
-  _FakeLease(Uri uri, bool closed)
-    : super(uri, () async => _closed = closed, isUsable: () => !_closed);
+  _FakeLease(Uri uri, bool closed) : super(uri, () async => _closed = closed, isUsable: () => !_closed);
   static bool _closed = false;
 }
 
@@ -92,10 +92,7 @@ void main() {
   });
 
   test('未知配方仍抛 UnsupportedError(契约不变)', () {
-    expect(
-      () => bindLiveInputForPlayback(_UnknownRecipe()),
-      throwsUnsupportedError,
-    );
+    expect(() => bindLiveInputForPlayback(_UnknownRecipe()), throwsUnsupportedError);
   });
 
   test('座位关闭后 lease isUsable 为假(生命周期归播放器)', () {

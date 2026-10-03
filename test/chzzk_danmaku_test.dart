@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/platforms/chzzk/chzzk_danmaku.dart';
+import 'package:pure_live/shared/platforms/chzzk/chzzk_danmaku.dart';
 
 void main() {
   group('ChzzkDanmaku 帧构造(现役 cmd 协议)', () {

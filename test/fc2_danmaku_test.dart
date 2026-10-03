@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/platforms/fc2live/fc2_danmaku.dart';
+import 'package:pure_live/shared/platforms/fc2live/fc2_danmaku.dart';
 
 void main() {
   group('Fc2Danmaku.parseFrame(控制 socket comment 帧)', () {

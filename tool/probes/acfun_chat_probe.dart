@@ -8,7 +8,7 @@ import 'dart:typed_data';
 
 import 'package:fixnum/fixnum.dart' as $fix;
 import 'package:pointycastle/export.dart';
-import 'package:pure_live/platforms/proto/acfun.pb.dart' as pb;
+import 'package:pure_live/shared/platforms/proto/acfun.pb.dart' as pb;
 
 const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36';
 

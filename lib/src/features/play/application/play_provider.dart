@@ -9,8 +9,9 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:live_parser/live_parser.dart';
-import 'package:pure_live/player/core/live_input_playback_binder.dart';
-import 'package:pure_live/player/core/playback_source_transport.dart';
+import 'package:pure_live/domains/live/domain/live_input_playback_binder.dart';
+import 'package:pure_live/core/player/core/playback_input_lease.dart';
+import 'package:pure_live/domains/live/data/stream/playback_source_transport.dart';
 
 import '../../../platforms/common/playback/idle_releasing_live_player.dart';
 import '../../../platforms/common/playback/live_player.dart';
@@ -156,11 +157,7 @@ class PlayController extends AsyncNotifier<PlayState> {
     }
     try {
       final recipe = await resolver
-          .resolveOwnedInputRecipe(
-            site: params.site,
-            roomIdOrUrl: params.roomId,
-            preferredQuality: preferredQuality,
-          )
+          .resolveOwnedInputRecipe(site: params.site, roomIdOrUrl: params.roomId, preferredQuality: preferredQuality)
           .timeout(const Duration(seconds: 45));
       if (recipe == null || !ref.mounted || generation != _generation) return null;
       // 播放策略 = purelive 绑定:配方 → OwnedPlaybackSource → 座位/本地中继。

@@ -469,6 +469,43 @@
 - [x] **PandaTV 同报障结论**(环境级,非代码):`api.pandalive.co.kr` 对现出口 103.151.172.13 定点制裁(제재된 IP)——`live/index`(首页目录)、`member/bj`(房间)拒,`page/www`/`live/bj_list`/静态页放行;官方前端 JS 仍用 `/v1/live/index`,非 API 漂移;与迭代8 表格结论一致。**换 Clash 出口节点即解,代码无解**
 - 验证:新增 opt-in 探针 `tool/probes/proxy_media_headers_probe_test.dart`(resolver 头部契约 → 代理转发 → 真实 wansu 流实拉 FLV magic 字节)全绿;`resolve_room_diag` 17live 全链路(搜索→详情→四档→2线)绿;analyze 与 HEAD 基线持平(67,零新增);受影响单测(purelive_stats_refresh/soop_category_zh_bridge)21/21。另修 `resolve_room_diag_probe_test.dart` 缺 `LiveRoom` 导入(布局重构遗留编译坏点)
 
+
+### 迭代 33(2026-10-03)✅ 上游合并落地:liuchuancong/pure_live b087ee90——分层架构波② + "摘取 4.x"平台大波 + 弹幕大功能
+
+用户指令"先合并上游的下来"。入站 `276fae8a..b087ee90` = **127 提交 / 621 文件(+13888/−6763)**;审查文档 `docs/UPSTREAM_AUDIT_b087ee90.md`(全量 SHA+文件逐字在案,门禁 `audit_document_valid=true`/`violations=[]`;入站尾随空格按 276fae8a 先例记录放行)。合并三原则:解析层跟上游、UI 保 fork zishu、版本/构建/firebase 边界不动。
+
+1. **分层架构波②**:站点适配器 `lib/platforms`→`lib/shared/platforms`、旧 UI `lib/features`→`lib/domains/<域>`、core 拆 config/navigation/platform/stream/theme;新增 `tool/validate_architecture.py` CI 门禁(BASELINE 台账制)+`.github/workflows/architecture.yml`(权限最小化,政策合规)
+2. **冲突 94 文件全解**:DD/DU/UA 机械类(firebase 13 文件保持删除);AU 24(11 平台弹幕+proto 随迁 shared 新路径,内容 fork 为准);UU 站点 20 处"上游为底+回植 fork 语义补丁"(bigo liveStatus 活分支×上游 restriction 合体/虎牙 getLiveList+identityLabel/斗鱼 promoTag+startedAtMs+cid/B站 promoTag+cid/抖音迭代27 分类树/soop·kuaishou·twitch·yy 的 maybe 契约迁移到新 CookieSettingsController/IPTV 控制器/CurrentRoom 契约保 fork LiveCurrentRoomContext);settings_service 移动+回植 maybe
+3. **弹幕大功能入站**:表情图片(LiveMessage.emotes)/撤回(retraction+引擎按条撤回)/礼物/公告进列表——flame_barrage 需上游未发布接口,**克隆 liuchuancong/flame_barrage 至 F:/flame_barrage 并自补 `BarrageItem.id`+`BarrageController.retractWhere`**(d048f91);media_core 同步快进至 4e84ec2(悬浮窗 initialRect/onRectChanged)
+4. **resolver 收敛**:fork core/network 版退役,统一用上游 domains/live/data 版(等价安全访问+含 twitch CDN 不发 Cookie 修正),zishu 桥/探针重接
+5. **架构门禁收口**:validate_architecture BASELINE 删 1 条 stale+登记 70 条 fork 增量边(live_url_parser/启动预热/sidecar/opener 等独有架构件),**0 unapproved/0 stale**;audit_repository live_back 不变量路径迁 domains 布局,**errors=0**
+
+**验证**:全仓 analyze **0 error**(非 integration_test);全量测试 **176/176 全过**(基线 149+上游新增,11 平台弹幕协议单测全绿);`git diff --cached --check` 0(renormalize 后);audit 0 error;架构门禁 strict 通过。**待办**:opt-in 探针(全站播放/分类/对齐)择窗口复验;flame_barrage 撤回渲染链与上游新弹幕功能在 zishu 侧的消费另立项
+
+### 迭代 27(2026-10-03)✅ 抖音二级分类对齐 zishu + 分类并行预热 + 抽屉二级分类四字宽横铺
+
+用户报告三项:抖音 hover 分类错误(应对齐 zishu 二级分类)/分类应启动预加载进内存(hover 马上显示)/左侧抽屉二级分类固定四字宽横向平铺。
+
+1. **抖音二级分类重构**(`platforms/douyin/douyin_site.dart`):旧实现解析 `categoryData` 浅表——8 组 15 项且各组首条目为组自引用(娱乐组 sub_partition 全空、游戏组把二级分区当条目)。重写为 zishu web 同款两列结构:**游戏根按 title 定位**(id 103 也落 100-199 数字段, 用 id 区间判娱乐会整棵误吞游戏树——实测踩坑), 二级分区(射击游戏/竞技游戏/单机游戏/角色扮演/棋牌游戏/休闲益智/策略卡牌)为组、嵌套 sub_partition 为组内条目(和平精英/原神...);娱乐分区(聊天/音乐/二次元/舞蹈/文化/生活/运动)合并为单一「娱乐」组, areaId 带 partition_type=4 保证分类房间接口路由正确;解析失败回落静态兜底表(zishu web 同款分组)。探针实测 **8 组 237 项**(此前 8 组 15 项), 分类房间链路 media-ok
+2. **分类预热并行化**(`category_warmup.dart`):预热机制 2026-09-19 已存在但串行逐站, 30+ 平台下尾站等待数十秒——hover 仍见 loading。改 **6 路受限并行**, 全量预热时间从「站点数×单站延迟」压到「并发轮次×单站延迟」;首屏让位仍由启动 2s 延迟保证, 并发上限避免请求风暴;失败静默语义不变
+3. **抽屉二级分类固定四字宽横铺**(`browse_sidebar.dart` + `design_tokens.dart` 新增 `catChipWidth=56`):原 GridView 两列大格(条目宽约 99.4px)改 **LayoutBuilder 按实际可用宽度算列数的固定宽网格**(56px ≈ 4×catFontSize+边距), 220px 抽屉下每行 3 枚、条目多时纵向续排;宽窄抽屉自适应不溢出
+
+**验证**:analyze lib+tool **0 error**;全套件 **149/149 过**(含上游合并带入测试);audit 0 error;抖音分类探针(8 组 237 项)+分类房间链路(media-ok)复验通过。并行会话同期在途 playback 文件未纳入本提交
+
+
+### 迭代 28(2026-10-03)✅ 分类→房间矩阵验证:huya 合并回归 + twitcasting/cc/bilibili 修复
+
+用户要求"分析部分平台的分类是否能正确对应显示房间列表"。新增**分类→房间矩阵探针**(`category_rooms_matrix_probe_test.dart`):全站每分类实际调 getCategoryRooms 拉房间, 逐分类报 withRooms/empty/bad。首轮 357 分类: 96 bad + 29 empty, 定位 6 类:
+
+1. **huya 全断(24/24, 上游合并回归)**:上游重构后的 getLiveList 端点返回 application/json, `getJson` 已解码为 Map, 代码却再 `json.decode(resultText)` → TypeError 全崩。修复兼容 Map/String 双形态
+2. **twitcasting Recent 栏目**:上游新着目录对部分条目不回 `current_viewer_count`(null), 旧 schema 校验把 null 当错误 → 整页挂。修复: null 放行为未知观看数
+3. **cc 官方专题瓦片**(4/24):`official:xxx` 条目是 cc.163.com 页面直达(旧 UI 经 officialEntryUri 打开), zishu 无网页路由 → getCategores 过滤官方组
+4. **bilibili -352(24/24)**:python 全链路复刻(buvid+access_id+wbi 签名齐全)仍 -352 → 服务端匿名风控收紧, 需登录 Cookie。**zishu 运行时 Cookie 断线实锤**:pure_live 适配器经 `ParserConfig.instance?.persistentCookieFor` 取 Cookie, 而旧 UI 的 bindParserRuntimeToApp 不在 zishu 跑 → instance 恒 null → 用户凭证页的 B 站 Cookie 根本没接入。修复:新增 `ZishuParserConfig`(providers 层按凭证更新注入)——用户在凭证页配 B 站 Cookie 即解
+5. **yy**:小视频分类 400 + 9 分类无直播, 上游目录数据自身形态
+6. **探针自身缺陷修复**:初版重建骨架 LiveArea 丢失扩展字段(yy shortName=JSON 查询串/twitch shortName=slug)造成误报——改为保留 getCategores 原始 LiveArea
+
+**验证**:analyze 0 error;**155/155 全过**(新增 ZishuParserConfig 3 用例);复核矩阵 huya/twitcasting/cc **rooms-ok**;bilibili 待用户配 Cookie 后复核(凭证页粘贴 SESSDATA 整串)
+
 ### 迭代 8(2026-10-02,Clash 境外出口复核)✅ 弹幕专项收官:数据中心 IP 封锁定论
 
 用户 Clash 可境外后,提取活订阅节点(韩/日/美标签,实测出口均为 `222.120.184.x` 韩国 KT 农场段),经独立 mihomo 测试实例(7899 端口,已清理)逐节点复核:

@@ -1,32 +1,32 @@
 import 'package:dio/dio.dart' as dio;
-import 'package:pure_live/core/link/live_short_link_session.dart';
-import 'package:pure_live/platforms/kilakila/kilakila_api.dart';
-import 'package:pure_live/platforms/kilakila/kilakila_link.dart';
-import 'package:pure_live/platforms/liveme/liveme_api.dart';
-import 'package:pure_live/platforms/liveme/liveme_link.dart';
-import 'package:pure_live/platforms/niconico/niconico_link.dart';
-import 'package:pure_live/platforms/showroom/showroom_link.dart';
-import 'package:pure_live/platforms/chzzk/chzzk_link.dart';
-import 'package:pure_live/platforms/tiktok/tiktok_api.dart';
-import 'package:pure_live/platforms/tiktok/tiktok_link.dart';
-import 'package:pure_live/platforms/weibo/weibo_link.dart';
-import 'package:pure_live/platforms/xiaohongshu/xiaohongshu_link.dart';
-import 'package:pure_live/platforms/youtube/youtube_api.dart';
-import 'package:pure_live/platforms/youtube/youtube_link.dart';
-import 'package:pure_live/platforms/bigo/bigo_link.dart';
-import 'package:pure_live/platforms/pandalive/pandalive_link.dart';
-import 'package:pure_live/platforms/fc2live/fc2_link.dart';
-import 'package:pure_live/platforms/steambroadcast/steam_broadcast_link.dart';
-import 'package:pure_live/platforms/jdlive/jd_live_link.dart';
-import 'package:pure_live/platforms/kugoulive/kugou_live_link.dart';
-import 'package:pure_live/platforms/baidulive/baidu_live_link.dart';
-import 'package:pure_live/platforms/sixroom/sixroom_link.dart';
-import 'package:pure_live/platforms/looklive/look_live_link.dart';
-import 'package:pure_live/platforms/seventeenlive/seventeenlive_link.dart';
+import 'package:pure_live/shared/platforms/live_short_link_session.dart';
+import 'package:pure_live/shared/platforms/kilakila/kilakila_api.dart';
+import 'package:pure_live/shared/platforms/kilakila/kilakila_link.dart';
+import 'package:pure_live/shared/platforms/liveme/liveme_api.dart';
+import 'package:pure_live/shared/platforms/liveme/liveme_link.dart';
+import 'package:pure_live/shared/platforms/niconico/niconico_link.dart';
+import 'package:pure_live/shared/platforms/showroom/showroom_link.dart';
+import 'package:pure_live/shared/platforms/chzzk/chzzk_link.dart';
+import 'package:pure_live/shared/platforms/tiktok/tiktok_api.dart';
+import 'package:pure_live/shared/platforms/tiktok/tiktok_link.dart';
+import 'package:pure_live/shared/platforms/weibo/weibo_link.dart';
+import 'package:pure_live/shared/platforms/xiaohongshu/xiaohongshu_link.dart';
+import 'package:pure_live/shared/platforms/youtube/youtube_api.dart';
+import 'package:pure_live/shared/platforms/youtube/youtube_link.dart';
+import 'package:pure_live/shared/platforms/bigo/bigo_link.dart';
+import 'package:pure_live/shared/platforms/pandalive/pandalive_link.dart';
+import 'package:pure_live/shared/platforms/fc2live/fc2_link.dart';
+import 'package:pure_live/shared/platforms/steambroadcast/steam_broadcast_link.dart';
+import 'package:pure_live/shared/platforms/jdlive/jd_live_link.dart';
+import 'package:pure_live/shared/platforms/kugoulive/kugou_live_link.dart';
+import 'package:pure_live/shared/platforms/baidulive/baidu_live_link.dart';
+import 'package:pure_live/shared/platforms/sixroom/sixroom_link.dart';
+import 'package:pure_live/shared/platforms/looklive/look_live_link.dart';
+import 'package:pure_live/shared/platforms/seventeenlive/seventeenlive_link.dart';
 
 import 'web_search_room_parser.dart';
 
-import 'package:pure_live/platforms/sites.dart';
+import 'package:pure_live/domains/live/data/platforms/sites.dart';
 
 /// Platform-agnostic share-link resolution.
 ///

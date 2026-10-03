@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pure_live/core/models/live_message.dart';
-import 'package:pure_live/platforms/missevan/missevan_danmaku.dart';
+import 'package:pure_live/shared/platforms/missevan/missevan_danmaku.dart';
 
 void main() {
   group('MissevanDanmaku.parseFrame(im 网关 JSON 帧)', () {

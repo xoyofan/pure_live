@@ -294,9 +294,9 @@ def main() -> int:
     if not callback_values or any(value != "true" for value in callback_values):
         errors.append({"rule": "predictive_back_disabled", "path": relative(manifest_path)})
 
-    back_scope = ROOT / "lib/features/live/playback/widgets/layout/live_play_back_scope.dart"
-    live_page = ROOT / "lib/features/live/playback/pages/live_play_page.dart"
-    controller = ROOT / "lib/features/live/playback/controllers/live_play_controller.dart"
+    back_scope = ROOT / "lib/domains/live/presentation/playback/widgets/layout/live_play_back_scope.dart"
+    live_page = ROOT / "lib/domains/live/presentation/playback/pages/live_play_page.dart"
+    controller = ROOT / "lib/domains/live/presentation/playback/controllers/live_play_controller.dart"
     required_back_markers = {
         relative(back_scope): "PopScope<Object?>",
         relative(live_page): "LivePlayBackScope(",

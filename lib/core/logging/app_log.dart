@@ -10,7 +10,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pure_live/core/platform/app_path_manager.dart';
-import 'package:pure_live/services/settings/log_controller.dart';
+import 'package:pure_live/core/config/log_controller.dart';
 
 enum LogBrowserRequestAction { page, clear, methodNotAllowed, forbidden, notFound }
 
@@ -224,7 +224,7 @@ class Log {
   <title>PureLive Console Terminal</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    
+
     :root {
       --bg-color: #fafafa;
       --panel-bg: #ffffff;
@@ -239,12 +239,12 @@ class Log {
       --btn-text: #24292f;
       --btn-border: #d0d7de;
       --btn-hover: #f3f4f6;
-      
+
       --log-debug: #9a6700;
       --log-info: #0969da;
       --log-warning: #bf3989;
       --log-error: #cf222e;
-      
+
       --row-hover: #f6f8fa;
     }
 
@@ -262,12 +262,12 @@ class Log {
       --btn-text: #c9d1d9;
       --btn-border: #30363d;
       --btn-hover: #30363d;
-      
+
       --log-debug: #d29922;
       --log-info: #58a6ff;
       --log-warning: #ff7b72;
       --log-error: #f85149;
-      
+
       --row-hover: #1f242c;
     }
 
@@ -290,7 +290,7 @@ class Log {
     td { padding: 10px 16px; border-bottom: 1px solid var(--border-color); font-size: 13px; line-height: 1.5; word-break: break-all; vertical-align: top; }
     .time-col { width: 160px; white-space: nowrap; font-family: monospace; color: var(--text-time); }
     .log-content { font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace; }
-    
+
     .debug .log-content { color: var(--log-debug); }
     .info .log-content { color: var(--text-main); }
     .warning .log-content { color: var(--log-warning); }

@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pure_live/platforms/bigo/bigo_danmaku.dart';
+import 'package:pure_live/shared/platforms/bigo/bigo_danmaku.dart';
 
 void main() {
   group('BigoDanmaku 协议纯函数', () {
