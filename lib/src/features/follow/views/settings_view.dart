@@ -55,12 +55,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (!widget.embedded) ...[
-                Text(
-                  '设置',
-                  style: context.textTitle.copyWith(
-                    fontSize: AppFontSize.headline,
-                  ),
-                ),
+                Text('设置', style: context.textTitle.copyWith(fontSize: AppFontSize.headline)),
                 const SizedBox(height: AppSpacing.lg),
               ],
               _SettingsGroup(title: '账号', children: [_AccountSettingRow()]),
@@ -72,13 +67,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     hint: '深色 / 浅色 / 跟随系统(顶栏主题按钮可快速切换深浅)',
                     trailing: _StyledDropdown<ThemeModeChoice>(
                       value: settings.themeMode,
-                      items: [
-                        for (final mode in ThemeModeChoice.values)
-                          (value: mode, label: mode.label),
-                      ],
-                      onChanged: (mode) => ref
-                          .read(settingsProvider.notifier)
-                          .setThemeMode(mode),
+                      items: [for (final mode in ThemeModeChoice.values) (value: mode, label: mode.label)],
+                      onChanged: (mode) => ref.read(settingsProvider.notifier).setThemeMode(mode),
                     ),
                   ),
                 ],
@@ -92,13 +82,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     hint: '各平台未单独配置时使用的画质',
                     trailing: _StyledDropdown<String>(
                       value: settings.defaultQuality,
-                      items: [
-                        for (final quality in SettingsState.qualityOptions)
-                          (value: quality, label: quality),
-                      ],
-                      onChanged: (quality) => ref
-                          .read(settingsProvider.notifier)
-                          .setDefaultQuality(quality),
+                      items: [for (final quality in SettingsState.qualityOptions) (value: quality, label: quality)],
+                      onChanged: (quality) => ref.read(settingsProvider.notifier).setDefaultQuality(quality),
                     ),
                   ),
                   _SettingsRow(
@@ -107,9 +92,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     trailing: Switch(
                       key: const Key('settings-hwdec-toggle'),
                       value: settings.videoHardwareAcceleration,
-                      onChanged: (value) => ref
-                          .read(settingsProvider.notifier)
-                          .setVideoHardwareAcceleration(value),
+                      onChanged: (value) => ref.read(settingsProvider.notifier).setVideoHardwareAcceleration(value),
                       overlayColor: controlStateLayer(tokens),
                     ),
                   ),
@@ -118,13 +101,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     hint: _platformQualityExpanded ? '点此收起' : '为单个平台指定不同默认档',
                     trailing: IconButton(
                       key: const Key('settings-toggle-platform-quality'),
-                      tooltip: _platformQualityExpanded
-                          ? '收起平台画质配置'
-                          : '展开平台画质配置',
-                      onPressed: () => setState(
-                        () => _platformQualityExpanded =
-                            !_platformQualityExpanded,
-                      ),
+                      tooltip: _platformQualityExpanded ? '收起平台画质配置' : '展开平台画质配置',
+                      onPressed: () => setState(() => _platformQualityExpanded = !_platformQualityExpanded),
                       // 状态层走 token:hover 抬亮;键盘焦点/按压用 accent 低 alpha。
                       style: IconButton.styleFrom(
                         hoverColor: tokens.surfaceRaised,
@@ -132,9 +110,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                         focusColor: AppStateLayer.focusOf(tokens.accent),
                       ),
                       icon: Icon(
-                        _platformQualityExpanded
-                            ? Icons.expand_less_rounded
-                            : Icons.expand_more_rounded,
+                        _platformQualityExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
                         size: 18,
                         color: tokens.textSecondary,
                       ),
@@ -155,22 +131,15 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                             // 测试锚点:按平台寻址(settings-quality-{site})。
                             key: Key('settings-quality-${brand.id}'),
                             // 哨兵空串 = 「跟随全平台」;其余值为平台单独配置。
-                            value:
-                                settings.defaultQualityBySite[brand.id] ?? '',
+                            value: settings.defaultQualityBySite[brand.id] ?? '',
                             items: [
                               const (value: '', label: '跟随平台默认'),
-                              for (final quality
-                                  in SettingsState.qualityOptionsForSite(
-                                    brand.id,
-                                  ))
+                              for (final quality in SettingsState.qualityOptionsForSite(brand.id))
                                 (value: quality, label: quality),
                             ],
                             onChanged: (quality) => ref
                                 .read(settingsProvider.notifier)
-                                .setDefaultQualityForSite(
-                                  brand.id,
-                                  quality.isEmpty ? null : quality,
-                                ),
+                                .setDefaultQualityForSite(brand.id, quality.isEmpty ? null : quality),
                           ),
                         ),
                 ],
@@ -184,9 +153,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     trailing: Switch(
                       key: const Key('settings-danmaku-toggle'),
                       value: settings.danmakuEnabled,
-                      onChanged: (value) => ref
-                          .read(settingsProvider.notifier)
-                          .setDanmakuEnabled(value),
+                      onChanged: (value) => ref.read(settingsProvider.notifier).setDanmakuEnabled(value),
                       // hover/焦点/按压状态层走 token(默认是 ThemeData 白 4%/12%)。
                       overlayColor: controlStateLayer(tokens),
                     ),
@@ -204,9 +171,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     trailing: Switch(
                       key: const Key('settings-translation-toggle'),
                       value: settings.translationEnabled,
-                      onChanged: (value) => ref
-                          .read(settingsProvider.notifier)
-                          .setTranslationEnabled(value),
+                      onChanged: (value) => ref.read(settingsProvider.notifier).setTranslationEnabled(value),
                       // hover/焦点/按压状态层走 token(默认是 ThemeData 白 4%/12%)。
                       overlayColor: controlStateLayer(tokens),
                     ),
@@ -214,9 +179,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   _TranslationEndpointRow(
                     endpoint: settings.translationEndpoint,
                     enabled: settings.translationEnabled,
-                    onSave: (url) => ref
-                        .read(settingsProvider.notifier)
-                        .setTranslationEndpoint(url),
+                    onSave: (url) => ref.read(settingsProvider.notifier).setTranslationEndpoint(url),
                   ),
                 ],
               ),
@@ -268,10 +231,7 @@ class _SettingsGroup extends StatelessWidget {
         children: [
           Text(
             title,
-            style: context.textBody.copyWith(
-              fontWeight: FontWeight.w700,
-              color: tokens.textSecondary,
-            ),
+            style: context.textBody.copyWith(fontWeight: FontWeight.w700, color: tokens.textSecondary),
           ),
           const SizedBox(height: AppSpacing.xs),
           ...children,
@@ -287,12 +247,10 @@ class _PlatformSettingsGroup extends ConsumerStatefulWidget {
   const _PlatformSettingsGroup();
 
   @override
-  ConsumerState<_PlatformSettingsGroup> createState() =>
-      _PlatformSettingsGroupState();
+  ConsumerState<_PlatformSettingsGroup> createState() => _PlatformSettingsGroupState();
 }
 
-class _PlatformSettingsGroupState
-    extends ConsumerState<_PlatformSettingsGroup> {
+class _PlatformSettingsGroupState extends ConsumerState<_PlatformSettingsGroup> {
   /// 当前拖拽中的平台 id(null = 没有拖拽)。
   String? _draggingId;
 
@@ -320,10 +278,7 @@ class _PlatformSettingsGroupState
     return _SettingsGroup(
       title: '平台',
       children: [
-        Text(
-          '按住图标拖拽排序;点眼睛切换可见。关闭的平台从顶栏与侧栏隐藏。',
-          style: context.textSecondary,
-        ),
+        Text('按住图标拖拽排序;点眼睛切换可见。关闭的平台从顶栏与侧栏隐藏。', style: context.textSecondary),
         const SizedBox(height: AppSpacing.sm),
         // ── 可见平台:横向平铺,按住拖拽排序 ──
         Wrap(
@@ -339,9 +294,7 @@ class _PlatformSettingsGroupState
                 onDragStart: () => setState(() => _draggingId = entry.id),
                 onDragEnd: () => setState(() => _draggingId = null),
                 onAccept: (dragged) => reorder(dragged, entry.id),
-                onToggle: () => ref
-                    .read(platformPrefsProvider.notifier)
-                    .setVisibility(entry.id, false),
+                onToggle: () => ref.read(platformPrefsProvider.notifier).setVisibility(entry.id, false),
               ),
           ],
         ),
@@ -360,9 +313,7 @@ class _PlatformSettingsGroupState
                   entry: entry,
                   visible: false,
                   isDragging: false,
-                  onToggle: () => ref
-                      .read(platformPrefsProvider.notifier)
-                      .setVisibility(entry.id, true),
+                  onToggle: () => ref.read(platformPrefsProvider.notifier).setVisibility(entry.id, true),
                 ),
             ],
           ),
@@ -401,15 +352,15 @@ class _PlatformDragChip extends StatelessWidget {
       onAcceptWithDetails: (details) => onAccept?.call(details.data),
       builder: (context, candidate, rejected) {
         return LongPressDraggable<String>(
+          // 250ms:默认 500ms(即"0.5 秒长按")用户反馈偏慢;再短易与滚动
+          // 误触(慢速滑动页面时误入拖拽态)。
+          delay: const Duration(milliseconds: 250),
           data: entry.id,
           onDragStarted: onDragStart,
           onDragEnd: (_) => onDragEnd?.call(),
           feedback: _chipContent(tokens, dragging: true),
           childWhenDragging: Opacity(opacity: 0.35, child: _chipContent(tokens)),
-          child: Opacity(
-            opacity: isDragging ? 0.35 : 1,
-            child: _chipContent(tokens),
-          ),
+          child: Opacity(opacity: isDragging ? 0.35 : 1, child: _chipContent(tokens)),
         );
       },
     );
@@ -419,13 +370,9 @@ class _PlatformDragChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        border: Border.all(
-          color: visible ? tokens.accent : tokens.border,
-        ),
+        border: Border.all(color: visible ? tokens.accent : tokens.border),
         borderRadius: AppRadius.allSm,
-        color: visible
-            ? tokens.accent.withValues(alpha: 0.12)
-            : tokens.surfaceRaised,
+        color: visible ? tokens.accent.withValues(alpha: 0.12) : tokens.surfaceRaised,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -474,7 +421,6 @@ class _PlatformRowLogo extends StatelessWidget {
   }
 }
 
-
 /// 账号状态行:移动端没有顶栏头像时提供登录/退出入口。
 class _AccountSettingRow extends ConsumerWidget {
   const _AccountSettingRow();
@@ -499,10 +445,7 @@ class _AccountSettingRow extends ConsumerWidget {
         ),
       ),
       title: Text(label, style: context.textBody),
-      subtitle: Text(
-        authenticated ? '登录状态已恢复，可同步我的关注' : '登录后同步我的关注',
-        style: context.textSecondary,
-      ),
+      subtitle: Text(authenticated ? '登录状态已恢复，可同步我的关注' : '登录后同步我的关注', style: context.textSecondary),
       trailing: authenticated
           ? TextButton(
               key: SettingsView.mobileLoginKey,
@@ -513,10 +456,7 @@ class _AccountSettingRow extends ConsumerWidget {
               key: SettingsView.mobileLoginKey,
               onPressed: auth.phase == AuthPhase.restoring
                   ? null
-                  : () => showDialog<void>(
-                      context: context,
-                      builder: (_) => const LoginDialog(),
-                    ),
+                  : () => showDialog<void>(context: context, builder: (_) => const LoginDialog()),
               child: const Text('登录'),
             ),
     );
@@ -541,14 +481,8 @@ class _SettingsRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: context.textBody.copyWith(fontWeight: FontWeight.w600),
-                ),
-                if (hint != null) ...[
-                  const SizedBox(height: 2),
-                  Text(hint!, style: context.textSecondary),
-                ],
+                Text(label, style: context.textBody.copyWith(fontWeight: FontWeight.w600)),
+                if (hint != null) ...[const SizedBox(height: 2), Text(hint!, style: context.textSecondary)],
               ],
             ),
           ),
@@ -562,12 +496,7 @@ class _SettingsRow extends StatelessWidget {
 
 /// 统一样式的下拉选择(surface 底 + border 描边)。
 class _StyledDropdown<T> extends StatelessWidget {
-  const _StyledDropdown({
-    super.key,
-    required this.value,
-    required this.items,
-    required this.onChanged,
-  });
+  const _StyledDropdown({super.key, required this.value, required this.items, required this.onChanged});
 
   final T value;
   final List<({T value, String label})> items;
@@ -588,16 +517,9 @@ class _StyledDropdown<T> extends StatelessWidget {
         isDense: true,
         underline: const SizedBox.shrink(),
         dropdownColor: tokens.surfaceRaised,
-        icon: Icon(
-          Icons.expand_more_rounded,
-          size: 16,
-          color: tokens.textSecondary,
-        ),
+        icon: Icon(Icons.expand_more_rounded, size: 16, color: tokens.textSecondary),
         style: context.textBody,
-        items: [
-          for (final item in items)
-            DropdownMenuItem(value: item.value, child: Text(item.label)),
-        ],
+        items: [for (final item in items) DropdownMenuItem(value: item.value, child: Text(item.label))],
         onChanged: (value) {
           if (value != null) onChanged(value);
         },
@@ -610,34 +532,24 @@ class _StyledDropdown<T> extends StatelessWidget {
 ///
 /// 外部值变化(恢复持久化/他处保存)且输入框未聚焦时回填,避免打断输入。
 class _TranslationEndpointRow extends ConsumerStatefulWidget {
-  const _TranslationEndpointRow({
-    required this.endpoint,
-    required this.enabled,
-    required this.onSave,
-  });
+  const _TranslationEndpointRow({required this.endpoint, required this.enabled, required this.onSave});
 
   final String endpoint;
   final bool enabled;
   final ValueChanged<String> onSave;
 
   @override
-  ConsumerState<_TranslationEndpointRow> createState() =>
-      _TranslationEndpointRowState();
+  ConsumerState<_TranslationEndpointRow> createState() => _TranslationEndpointRowState();
 }
 
-class _TranslationEndpointRowState
-    extends ConsumerState<_TranslationEndpointRow> {
-  late final TextEditingController _controller = TextEditingController(
-    text: widget.endpoint,
-  );
+class _TranslationEndpointRowState extends ConsumerState<_TranslationEndpointRow> {
+  late final TextEditingController _controller = TextEditingController(text: widget.endpoint);
   final FocusNode _focus = FocusNode();
 
   @override
   void didUpdateWidget(covariant _TranslationEndpointRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.endpoint != oldWidget.endpoint &&
-        widget.endpoint != _controller.text &&
-        !_focus.hasFocus) {
+    if (widget.endpoint != oldWidget.endpoint && widget.endpoint != _controller.text && !_focus.hasFocus) {
       _controller.text = widget.endpoint;
     }
   }
@@ -674,10 +586,7 @@ class _TranslationEndpointRowState
             isDense: true,
             hintText: 'https://…',
             hintStyle: context.textSecondary,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md,
-              vertical: 8,
-            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 8),
             filled: true,
             fillColor: tokens.surfaceRaised,
             border: OutlineInputBorder(
@@ -697,11 +606,7 @@ class _TranslationEndpointRowState
               key: const Key('settings-translation-endpoint-save'),
               tooltip: '保存',
               onPressed: _commit,
-              icon: Icon(
-                Icons.check_rounded,
-                size: 16,
-                color: tokens.textSecondary,
-              ),
+              icon: Icon(Icons.check_rounded, size: 16, color: tokens.textSecondary),
             ),
           ),
         ),
@@ -751,20 +656,12 @@ class _SettingsDialogFrame extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
-                AppSpacing.sm,
-                AppSpacing.sm,
-                0,
-              ),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.sm, AppSpacing.sm, 0),
               child: Row(
                 children: [
                   Text(
                     '设置',
-                    style: context.textTitle.copyWith(
-                      fontSize: AppFontSize.subtitle,
-                      color: tokens.textPrimary,
-                    ),
+                    style: context.textTitle.copyWith(fontSize: AppFontSize.subtitle, color: tokens.textPrimary),
                   ),
                   const Spacer(),
                   IconButton(
