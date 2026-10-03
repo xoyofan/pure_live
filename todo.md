@@ -493,6 +493,15 @@
 - 验证:新增 opt-in 探针 `tool/probes/proxy_media_headers_probe_test.dart`(resolver 头部契约 → 代理转发 → 真实 wansu 流实拉 FLV magic 字节)全绿;`resolve_room_diag` 17live 全链路(搜索→详情→四档→2线)绿;analyze 与 HEAD 基线持平(67,零新增);受影响单测(purelive_stats_refresh/soop_category_zh_bridge)21/21。另修 `resolve_room_diag_probe_test.dart` 缺 `LiveRoom` 导入(布局重构遗留编译坏点)
 
 
+### 迭代 37(2026-10-03)✅ PandaTV 默认隐藏(取流端点持续封锁实证)+平台拖拽排序口径确认
+
+用户报 https://www.pandalive.co.kr/play/bebenim 失败并要求默认隐藏。
+
+- [x] **复诊**:出口已轮换(103.151.172.13→103.172.182.27)后制裁形态变化——`live/index`(首页目录)/`member/bj`(房间信息)解封,**`live/play`(取流)仍拒**(errorData.code=block,点名新出口 IP);bebenim 确实在播。即"能浏览能进房,取流必败",应用侧行为正确(resolve_fail access 落错误卡片)。**换 DC 出口不解**(迭代8 越南出口 200→几分钟即死的先例一致),需住宅级出口;记忆结论已修正
+- [x] **默认隐藏**:`PlatformPrefs.kHiddenByDefaultIds={pandalive}`,defaults=目录全量减默认隐藏集;存量偏好权威不受影响(设置里眼睛可重开)。cache: 仅元数据可达而取流必败的站点,默认隐藏优于坏体验
+- [x] **拖拽排序口径确认**:设置「平台」分区拖拽为**长按 0.5s 后拖动**(LongPressDraggable+DragTarget,直接拖会被当成滚动页面),实现完整无缺陷;页面有"按住图标拖拽排序"提示。用户未能拖动=交互方式认知差,非代码缺陷
+- 验证:新增 platform_prefs_defaults_test 3 用例(默认不含 PandaTV/其余目录序保持/语义不回归);**全量 200/200 全过**(基线 193+3+4);analyze 0 error
+
 ### 迭代 36(2026-10-03)✅ 快速切房竞态修复(切房后仍播上一个直播间)+ Windows Release 3.1.19+4108 打包并交付
 
 用户报告"旧的 exe 有卡顿,切换直播间但还是播放上一个直播间"。playback.log 14:21-14:22 实录:关注浮层连续切房(虎牙518518→斗鱼80432→9999→74751),旧播放页被 push 压在栈下继续存活——5 分钟刷新/恢复链/迟到解析仍驱动共享播放器;9999 迟到 52s 的解析完成后开流翻盘,用户停在 74751 却在播 9999。

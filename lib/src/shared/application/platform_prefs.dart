@@ -38,9 +38,18 @@ class PlatformPrefs {
   /// 可见平台 id,顺序即顶栏/侧栏的展示次序。
   final List<String> visibleIds;
 
-  /// 默认态:全部可见,按 pure_live `_supportedSites` 目录序。
+  /// 默认隐藏的平台(2026-10-03 用户口径):PandaTV 对数据中心出口在
+  /// 取流端点(`live/play`)持续定点封锁(换出口亦然,见 todo.md 迭代8/36),
+  /// 默认可见只会得到"能进房不能看"的坏体验;设置里眼睛可重新开启。
+  static const Set<String> kHiddenByDefaultIds = {'pandalive'};
+
+  /// 默认态:目录全量**减去默认隐藏平台**,按 pure_live `_supportedSites`
+  /// 目录序。已有存量偏好的用户不受影响(存量列表权威)。
   static final PlatformPrefs defaults = PlatformPrefs(
-    visibleIds: [for (final site in Sites.supportSites) _catalogId(site.id)],
+    visibleIds: [
+      for (final site in Sites.supportSites)
+        if (!kHiddenByDefaultIds.contains(_catalogId(site.id))) _catalogId(site.id),
+    ],
   );
 
   /// 目录内的全量契约 id(校验存量/入参用)。
