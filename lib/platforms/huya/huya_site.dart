@@ -212,7 +212,11 @@ class HuyaSite
       queryParameters: {"iGid": category.areaId, "iPageNo": page, "iPageSize": effectivePageSize},
       header: {"user-agent": kUserAgent, "Cookie": ParserConfig.instance?.cookieFor(SiteIds.huyaSite) ?? ''},
     );
-    var result = json.decode(resultText);
+    // getLiveList 返回 application/json → getJson 已解码为 Map;兼容
+    // text/html 形态(content-type 缺失时 dio 不解码)。
+    final result = resultText is Map<String, dynamic>
+        ? resultText
+        : json.decode(resultText.toString()) as Map<String, dynamic>;
     var items = <LiveRoom>[];
     for (var item in result["vList"] ?? []) {
       var cover = (item["sScreenshot"] ?? item["sPreviewUrl"])?.toString() ?? "";

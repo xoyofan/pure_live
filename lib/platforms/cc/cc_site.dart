@@ -44,12 +44,16 @@ class CCSite implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResol
       data: {'id': CCCatalog.configurationId},
       header: headers,
     );
-    return CCCatalog.parse(
+    final categories = CCCatalog.parse(
       games,
       configuration,
       categoryLabel: i18n('cc_live_categories'),
       officialLabel: i18n('cc_official_entries'),
     );
+    // zishu UI 的分类瓦片统一走 getCategoryRooms 房间列表;官方专题条目
+    // (official:xxx)是 cc.163.com 页面直达, 旧 UI 经 officialEntryUri 打开,
+    // zishu 无网页路由——列出只会点击报错,故不进分类瓦片。
+    return categories.where((group) => group.id != 'official').toList();
   }
 
   @override

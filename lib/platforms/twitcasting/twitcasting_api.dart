@@ -234,8 +234,10 @@ class TwitcastingApi {
           link.pathSegments.join('/') != '$channel/movie/$movie') {
         throw const TwitcastingException(TwitcastingFailure.schema);
       }
+      // Recent(_system_new) 等新着目录对部分条目不回 current_viewer_count
+      // (实测 null)——按未知观看数放行, 不让单条目炸掉整个目录页。
       final count = integer(row['current_viewer_count']);
-      if (count == null || count < 0) throw const TwitcastingException(TwitcastingFailure.schema);
+      if (count != null && count < 0) throw const TwitcastingException(TwitcastingFailure.schema);
       rooms.putIfAbsent(
         channel,
         () => LiveRoom(
@@ -247,8 +249,8 @@ class TwitcastingApi {
           cover: picture(row['thumbnail_url']),
           avatar: picture(row['user_icon_url']),
           link: '$origin/$channel',
-          watching: '$count',
-          onlineViewers: '$count',
+          watching: count?.toString() ?? '',
+          onlineViewers: count?.toString() ?? '',
           audienceMetricType: AudienceMetricType.onlineViewers,
           status: true,
           liveStatus: LiveStatus.live,
