@@ -6,6 +6,9 @@ version: 3.1.19+4108
 environment:
   sdk: ^3.13.0
 
+# media_core 系列用相对路径 ../media_core(=F:\project\media_core 联接→F:\media_core 本地克隆):
+# Windows 构建走 P: SUBST 盘,绝对 F:/ 跨盘路径会让 AOT 前端把盘符剥掉解析成
+# /media_core/...(2026-10-06 实测),同盘联接后解析全程留在 SUBST 树内。
 dependencies:
   flutter:
     sdk: flutter
@@ -121,43 +124,43 @@ dependencies:
   # (media_core 未覆盖的独立工具包)。
   wakelock_plus: ^1.3.3 # 与 media_core_media_kit 的引擎依赖链对齐
   media_core:
-    path: F:/media_core/packages/media_core
+    path: ../media_core/packages/media_core
   media_core_media_kit:
-    path: F:/media_core/packages/media_core_media_kit
+    path: ../media_core/packages/media_core_media_kit
   media_core_ingest:
-    path: F:/media_core/packages/media_core_ingest
+    path: ../media_core/packages/media_core_ingest
   media_core_ui:
-    path: F:/media_core/packages/media_core_ui
+    path: ../media_core/packages/media_core_ui
   media_core_pip:
-    path: F:/media_core/packages/media_core_pip
+    path: ../media_core/packages/media_core_pip
   media_core_fullscreen:
-    path: F:/media_core/packages/media_core_fullscreen
+    path: ../media_core/packages/media_core_fullscreen
   media_core_multiview:
-    path: F:/media_core/packages/media_core_multiview
+    path: ../media_core/packages/media_core_multiview
   media_core_presentation:
-    path: F:/media_core/packages/media_core_presentation
+    path: ../media_core/packages/media_core_presentation
   media_core_floating:
-    path: F:/media_core/packages/media_core_floating
+    path: ../media_core/packages/media_core_floating
   media_core_list_playback:
-    path: F:/media_core/packages/media_core_list_playback
+    path: ../media_core/packages/media_core_list_playback
   media_core_feed:
-    path: F:/media_core/packages/media_core_feed
+    path: ../media_core/packages/media_core_feed
   media_core_ijk_player:
-    path: F:/media_core/packages/media_core_ijk_player
+    path: ../media_core/packages/media_core_ijk_player
   media_core_better_player:
-    path: F:/media_core/packages/media_core_better_player
+    path: ../media_core/packages/media_core_better_player
   media_core_danmaku:
-    path: F:/media_core/packages/media_core_danmaku
+    path: ../media_core/packages/media_core_danmaku
   media_core_mediasession:
-    path: F:/media_core/packages/media_core_mediasession
+    path: ../media_core/packages/media_core_mediasession
   media_core_live:
-    path: F:/media_core/packages/media_core_live
+    path: ../media_core/packages/media_core_live
   media_core_logging:
-    path: F:/media_core/packages/media_core_logging
+    path: ../media_core/packages/media_core_logging
   media_core_memory:
-    path: F:/media_core/packages/media_core_memory
+    path: ../media_core/packages/media_core_memory
   media_core_win32:
-    path: F:/media_core/packages/media_core_win32
+    path: ../media_core/packages/media_core_win32
 
   # -------------------------- 数据存储/数据库 --------------------------
   hive_ce: ^2.20.0 # Hive本地数据库
