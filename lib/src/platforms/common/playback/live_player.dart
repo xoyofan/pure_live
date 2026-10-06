@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter/widgets.dart' show BoxFit, Size, Widget;
 import 'package:live_parser/live_parser.dart' show StreamLine;
+import 'package:pure_live/domains/live/data/stream/flv_splice_relay.dart' show FlvSpliceRelay;
 
 import 'player_error.dart';
 
@@ -213,6 +214,21 @@ typedef LineRecoveryHandler = Future<List<StreamLine>> Function();
 abstract interface class LineRecoveryAware {
   /// 注册恢复回调;传 `null` 关闭恢复能力。
   void setLineRecovery(LineRecoveryHandler? handler);
+}
+
+/// 租约拼接中继工厂:为一条线路构建上游 pure_live 的 [FlvSpliceRelay]
+/// (expire-FLV 到点前双连接重签、关键帧对齐交接,mpv 只见一条内容单调的
+/// 本地流)。返回 null 表示该线路不适用,播放器回落本地代理会话/直连。
+typedef LeaseRelayFactory = Future<FlvSpliceRelay?> Function(StreamLine line);
+
+/// 可选能力:宿主(编排层)注入 [LeaseRelayFactory]。
+///
+/// 站点租约元数据(LivePlayLeaseMetadata)与重解析上下文都在编排层,
+/// 播放器保持站点无关;同 [LineRecoveryAware] 的理由做成独立接口,
+/// 测试替身(只实现 [LivePlayer])零改动。
+abstract interface class LeaseRelayAware {
+  /// 注册中继工厂;传 `null` 关闭租约中继能力。
+  void setLeaseRelayFactory(LeaseRelayFactory? factory);
 }
 
 /// 可动态切换视频硬件解码的播放器能力。

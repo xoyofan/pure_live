@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:live_parser/live_parser.dart';
 import 'package:pure_live/domains/live/domain/live_input_playback_binder.dart';
 import 'package:pure_live/core/player/core/playback_input_lease.dart';
+import 'package:pure_live/domains/live/data/stream/flv_splice_relay.dart';
 import 'package:pure_live/domains/live/data/stream/playback_source_transport.dart';
 import 'package:pure_live/domains/live/data/platforms/sites.dart' show Sites;
 import 'package:pure_live/shared/platforms/live_site.dart' show LivePlayLeaseMetadata;
@@ -261,6 +262,7 @@ class PlayController extends AsyncNotifier<PlayState> {
       // 回调只能在本层注销 —— 播放器不知道宿主已离场。
       if (player is IdleReleasingLivePlayer && token != null) {
         player.clearLineRecovery(token);
+        player.clearLeaseRelay(token);
       } else if (player case LineRecoveryAware aware) {
         aware.setLineRecovery(null);
       }
@@ -583,6 +585,14 @@ class PlayController extends AsyncNotifier<PlayState> {
     if (player case LineRecoveryAware aware) {
       aware.setLineRecovery(_recoverLines);
     }
+    // 播放策略=purelive(2026-10-06 口径:播放策略完全对齐上游, fork 只留
+    // UI):租约 FLV(斗鱼匿名原画 expire=300 等)交上游 FlvSpliceRelay
+    // 服务——到点前双连接重签、关键帧对齐交接,不回读不跳段。
+    if (player is IdleReleasingLivePlayer) {
+      player.setLeaseRelayFactory(_createLeaseRelay);
+    } else if (player case LeaseRelayAware relayAware) {
+      relayAware.setLeaseRelayFactory(_createLeaseRelay);
+    }
     unawaited(_openAndApplyVolume(player, line, fallbacks, _generation, openToken));
   }
 
@@ -616,6 +626,70 @@ class PlayController extends AsyncNotifier<PlayState> {
   /// URL 租约预刷新计时器。
   Timer? _leaseRefreshTimer;
 
+  /// 当前房间的租约元数据(站点实现了 LivePlayLeaseMetadata 才有)。
+  /// LivePlayLeaseMetadata 与 LiveSite 是平行能力接口(无子型关系),is 不会
+  /// 类型提升,需显式 as(与 HEAD 既有写法一致)。
+  LivePlayLeaseMetadata? _leaseMetadata() {
+    final liveSite = Sites.of(params.site).liveSite;
+    return liveSite is LivePlayLeaseMetadata ? liveSite as LivePlayLeaseMetadata : null;
+  }
+
+  /// 租约中继工厂(播放器经 [LeaseRelayAware] 在 open 时调用):门控对齐
+  /// 上游 [FlvSpliceRelay.appliesTo]——URL 自报寿命(expire)且为 http(s)
+  /// FLV 直链(斗鱼匿名原画)才走中继;虎牙式"URL 过期但连接不断"、HLS、
+  /// 非租约线路一律返回 null,回落本地代理会话。中继续租见
+  /// [_renewLeaseSource];站点 CDN 头与网络代理指令随闭包带齐。
+  Future<FlvSpliceRelay?> _createLeaseRelay(StreamLine line) async {
+    if (!ref.mounted || line.format != 'flv') return null;
+    final lease = _leaseMetadata();
+    if (lease == null) return null;
+    final refreshAt = lease.getPlayUrlRefreshAt(line.url);
+    if (!FlvSpliceRelay.appliesTo(line.url, refreshAt: refreshAt)) return null;
+    try {
+      final relay = await FlvSpliceRelay.start(
+        FlvLeasedSource(Uri.parse(line.url), refreshAt: refreshAt),
+        renew: _renewLeaseSource,
+        headers: line.headers,
+        findProxy: (uri) => UpstreamProxy.needsProxy(uri.host) ? 'PROXY ${UpstreamProxy.hostPort}' : 'DIRECT',
+      );
+      PlaybackLog.write('proxy_relay_wrap', {
+        'site': params.site,
+        'room': params.roomId,
+        'host': Uri.tryParse(line.url)?.host,
+        'refresh_at': refreshAt?.toIso8601String(),
+      });
+      return relay;
+    } catch (error) {
+      PlaybackLog.write('proxy_relay_fail', {
+        'site': params.site,
+        'room': params.roomId,
+        'host': Uri.tryParse(line.url)?.host,
+        'reason': '$error',
+      });
+      return null;
+    }
+  }
+
+  /// 中继到点续租:走恢复重解析。节点轮换不是故障(recordAvoid=false,
+  /// 不污染负缓存)、尽量同节点只换 token(keepCurrentHost=true);失败
+  /// 抛错 → 中继保旧连接继续流,到点切断终结本地流,交回播放器既有恢复链。
+  Future<FlvLeasedSource> _renewLeaseSource(FlvLeasedSource current) async {
+    final lines = await _recoverLines(recordAvoid: false, keepCurrentHost: true);
+    final flv = lines.where((candidate) => candidate.format == 'flv').firstOrNull;
+    if (flv == null) {
+      throw StateError('renew resolved no flv line for ${params.roomId}');
+    }
+    final refreshAt = _leaseMetadata()?.getPlayUrlRefreshAt(flv.url);
+    PlaybackLog.write('proxy_relay_renewed', {
+      'site': params.site,
+      'room': params.roomId,
+      'host': Uri.tryParse(flv.url)?.host,
+      'refresh_at': refreshAt?.toIso8601String(),
+    });
+    // 重解析给出的地址若不再自报寿命(如登录态),免续租直连到自然断流。
+    return FlvLeasedSource(Uri.parse(flv.url), refreshAt: refreshAt);
+  }
+
   /// 站点自报的刷新时点([LivePlayLeaseMetadata.getPlayUrlRefreshAt])到点前
   /// 主动重签:recordAvoid=false(节点轮换不是故障)、keepCurrentHost=true
   /// (同节点只换 token),首线路仍为 FLV 时经本地代理热切,mpv 无感。
@@ -625,12 +699,14 @@ class PlayController extends AsyncNotifier<PlayState> {
     _leaseRefreshTimer = null;
     if (generation != _generation) return;
     try {
-      final lease = Sites.of(params.site).liveSite is LivePlayLeaseMetadata
-          ? Sites.of(params.site).liveSite as LivePlayLeaseMetadata
-          : null;
+      final lease = _leaseMetadata();
       if (lease == null) return;
       final refreshAt = lease.getPlayUrlRefreshAt(line.url);
       if (refreshAt == null) return;
+      // 租约 FLV 已交 FlvSpliceRelay 自管续租(双连接+关键帧对齐交接,
+      // 门控同 [_createLeaseRelay]),这里不再双排期;本计时器只兜
+      // HLS 等不可中继的租约形态。
+      if (FlvSpliceRelay.appliesTo(line.url, refreshAt: refreshAt)) return;
       var delay = refreshAt.difference(DateTime.now());
       if (delay <= const Duration(seconds: 3)) return; // 已贴脸:事后链兜底
       if (delay > const Duration(minutes: 10)) delay = const Duration(minutes: 10);

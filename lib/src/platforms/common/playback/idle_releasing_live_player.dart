@@ -8,7 +8,7 @@ import 'playback_log.dart';
 import 'media_kit_live_player.dart';
 
 /// 稳定播放器代理，通过活动房间租约管理 native 播放器生命周期。
-class IdleReleasingLivePlayer implements LivePlayer, LineRecoveryAware, RecoveryCancellable, Seekable {
+class IdleReleasingLivePlayer implements LivePlayer, LineRecoveryAware, LeaseRelayAware, RecoveryCancellable, Seekable {
   IdleReleasingLivePlayer({
     required LivePlayer Function() createPlayer,
     Future<void> Function(LivePlayer)? releasePlayer,
@@ -45,6 +45,11 @@ class IdleReleasingLivePlayer implements LivePlayer, LineRecoveryAware, Recovery
   /// 在全局播放器上 —— 此时断流,恢复链会拿**旧房间**的地址换源,
   /// 画面直接变成另一个直播间。按归属清理则两种 dispose 顺序都安全。
   int? _recoveryOwner;
+
+  /// [LeaseRelayAware] 的同款装载:工厂与归属 token(理由同上,换房
+  /// 竞态下按归属清理,防止旧房间的中继给新房间续租错误地址)。
+  LeaseRelayFactory? _leaseRelay;
+  int? _leaseRelayOwner;
   int _viewGeneration = 0;
 
   int? get activeRoomToken => _active;
@@ -122,9 +127,12 @@ class IdleReleasingLivePlayer implements LivePlayer, LineRecoveryAware, Recovery
       await _subscription?.cancel();
       _subscription = null;
       if (player case LineRecoveryAware aware) aware.setLineRecovery(null);
+      if (player case LeaseRelayAware relayAware) relayAware.setLeaseRelayFactory(null);
       if (releaseSequence == _sequence && _active == null) {
         _recovery = null;
         _recoveryOwner = null;
+        _leaseRelay = null;
+        _leaseRelayOwner = null;
       }
       _viewGeneration++;
       if (!_viewChanges.isClosed) _viewChanges.add(_viewGeneration);
@@ -166,6 +174,9 @@ class IdleReleasingLivePlayer implements LivePlayer, LineRecoveryAware, Recovery
     if (aware case LineRecoveryAware recoveryAware) {
       if (_recovery != null) recoveryAware.setLineRecovery(_recovery);
     }
+    if (aware case LeaseRelayAware relayAware) {
+      if (_leaseRelay != null) relayAware.setLeaseRelayFactory(_leaseRelay);
+    }
     _subscription = created.snapshots.listen((s) {
       if (!_snapshots.isClosed) _snapshots.add(s);
     });
@@ -179,6 +190,20 @@ class IdleReleasingLivePlayer implements LivePlayer, LineRecoveryAware, Recovery
   void clearLineRecovery(int token) {
     // 按归属清理而非 `_active == token`:见 [_recoveryOwner] 的换房竞态说明。
     if (_recoveryOwner == token) setLineRecovery(null);
+  }
+
+  /// 按房间 token 清理租约中继工厂(语义同 [clearLineRecovery])。
+  void clearLeaseRelay(int token) {
+    if (_leaseRelayOwner == token) setLeaseRelayFactory(null);
+  }
+
+  @override
+  void setLeaseRelayFactory(LeaseRelayFactory? factory) {
+    _leaseRelay = factory;
+    _leaseRelayOwner = factory == null ? null : _active;
+    if (_inner case LeaseRelayAware aware) {
+      aware.setLeaseRelayFactory(factory);
+    }
   }
 
   @override

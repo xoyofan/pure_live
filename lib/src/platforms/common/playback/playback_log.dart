@@ -76,27 +76,16 @@ class PlaybackLog {
   }
 
   /// 记录一条低频资源样本。RSS 只作为趋势观测,不做阈值判断或告警。
-  static void writeResourceSample(
-    String phase, [
-    Map<String, Object?> fields = const {},
-  ]) {
+  static void writeResourceSample(String phase, [Map<String, Object?> fields = const {}]) {
     final rssMb = ProcessInfo.currentRss / 1024 / 1024;
-    write('resource_sample', {
-      ...fields,
-      'phase': phase,
-      'rss_mb': rssMb.toStringAsFixed(1),
-    });
+    write('resource_sample', {...fields, 'phase': phase, 'rss_mb': rssMb.toStringAsFixed(1)});
   }
 
   /// 记录一次进房导航(带来源)。真机上出现过「没操作却切到别的直播间」
   /// (2026-09-30 01:13,8682569 播放中被导航到 252140 又切回),而
   /// `resolve_ms`/`room_enter` 只能证明 controller 重建,无法回答「谁发起
   /// 的导航」—— 每个导航点在这里落一条 `nav_room`,复现时 grep 即可定位。
-  static void logRoomNav({
-    required String source,
-    required String site,
-    required String roomId,
-  }) {
+  static void logRoomNav({required String source, required String site, required String roomId}) {
     write('nav_room', {'source': source, 'site': site, 'room': roomId});
   }
 
@@ -109,73 +98,128 @@ class PlaybackLog {
   static final Map<String, String> _eventCategories = _buildCategories();
 
   static Map<String, String> _buildCategories() => {
-        // 恢复链路:卡顿检测/重开/升级 re-resolve/放弃。
-        for (final e in [
-          'stall_begin', 'stall_end', 'stall_watchdog', 'reopen_requested',
-          'external_pause_watchdog', 'external_pause_recover',
-          'recover_request', 'recover_ok', 'recover_fail', 'recover_skip',
-          'recover_early', 'recovery_cancelled',
-          'escalate_recover_request', 'escalate_recover_ok',
-          'escalate_recover_fail', 'escalate_recover_throttled',
-          'single_line_escalate', 'decode_flap', 'decode_storm_reopen',
-          'playing_ok', 'playing_ok_revoked', 'give_up', 'give_up_latched',
-          'dead_open_recover', 'dead_open_reopen', 'dead_open_resolved',
-          'ad_stall_hold',
-        ])
-          e: 'recovery',
-        // 解析:进房/重解析/画质预取。
-        for (final e in [
-          'resolve_ms', 'resolve_ok', 'resolve_fail', 'resolve_skip',
-          'prefetch_start', 'prefetch_ok', 'prefetch_fail', 'prefetch_skip',
-          'prefetch_empty',
-        ])
-          e: 'resolve',
-        // 线路:开流选线/死节点避让。
-        for (final e in [
-          'open', 'open_queue_wait', 'open_superseded', 'open_skip',
-          'owned_seat_open', 'owned_seat_fail',
-          'ad_filter_wrap',
-          'mpv_proxy', 'cdn_failover_order',
-          'host_avoid_recorded', 'host_avoid_applied',
-          'host_avoid_persist_error',
-        ])
-          e: 'line',
-        // 本地流代理:会话/透传/断流换源(旧日志里的 url_refresh* 事件已随
-        // 预刷新编排移除,类别保留以兼容历史日志解析)。
-        for (final e in [
-          'proxy_started', 'proxy_stopped', 'proxy_server_error',
-          'proxy_session_open', 'proxy_session_close',
-          'proxy_client_attached', 'proxy_line_wrap',
-          'proxy_upstream_switch', 'proxy_upstream_fail',
-          'proxy_recover_ok', 'proxy_recover_fail',
-          'proxy_recover_switch', 'proxy_recover_throttled',
-        ])
-          e: 'line',
-        // 流健康:首帧/解码/缓冲观测。
-        for (final e in [
-          'video_first_frame_rendered', 'video_first_frame_timeout',
-          'open_to_first_frame', 'video_state', 'video_params',
-          'video_stability', 'video_stability_error', 'video_hwdec',
-          'video_hwdec_error', 'video_kick', 'time_pos_regression',
-          'transport_flap', 'health_reset', 'video_black_frames',
-        ])
-          e: 'stream',
-        // mpv 原始/诊断日志。
-        for (final e in [
-          'mpv_log', 'mpv_log_suppressed', 'mpv_tuning', 'mpv_diag',
-        ])
-          e: 'mpv',
-        // 生命周期:app/窗口/房间/播放器实例。
-        for (final e in [
-          'app_start', 'app_lifecycle', 'window_event', 'player_created',
-          'player_native_disposed', 'player_idle_scheduled',
-          'player_idle_cancelled', 'play_cmd', 'play_state',
-          'play_view_params', 'stop', 'caption_load_ok', 'nav_room',
-        ])
-          e: 'lifecycle',
-        'resource_sample': 'resource',
-        'source_open_failure': 'player',
-      };
+    // 恢复链路:卡顿检测/重开/升级 re-resolve/放弃。
+    for (final e in [
+      'stall_begin',
+      'stall_end',
+      'stall_watchdog',
+      'reopen_requested',
+      'external_pause_watchdog',
+      'external_pause_recover',
+      'recover_request',
+      'recover_ok',
+      'recover_fail',
+      'recover_skip',
+      'recover_early',
+      'recovery_cancelled',
+      'escalate_recover_request',
+      'escalate_recover_ok',
+      'escalate_recover_fail',
+      'escalate_recover_throttled',
+      'single_line_escalate',
+      'decode_flap',
+      'decode_storm_reopen',
+      'playing_ok',
+      'playing_ok_revoked',
+      'give_up',
+      'give_up_latched',
+      'dead_open_recover',
+      'dead_open_reopen',
+      'dead_open_resolved',
+      'ad_stall_hold',
+    ])
+      e: 'recovery',
+    // 解析:进房/重解析/画质预取。
+    for (final e in [
+      'resolve_ms',
+      'resolve_ok',
+      'resolve_fail',
+      'resolve_skip',
+      'prefetch_start',
+      'prefetch_ok',
+      'prefetch_fail',
+      'prefetch_skip',
+      'prefetch_empty',
+    ])
+      e: 'resolve',
+    // 线路:开流选线/死节点避让。
+    for (final e in [
+      'open',
+      'open_queue_wait',
+      'open_superseded',
+      'open_skip',
+      'owned_seat_open',
+      'owned_seat_fail',
+      'ad_filter_wrap',
+      'mpv_proxy',
+      'cdn_failover_order',
+      'host_avoid_recorded',
+      'host_avoid_applied',
+      'host_avoid_persist_error',
+    ])
+      e: 'line',
+    // 本地流代理:会话/透传/断流换源(旧日志里的 url_refresh* 事件已随
+    // 预刷新编排移除,类别保留以兼容历史日志解析);proxy_relay_* 为
+    // 上游 FlvSpliceRelay 租约拼接中继(播放策略对齐上游)。
+    for (final e in [
+      'proxy_started',
+      'proxy_stopped',
+      'proxy_server_error',
+      'proxy_session_open',
+      'proxy_session_close',
+      'proxy_client_attached',
+      'proxy_line_wrap',
+      'proxy_upstream_switch',
+      'proxy_upstream_fail',
+      'proxy_recover_ok',
+      'proxy_recover_fail',
+      'proxy_recover_switch',
+      'proxy_recover_throttled',
+      'proxy_relay_wrap',
+      'proxy_relay_fail',
+      'proxy_relay_renewed',
+    ])
+      e: 'line',
+    // 流健康:首帧/解码/缓冲观测。
+    for (final e in [
+      'video_first_frame_rendered',
+      'video_first_frame_timeout',
+      'open_to_first_frame',
+      'video_state',
+      'video_params',
+      'video_stability',
+      'video_stability_error',
+      'video_hwdec',
+      'video_hwdec_error',
+      'video_kick',
+      'time_pos_regression',
+      'transport_flap',
+      'health_reset',
+      'video_black_frames',
+    ])
+      e: 'stream',
+    // mpv 原始/诊断日志。
+    for (final e in ['mpv_log', 'mpv_log_suppressed', 'mpv_tuning', 'mpv_diag']) e: 'mpv',
+    // 生命周期:app/窗口/房间/播放器实例。
+    for (final e in [
+      'app_start',
+      'app_lifecycle',
+      'window_event',
+      'player_created',
+      'player_native_disposed',
+      'player_idle_scheduled',
+      'player_idle_cancelled',
+      'play_cmd',
+      'play_state',
+      'play_view_params',
+      'stop',
+      'caption_load_ok',
+      'nav_room',
+    ])
+      e: 'lifecycle',
+    'resource_sample': 'resource',
+    'source_open_failure': 'player',
+  };
 
   /// 记录一条事件。[fields] 值会被 `toString`,键值对以空格连接;
   /// 行内首个字段为 `cat=<分类>`(见 [_eventCategories])。
@@ -186,12 +230,8 @@ class PlaybackLog {
       final now = DateTime.now();
       final ts = now.toIso8601String().substring(11, 23);
       final cat = _eventCategories[event] ?? 'other';
-      final body =
-          fields.entries.map((e) => '${e.key}=${e.value}').join(' ');
-      file.writeAsStringSync(
-        '$ts $event cat=$cat${body.isEmpty ? '' : ' $body'}\n',
-        mode: FileMode.append,
-      );
+      final body = fields.entries.map((e) => '${e.key}=${e.value}').join(' ');
+      file.writeAsStringSync('$ts $event cat=$cat${body.isEmpty ? '' : ' $body'}\n', mode: FileMode.append);
     } catch (_) {
       // 写失败(磁盘满 / 权限 / 目录被删):静默放弃,绝不影响播放。
       _broken = true;

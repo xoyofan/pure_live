@@ -13,6 +13,7 @@ import 'package:media_core_ingest/media_core_ingest.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:live_parser/live_parser.dart' show StreamLine, UpstreamProxy;
+import 'package:pure_live/domains/live/data/stream/flv_splice_relay.dart';
 import 'package:window_manager/window_manager.dart' show DragToResizeArea, WindowListener, windowManager;
 
 import 'buffering_stall_tracker.dart';
@@ -50,7 +51,13 @@ bool needsVideoKick({
 
 class MediaKitLivePlayer
     with WidgetsBindingObserver
-    implements LivePlayer, LineRecoveryAware, VideoHardwareAccelerationAware, RecoveryCancellable, Seekable {
+    implements
+        LivePlayer,
+        LineRecoveryAware,
+        LeaseRelayAware,
+        VideoHardwareAccelerationAware,
+        RecoveryCancellable,
+        Seekable {
   /// [player] 是单测注入点:VM 测试无法加载原生 libmpv(`Player()` 会构造
   /// `NativePlayer` 并 `DynamicLibrary.open`),只能注入 `Player(platformPlayer:)`
   /// 的假后端来驱动事件与命令。生产调用点一律不传,行为与原先完全一致。
@@ -101,9 +108,19 @@ class MediaKitLivePlayer
   /// 当前 open 的代理会话([open] 里为首选 FLV 线路创建;切源/停止释放)。
   StreamProxySession? _proxySession;
 
+  /// 宿主注入的租约中继工厂(见 [LeaseRelayAware]);null = 未启用。
+  LeaseRelayFactory? _leaseRelayFactory;
+
+  /// 当前 open 的租约拼接中继(与 [_proxySession] 互斥;切源/停止释放)。
+  FlvSpliceRelay? _spliceRelay;
+
   /// 测试探针:当前代理会话(生产代码不得依赖)。
   @visibleForTesting
   StreamProxySession? get debugProxySession => _proxySession;
+
+  /// 测试探针:当前租约拼接中继(生产代码不得依赖)。
+  @visibleForTesting
+  FlvSpliceRelay? get debugSpliceRelay => _spliceRelay;
 
   /// 视频稳定性/噪音汇总的采样周期(生产 5s;测试注入更短值以便驱动 tick)。
   final Duration stabilityInterval;
@@ -524,6 +541,9 @@ class MediaKitLivePlayer
   void setLineRecovery(LineRecoveryHandler? handler) => _lineRecovery = handler;
 
   @override
+  void setLeaseRelayFactory(LeaseRelayFactory? factory) => _leaseRelayFactory = factory;
+
+  @override
   void setVideoHardwareAcceleration(bool enabled) {
     videoHardwareAccelerationEnabled = enabled;
     final platform = _player.platform;
@@ -732,13 +752,18 @@ class MediaKitLivePlayer
     });
   }
 
-  /// 为 [line] 创建本地代理会话(可热切换);不满足代理条件(代理未启用/
-  /// 非 FLV 直链/已在会话中打开同线路)时释放旧会话并返回 null(直连)。
-  Future<StreamProxySession?> _wrapLineWithProxy(StreamLine line) async {
-    await _disposeProxySession();
+  /// 为 [line] 准备本地服务地址(可热切换):优先租约拼接中继(上游
+  /// pure_live 播放策略——expire-FLV 到点前双连接重签、关键帧对齐交接,
+  /// mpv 只见一条内容单调的本地流,不回读不跳段),编排层未提供/不适用/
+  /// 构建失败时回落本地代理会话。都不满足(代理未启用/非 FLV 直链)时
+  /// 释放旧传输并返回 null(直连)。
+  Future<String?> _wrapLineWithLocal(StreamLine line) async {
+    await _disposeLocalTransport();
+    if (line.format != 'flv') return null;
+    final relay = await _tryStartLeaseRelay(line);
+    if (relay != null) return relay.inputUri.toString();
     final proxy = streamProxy;
     if (proxy == null || !proxy.isRunning) return null;
-    if (line.format != 'flv') return null;
     // 站点 CDN 头(UA/Referer 等)必须由代理转发给上游:mpv 只见本地地址,
     // 直连时的 httpHeaders 对 127.0.0.1 无意义(17LIVE wansu Referer 强校验)。
     final session = proxy.openSession(line.url, headers: line.headers);
@@ -748,7 +773,22 @@ class MediaKitLivePlayer
     // ([_recoveryPolicy]),不会高频空转。
     session.onUpstreamFailed = _recoverProxyUpstream;
     PlaybackLog.write('proxy_line_wrap', {'host': _hostOf(line), 'session': session.id});
-    return session;
+    return session.localUrl;
+  }
+
+  /// 租约 FLV 交给上游 [FlvSpliceRelay]:工厂由编排层注入(站点租约元数据
+  /// 与重解析上下文在那侧,播放器保持站点无关);null = 线路不适用(返回
+  /// null 回落本地代理会话)。中继自身的续租/交接失败语义见上游实现:
+  /// 保旧连接、下次切断终结本地流,交回本层既有恢复链。
+  Future<FlvSpliceRelay?> _tryStartLeaseRelay(StreamLine line) async {
+    final factory = _leaseRelayFactory;
+    if (factory == null) return null;
+    try {
+      return _spliceRelay = await factory(line);
+    } catch (error) {
+      PlaybackLog.write('proxy_relay_fail', {'host': _hostOf(line), 'reason': '$error'});
+      return null;
+    }
   }
 
   /// 代理 upstream 失败的恢复:向宿主要新线路,首线仍为 FLV 时返回其 URL
@@ -786,9 +826,12 @@ class MediaKitLivePlayer
     }
   }
 
-  Future<void> _disposeProxySession() async {
+  Future<void> _disposeLocalTransport() async {
+    final relay = _spliceRelay;
+    _spliceRelay = null;
     final session = _proxySession;
     _proxySession = null;
+    if (relay != null) await relay.close();
     if (session != null) await session.dispose();
   }
 
@@ -1551,17 +1594,17 @@ class MediaKitLivePlayer
       // 代理按当前线路主机取:被墙 CDN 走代理,国内可达站点显式清空
       // (mpv 选项是进程级,不重设会把上一个源的代理策略带过来)。
       await _applyProxyForLine(line);
-      // 本地流代理包装(首选 FLV 直链):mpv 打开本地地址,代理转发远端;
-      // _currentLines 保持远端原始线路(恢复重开/日志归因的语义不变),
-      // 仅 mpv 播放列表的首选 entry 换成本地 URL。对齐官方桌面端
-      // DySDKController(127.0.0.1:5001)架构。
+      // 本地传输包装(首选 FLV 直链):租约 FLV 走上游拼接中继(双连接
+      // 重签+关键帧对齐交接),其余走本地代理会话转发;两者 mpv 都只见本地
+      // 地址。_currentLines 保持远端原始线路(恢复重开/日志归因的语义
+      // 不变),仅 mpv 播放列表的首选 entry 换成本地 URL。
       var playlistLines = _currentLines;
-      final session = await _wrapLineWithProxy(_currentLines.first);
-      if (session != null) {
+      final localUrl = await _wrapLineWithLocal(_currentLines.first);
+      if (localUrl != null) {
         playlistLines = [
           StreamLine(
             name: _currentLines.first.name,
-            url: session.localUrl,
+            url: localUrl,
             format: _currentLines.first.format,
             headers: _currentLines.first.headers,
           ),
@@ -1801,7 +1844,7 @@ class MediaKitLivePlayer
       _playingSince = null;
       _stallTracker.reset();
       _openStartedAt = null;
-      await _disposeProxySession();
+      await _disposeLocalTransport();
       _currentLines = const [];
       // 离房即重置恢复节流与重试记账:下一次进房从干净状态开始,
       // 而不是继承上一间的窗口 / 已放弃闩锁(否则重进同一间永不自动重连)。
@@ -1903,7 +1946,7 @@ class MediaKitLivePlayer
   Future<void> _releaseNativeOnce() async {
     if (!_disposed) {
       _disposed = true;
-      unawaited(_disposeProxySession());
+      unawaited(_disposeLocalTransport());
       _stallTimer?.cancel();
       _stallTimer = null;
       _externalPauseTimer?.cancel();
