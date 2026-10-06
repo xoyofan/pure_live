@@ -9,13 +9,10 @@ class CookieSettingsController extends GetxController {
   static CookieSettingsController get to => Get.find();
 
   /// 未注册 GetX 运行时的宿主(zishu 播放链/sidecar/单测)安全访问(迭代14B
-  /// SettingsService.maybe 同款契约):返回 null,调用方按游客态降级。
+  /// SettingsService.maybe 同款契约;合并 e1b5055bd 回植):返回 null,
+  /// 调用方按游客态降级。
   static CookieSettingsController? get maybe => Get.isRegistered<CookieSettingsController>() ? Get.find() : null;
 
-  /// 恢复 Cookie 后的账号联动端口。
-  ///
-  /// 账号域（BiliBiliAccountService）的具体实现由 App 装配层绑定
-  /// （见 InitialServices._bindCorePorts）；Core 的凭据存储因此不认识业务域。
   static void Function()? onRestored;
 
   final RxString bilibiliCookie = hiveString('bilibiliCookie', '');
@@ -44,6 +41,7 @@ class CookieSettingsController extends GetxController {
   final RxString twitchCookie = hiveString('twitchCookie', '');
   final RxString soopCookie = hiveString('soopCookie', '');
   final RxString yyCookie = hiveString('yyCookie', '');
+  final RxString bigoCookie = hiveString('bigoCookie', '');
 
   @override
   void onInit() {
@@ -63,25 +61,50 @@ class CookieSettingsController extends GetxController {
       twitchCookie,
       soopCookie,
       yyCookie,
+      bigoCookie,
     ]) {
       final normalized = normalizeAccountCookie(cookie.v);
       if (normalized != cookie.v) cookie.v = normalized;
     }
   }
 
+  bool get hasAnyCredential {
+    for (final value in <RxString>[
+      bilibiliCookie,
+      huyaCookie,
+      douyuCookie,
+      douyuLtp0,
+      douyuDid,
+      douyinCookie,
+      kuaishouCookie,
+      twitchCookie,
+      soopCookie,
+      yyCookie,
+      bigoCookie,
+    ]) {
+      if (value.v.isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  void clearDouyuSession() {
+    douyuCookie.v = '';
+    douyuCookieSavedAt.v = 0;
+    douyuLtp0.v = '';
+    douyuDid.v = '';
+  }
+
   void clearAllCookies() {
     bilibiliCookie.v = '';
     huyaCookie.v = '';
-    douyuCookie.v = '';
     douyinCookie.v = '';
     kuaishouCookie.v = '';
     twitchCookie.v = '';
     soopCookie.v = '';
     yyCookie.v = '';
+    bigoCookie.v = '';
     bilibiliUid.v = 0;
-    douyuCookieSavedAt.v = 0;
-    douyuLtp0.v = '';
-    douyuDid.v = '';
+    clearDouyuSession();
   }
 
   Map<String, dynamic> toJson() {
@@ -98,6 +121,7 @@ class CookieSettingsController extends GetxController {
       'twitchCookie': twitchCookie.v,
       'soopCookie': soopCookie.v,
       'yyCookie': yyCookie.v,
+      'bigoCookie': bigoCookie.v,
     };
   }
 
@@ -116,6 +140,7 @@ class CookieSettingsController extends GetxController {
       'twitchCookie': normalizeAccountCookie((json['twitchCookie'] ?? '') as String),
       'soopCookie': normalizeAccountCookie((json['soopCookie'] ?? '') as String),
       'yyCookie': normalizeAccountCookie((json['yyCookie'] ?? '') as String),
+      'bigoCookie': normalizeAccountCookie((json['bigoCookie'] ?? '') as String),
     };
   }
 
@@ -133,6 +158,7 @@ class CookieSettingsController extends GetxController {
     twitchCookie.v = parsed['twitchCookie'];
     soopCookie.v = parsed['soopCookie'];
     yyCookie.v = parsed['yyCookie'];
+    bigoCookie.v = parsed['bigoCookie'];
 
     onRestored?.call();
   }

@@ -38,7 +38,6 @@ class DouyuSite
         LivePlayUrlCursorResolver,
         LivePlayLeaseMetadata,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     // fork 修正(2026-10-03):上游用类字段 id(平台名)拼路径——所有站点
@@ -112,8 +111,6 @@ class DouyuSite
       subCateList.where((x) => x["cate1Id"] == cate1Id).forEach((element) {
         subCategories.add(
           LiveArea(
-            // `icon` 可能是空的（上游样本 S01-cate-list-2026-10：辐射：避难所Online），
-            // 依次退到 `smallIcon`、`pic`，否则分区在列表里没有图。
             areaPic: _areaPicture(element),
             areaId: element["cate2Id"].toString(),
             typeName: cate1Name.toString(),
@@ -130,7 +127,6 @@ class DouyuSite
     return categories;
   }
 
-  /// 分区图标：`icon` 空时退到 `smallIcon`，再退到 `pic`。
   static String _areaPicture(dynamic area) {
     if (area is! Map) return '';
     for (final key in const ['icon', 'smallIcon', 'pic']) {
@@ -632,12 +628,10 @@ class DouyuSite
       },
       link: "https://www.douyu.com/$roomId",
       isRecord: replay,
-      // 在播时 `show_time`（Unix 秒）就是这场直播的开播时间（上游 douyu 4-x）。
       startedAt: live ? _startedAt(roomInfo['show_time']) : null,
     );
   }
 
-  /// 斗鱼的 `show_time`：Unix 秒；读不出来或超出 2000–2100 年就不给。
   static DateTime? _startedAt(Object? value) {
     final seconds = _asInt(value);
     if (seconds == null || seconds <= 0) return null;

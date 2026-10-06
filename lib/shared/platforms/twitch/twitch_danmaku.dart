@@ -11,6 +11,9 @@ class TwitchDanmaku implements LiveDanmaku {
   WebScoketUtils? webScoketUtils;
   bool _connected = false;
 
+  bool _loginRefused = false;
+  bool _loginRefusedReported = false;
+
   @override
   bool get isConnected => _connected;
 
@@ -25,7 +28,7 @@ class TwitchDanmaku implements LiveDanmaku {
   }
 
   @override
-  int heartbeatTime = 40 * 1000; //默认是40s
+  int heartbeatTime = 40 * 1000;
 
   var serverUrl = "wss://irc-ws.chat.twitch.tv";
 
@@ -48,6 +51,8 @@ class TwitchDanmaku implements LiveDanmaku {
 
   @override
   Future start(args) async {
+    _loginRefused = false;
+    _loginRefusedReported = false;
     webScoketUtils = WebScoketUtils(
       url: serverUrl,
       heartBeatTime: heartbeatTime,
@@ -79,7 +84,7 @@ class TwitchDanmaku implements LiveDanmaku {
     final cookieValues = _parseCookie(cookie);
     final token = cookieValues['auth-token']?.trim() ?? '';
     final login = cookieValues['login']?.trim().toLowerCase() ?? '';
-    final authenticated = token.isNotEmpty && login.isNotEmpty;
+    final authenticated = token.isNotEmpty && login.isNotEmpty && !_loginRefused;
     final user = authenticated ? login : "justinfan${1000 + Random.secure().nextInt(99000)}";
     webScoketUtils
       ?..sendMessage(authenticated ? "PASS oauth:$token" : "PASS SCHMOOPIIE")
@@ -114,6 +119,21 @@ class TwitchDanmaku implements LiveDanmaku {
         // respond to PING according to https://dev.twitch.tv/docs/irc/#keepalive-messages
         webScoketUtils?.sendMessage(data.replaceFirst("PING", "PONG").trim());
       }
+      if (_isLoginRefusal(data)) {
+        _loginRefused = true;
+        if (!_loginRefusedReported) {
+          _loginRefusedReported = true;
+          onMessage?.call(
+            LiveMessage(
+              type: LiveMessageType.notice,
+              userName: '',
+              message: i18n('twitch_cookie_expired_notice'),
+              color: LiveMessageColor.white,
+            ),
+          );
+        }
+        return;
+      }
       for (final message in parseMessages(data)) {
         onMessage?.call(message);
       }
@@ -122,13 +142,19 @@ class TwitchDanmaku implements LiveDanmaku {
     }
   }
 
+  static bool _isLoginRefusal(String data) {
+    if (!data.toUpperCase().contains('NOTICE')) return false;
+    final text = data.toLowerCase();
+    return text.contains('login authentication failed') || text.contains('login unsuccessful');
+  }
+
   /// Parses complete Twitch IRC frames. Kept separate from socket delivery so
   /// reconnect, empty-color and escaped display-name cases stay testable.
   List<LiveMessage> parseMessages(String data) {
     final messages = <LiveMessage>[];
     for (final rawLine in data.split(RegExp(r'\r?\n'))) {
       final line = rawLine.trim();
-      if (!line.contains(' PRIVMSG ')) continue;
+      if (line.isEmpty) continue;
 
       final tags = <String, String>{};
       if (line.startsWith('@')) {
@@ -141,6 +167,38 @@ class TwitchDanmaku implements LiveDanmaku {
           }
         }
       }
+
+      if (line.contains(' CLEARMSG ')) {
+        final targetId = (tags['target-msg-id'] ?? '').trim();
+        if (targetId.isNotEmpty) messages.add(_retraction(LiveRetraction.message(targetId)));
+        continue;
+      }
+      if (line.contains(' CLEARCHAT ')) {
+        final targetUser = (tags['target-user-id'] ?? '').trim();
+        if (targetUser.isNotEmpty) {
+          messages.add(_retraction(LiveRetraction.user(targetUser)));
+          continue;
+        }
+        final commandEnd = line.indexOf(' CLEARCHAT ');
+        final paramStart = line.indexOf(' :', commandEnd);
+        if (paramStart >= 0 && line.substring(paramStart + 2).trim().isNotEmpty) continue;
+        messages.add(_retraction(const LiveRetraction.all()));
+        continue;
+      }
+
+      if (line.contains(' USERNOTICE ')) {
+        final msgId = (tags['msg-id'] ?? '').trim();
+        final kind = msgId == 'sharedchatnotice' ? (tags['source-msg-id'] ?? '').trim() : msgId;
+        final paramStart = line.indexOf(' :', line.indexOf(' USERNOTICE '));
+        final attached = paramStart < 0 ? '' : line.substring(paramStart + 2).trim();
+        final isAnnouncement = kind == 'announcement';
+        final text = isAnnouncement ? attached : (tags['system-msg'] ?? '').trim();
+        if (text.isNotEmpty) messages.add(_noticeFromTags(text, tags));
+        if (!isAnnouncement && attached.isNotEmpty) messages.add(_chatFromTags(attached, tags));
+        continue;
+      }
+
+      if (!line.contains(' PRIVMSG ')) continue;
 
       final messageStart = line.indexOf(' :', line.indexOf(' PRIVMSG '));
       if (messageStart < 0) continue;
@@ -166,6 +224,53 @@ class TwitchDanmaku implements LiveDanmaku {
       );
     }
     return messages;
+  }
+
+  static LiveMessage _retraction(LiveRetraction target) => LiveMessage(
+    type: LiveMessageType.retraction,
+    userName: '',
+    message: '',
+    color: LiveMessageColor.white,
+    data: target,
+  );
+
+  static LiveMessage _noticeFromTags(String text, Map<String, String> tags) {
+    final timestamp = int.tryParse(tags['tmi-sent-ts'] ?? '');
+    return LiveMessage(
+      type: LiveMessageType.notice,
+      userName: _displayName(tags),
+      userId: tags['user-id'] ?? '',
+      messageId: tags['id'] ?? '',
+      message: text,
+      sentAt: timestamp == null ? null : DateTime.fromMillisecondsSinceEpoch(timestamp),
+      color: _color(tags),
+    );
+  }
+
+  static LiveMessage _chatFromTags(String content, Map<String, String> tags) {
+    final timestamp = int.tryParse(tags['tmi-sent-ts'] ?? '');
+    return LiveMessage(
+      type: LiveMessageType.chat,
+      message: content,
+      userName: _displayName(tags),
+      userId: tags['user-id'] ?? '',
+      messageId: tags['id'] ?? '',
+      sentAt: timestamp == null ? null : DateTime.fromMillisecondsSinceEpoch(timestamp),
+      color: _color(tags),
+    );
+  }
+
+  static String _displayName(Map<String, String> tags) {
+    final display = tags['display-name']?.trim() ?? '';
+    if (display.isNotEmpty) return display;
+    final login = tags['login']?.trim() ?? '';
+    return login.isEmpty ? 'Twitch' : login;
+  }
+
+  static LiveMessageColor _color(Map<String, String> tags) {
+    final colorText = (tags['color'] ?? '').replaceFirst('#', '');
+    final value = int.tryParse(colorText, radix: 16) ?? 0xFFFFFF;
+    return LiveMessageColor.numberToColor(value);
   }
 
   static String _decodeTag(String value) => value

@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
@@ -10,6 +9,8 @@ import 'package:pure_live/core/models/live_category.dart';
 import 'package:pure_live/core/models/live_play_quality.dart';
 import 'package:pure_live/core/utils/i18n.dart';
 import 'package:pure_live/shared/platforms/live_external_room.dart';
+
+import 'steam_broadcast_danmaku.dart';
 
 import 'steam_broadcast_api.dart';
 import 'steam_broadcast_link.dart';
@@ -24,7 +25,6 @@ final class SteamBroadcastSite extends LiveSite
         LivePlayUrlResolver,
         LivePlayRecoveryResolver,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     final id = sanitizedExternalRoomId(liveroom.roomId);
@@ -47,7 +47,7 @@ final class SteamBroadcastSite extends LiveSite
   String get directoryNoticeKey => 'steambroadcast_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => SteamBroadcastDanmaku();
 
   @override
   Future<List<LiveCategory>> getCategores(int page, int pageSize) async => page == 1 && pageSize > 0
@@ -87,7 +87,6 @@ final class SteamBroadcastSite extends LiveSite
       SteamBroadcastState.live => LiveStatus.live,
       SteamBroadcastState.replay => LiveStatus.replay,
       SteamBroadcastState.offline => LiveStatus.offline,
-      // `user_restricted` 是主播账号被限制，按封禁；`unknown` 保持未知。
       SteamBroadcastState.restricted => LiveStatus.banned,
       SteamBroadcastState.unknown => LiveStatus.unknown,
     };
@@ -102,7 +101,6 @@ final class SteamBroadcastSite extends LiveSite
       area: room.game.isEmpty ? 'Steam Community' : room.game,
       link: SteamBroadcastLink.watchUrl(room.steamId),
       liveStatus: status,
-      // `missing_subscription` 是在播 + 订阅者专属（上游 27-x）。
       restriction: room.state == SteamBroadcastState.live || room.state == SteamBroadcastState.replay
           ? room.restriction
           : null,
@@ -113,6 +111,7 @@ final class SteamBroadcastSite extends LiveSite
           ? i18n('steambroadcast_restricted_notice')
           : i18n('steambroadcast_chat_notice'),
       httpHeaders: SteamBroadcastApi.mediaHeaders(room.steamId),
+      danmakuData: SteamBroadcastDanmakuArgs(steamId: room.steamId, broadcastId: room.broadcastId),
       data: includeMedia ? room : null,
     );
   }
@@ -251,7 +250,13 @@ final class SteamBroadcastSite extends LiveSite
     if (refresh) {
       room = _snapshot(await _detail(LiveRoom(roomId: room.steamId, platform: id), includeMedia: true));
     }
-    return LivePlayUrlResolution(urls: [room.master!.toString()], appliedQualityData: 'auto');
+    final master = room.master!.toString();
+    return LivePlayUrlResolution.withSourcePolicies(
+      urls: [master],
+      sourceQueryPolicies: const {},
+      appliedQualityData: 'auto',
+      streamFacts: {master: (format: LiveStreamFormat.hls, codec: null, unresolvedChildren: true)},
+    );
   }
 
   @override

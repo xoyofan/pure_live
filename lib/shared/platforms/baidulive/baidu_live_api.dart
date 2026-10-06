@@ -9,6 +9,8 @@ import 'package:pure_live/core/network/http_client.dart';
 import 'package:pure_live/core/network/request_scope.dart';
 
 import 'baidu_live_link.dart';
+import 'baidu_live_danmaku.dart';
+import 'package:pure_live/core/network/site_transport_failure.dart';
 
 enum BaiduLiveFailure {
   transport,
@@ -22,11 +24,13 @@ enum BaiduLiveFailure {
   mediaUnavailable,
 }
 
-final class BaiduLiveException implements Exception {
+final class BaiduLiveException implements Exception, SiteTransportFailure {
   const BaiduLiveException(this.kind);
 
   final BaiduLiveFailure kind;
 
+  @override
+  bool get isSiteUnreachable => kind == BaiduLiveFailure.transport;
   @override
   String toString() => 'Baidu Live ${kind.name}';
 }
@@ -71,6 +75,7 @@ final class BaiduLiveRoom {
     required this.state,
     required Iterable<BaiduLiveVariant> variants,
     this.restriction,
+    this.danmakuArgs,
   }) : variants = List.unmodifiable(variants);
 
   final String roomId;
@@ -85,8 +90,9 @@ final class BaiduLiveRoom {
   final BaiduLiveState state;
   final List<BaiduLiveVariant> variants;
 
-  /// 付费/禁止访问/无可播档位等的限制种类（上游 30-5）；null 表示这次回答没说。
   final LiveRestriction? restriction;
+
+  final BaiduLiveDanmakuArgs? danmakuArgs;
 
   BaiduLiveRoom enrich(BaiduLiveRoom known) => BaiduLiveRoom(
     roomId: roomId,
@@ -408,6 +414,34 @@ class BaiduLiveApi {
       state: state,
       variants: variants,
       restriction: _detailRestriction(command, state, variants),
+      danmakuArgs: danmakuArgs(command, video, roomId: roomId),
+    );
+  }
+
+  static BaiduLiveDanmakuArgs? danmakuArgs(
+    Map<dynamic, dynamic> command,
+    Map<dynamic, dynamic> video, {
+    required String roomId,
+  }) {
+    String firstText(List<Object?> values) {
+      for (final value in values) {
+        if (_text(value).trim().isNotEmpty) return _text(value).trim();
+      }
+      return '';
+    }
+
+    final chat = firstText([command['chat_msg_hls_url'], video['msg_hls_url']]);
+    if (chat.isEmpty) return null;
+    final rawInterval = _integer(
+      command['msg_hls_pull_internal_in_second'] ?? video['msg_hls_pull_internal_in_second'],
+    );
+    final seconds = rawInterval == null || rawInterval <= 0 ? 5 : rawInterval.clamp(1, 10);
+    return BaiduLiveDanmakuArgs(
+      chatListUrl: chat,
+      reliableListUrl: firstText([command['reliable_msg_hls_url']]),
+      hostListUrl: firstText([command['host_msg_hls_url']]),
+      pollInterval: Duration(seconds: seconds),
+      roomId: roomId,
     );
   }
 
@@ -415,8 +449,6 @@ class BaiduLiveApi {
     var uri = Uri.tryParse(raw.trim());
     if (uri == null) return null;
     final host = uri.host.toLowerCase();
-    // `flv-live.bdstatic.com` 的 https 证书与主机名不匹配，必须用 http 播
-    // （上游 30-9）；其余允许的主机保持 http 升 https。
     if (host == 'flv-live.bdstatic.com') {
       if (uri.scheme == 'https' && !uri.hasPort) uri = uri.replace(scheme: 'http');
     } else if (uri.scheme == 'http' && _allowedMediaHost(host)) {
@@ -459,6 +491,7 @@ class BaiduLiveApi {
       add(_text(urls['avc_flv']), 'flv', resolution, 'avc');
       add(_text(urls['flv']), 'flv', resolution, 'avc');
       add(_text(urls['hls']), 'hls', resolution, 'avc');
+      add(_text(urls['hevc_flv']), 'flv', resolution, 'hevc');
     }
 
     final urlList = _list(video['url_list']);
@@ -478,6 +511,7 @@ class BaiduLiveApi {
       add(_text(video['live_flv_url']), 'flv', 0, 'avc');
       add(_text(video['live_flv_url_origin']), 'flv', 0, 'avc');
     }
+    add(_text(video['hevc_url']), 'flv', 0, 'hevc');
 
     final variants =
         grouped.entries
@@ -544,8 +578,6 @@ class BaiduLiveApi {
   }
 
   static BaiduLiveState _detailState(Map<String, Object?> command) {
-    // 付费/禁止访问/封禁不再改状态：它们仍然是在播（或回放），只是带限制种类
-    // （上游 30-5）。此前一律返回 restricted，于是房间显示为"未知"。
     return switch (_integer(command['status'])) {
       0 => BaiduLiveState.live,
       -1 || 1 => BaiduLiveState.preview,
@@ -555,9 +587,6 @@ class BaiduLiveApi {
     };
   }
 
-  /// 详情的限制种类（上游 30-5）：禁止访问/封禁 → unplayable，付费 → paid，
-  /// 在播或回放却一个档位都没有 → unplayable，其余在播/回放 → none，
-  /// 其它状态 → null（没说）。
   static LiveRestriction? _detailRestriction(
     Map<String, Object?> command,
     BaiduLiveState state,

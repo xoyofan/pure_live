@@ -7,6 +7,7 @@ import 'package:pure_live/core/network/http_client.dart';
 import 'package:pure_live/core/network/request_scope.dart';
 
 import 'pandalive_link.dart';
+import 'package:pure_live/core/network/site_transport_failure.dart';
 
 enum PandaLiveFailure {
   transport,
@@ -23,10 +24,12 @@ enum PandaLiveFailure {
   mediaUnavailable,
 }
 
-class PandaLiveException implements Exception {
+class PandaLiveException implements Exception, SiteTransportFailure {
   const PandaLiveException(this.kind);
   final PandaLiveFailure kind;
 
+  @override
+  bool get isSiteUnreachable => kind == PandaLiveFailure.transport;
   @override
   String toString() => 'PandaTV ${kind.name}';
 }
@@ -63,8 +66,6 @@ final class PandaLiveCard {
   final bool isAdult;
   final bool isPassword;
 
-  /// 在播但其实是录播重播（`onAirType`/`liveType` 为 `rec`，标题带 `[녹]`）。
-  /// 它按直播推流、照常可播，但状态是回放（上游 M4.U.25；3.x 显示为直播中）。
   final bool isRerun;
 }
 
@@ -119,9 +120,9 @@ final class PandaLiveRoom {
     required this.state,
     required this.access,
     required Iterable<PandaLiveStream> streams,
-    this.chatToken,
-    this.chatChannel,
     this.isRerun = false,
+    this.chatChannel = '',
+    this.chatToken = '',
   }) : streams = List.unmodifiable(streams);
 
   final String userId;
@@ -138,11 +139,9 @@ final class PandaLiveRoom {
   final PandaLiveAccess access;
   final List<PandaLiveStream> streams;
 
-  /// Chat Centrifugo credentials from the play response; null when absent.
-  final String? chatToken;
-  final String? chatChannel;
+  final String chatChannel;
+  final String chatToken;
 
-  /// 录播重播（见 [PandaLiveCard.isRerun]）：在播，但状态是回放。
   final bool isRerun;
 }
 
@@ -386,65 +385,68 @@ class PandaLiveApi {
     return (rows: rows, hasMore: offset + rows.length < total);
   }
 
-  Future<PandaLiveRoom> room(String rawUserId, {bool resolveMedia = true, CancelToken? cancel}) => _scope(cancel, (
-    token,
-  ) async {
-    final userId = PandaLiveLink.normalizeUserId(rawUserId);
-    if (userId == null) throw const PandaLiveException(PandaLiveFailure.identity);
-    final referer = PandaLiveLink.url(userId);
-    final member = await _post('/v1/member/bj', {'userId': userId, 'info': 'media fanGrade'}, referer, token);
-    if (member['result'] != true) {
-      final message = _optionalText(member['message']);
-      if (message.contains('유저 정보가 없습니다')) throw const PandaLiveException(PandaLiveFailure.missing);
-      throw const PandaLiveException(PandaLiveFailure.api);
-    }
-    final profile = _object(member['bjInfo']);
-    final profileId = PandaLiveLink.normalizeUserId(profile['id']);
-    if (profileId == null || profileId.toLowerCase() != userId.toLowerCase()) {
-      throw const PandaLiveException(PandaLiveFailure.identity);
-    }
-    final profileIndex = _positiveInt(profile['idx']);
-    final mediaValue = member['media'];
-    if (mediaValue == null) {
-      return _profileRoom(userId, profileIndex, profile);
-    }
-    final memberMedia = _object(mediaValue);
-    _validateMediaIdentity(memberMedia, userId, profileIndex);
-    if (!resolveMedia) {
-      return _restrictedRoom(userId, profileIndex, profile, memberMedia, PandaLiveAccess.public);
-    }
-    final play = await _post(
-      '/v1/live/play',
-      {'action': 'watch', 'userId': userId, 'password': '', 'shareLinkType': ''},
-      referer,
-      token,
-    );
-    if (play['result'] != true) {
-      final errorData = play['errorData'];
-      final code = errorData is Map ? _optionalText(_object(errorData)['code']) : '';
-      if (code == 'castEnd') return _profileRoom(userId, profileIndex, profile);
-      final access = switch (code) {
-        'needAdult' => PandaLiveAccess.adult,
-        'needPassword' || 'password' => PandaLiveAccess.password,
-        _ => PandaLiveAccess.restricted,
-      };
-      return _restrictedRoom(userId, profileIndex, profile, memberMedia, access);
-    }
-    final playMedia = _object(play['media']);
-    _validateMediaIdentity(playMedia, userId, profileIndex);
-    if (_bool(playMedia['isLive']) != true) return _profileRoom(userId, profileIndex, profile);
-    // The chat Centrifugo credentials ride on the same play response.
-    final chatToken = _optionalText(play['token']);
-    // _optionalText 契约是非空 String(缺失返回空串),此前缀的 ?? 兜底是
-    // 死代码(analyze dead_null_aware);空串时下游 chatChannel 原样为空。
-    final chatChannel = _optionalText(play['channel']);
-    final playlist = _object(play['PlayList']);
-    final master = _firstMaster(playlist);
-    final manifest = await _read('GET', master, null, referer, token, manifest: true);
-    final streams = parseManifest(master, manifest);
-    if (streams.isEmpty) throw const PandaLiveException(PandaLiveFailure.mediaUnavailable);
-    return _liveRoom(userId, profileIndex, profile, playMedia, streams, chatToken: chatToken, chatChannel: chatChannel);
-  });
+  Future<PandaLiveRoom> room(String rawUserId, {bool resolveMedia = true, CancelToken? cancel}) =>
+      _scope(cancel, (token) async {
+        final userId = PandaLiveLink.normalizeUserId(rawUserId);
+        if (userId == null) throw const PandaLiveException(PandaLiveFailure.identity);
+        final referer = PandaLiveLink.url(userId);
+        final member = await _post('/v1/member/bj', {'userId': userId, 'info': 'media fanGrade'}, referer, token);
+        if (member['result'] != true) {
+          final message = _optionalText(member['message']);
+          if (message.contains('유저 정보가 없습니다')) throw const PandaLiveException(PandaLiveFailure.missing);
+          throw const PandaLiveException(PandaLiveFailure.api);
+        }
+        final profile = _object(member['bjInfo']);
+        final profileId = PandaLiveLink.normalizeUserId(profile['id']);
+        if (profileId == null || profileId.toLowerCase() != userId.toLowerCase()) {
+          throw const PandaLiveException(PandaLiveFailure.identity);
+        }
+        final profileIndex = _positiveInt(profile['idx']);
+        final mediaValue = member['media'];
+        if (mediaValue == null) {
+          return _profileRoom(userId, profileIndex, profile);
+        }
+        final memberMedia = _object(mediaValue);
+        _validateMediaIdentity(memberMedia, userId, profileIndex);
+        if (!resolveMedia) {
+          return _restrictedRoom(userId, profileIndex, profile, memberMedia, PandaLiveAccess.public);
+        }
+        final play = await _post(
+          '/v1/live/play',
+          {'action': 'watch', 'userId': userId, 'password': '', 'shareLinkType': ''},
+          referer,
+          token,
+        );
+        if (play['result'] != true) {
+          final errorData = play['errorData'];
+          final code = errorData is Map ? _optionalText(_object(errorData)['code']) : '';
+          if (code == 'castEnd') return _profileRoom(userId, profileIndex, profile);
+          final access = switch (code) {
+            'needAdult' => PandaLiveAccess.adult,
+            'needPassword' || 'password' => PandaLiveAccess.password,
+            _ => PandaLiveAccess.restricted,
+          };
+          return _restrictedRoom(userId, profileIndex, profile, memberMedia, access);
+        }
+        final playMedia = _object(play['media']);
+        _validateMediaIdentity(playMedia, userId, profileIndex);
+        if (_bool(playMedia['isLive']) != true) return _profileRoom(userId, profileIndex, profile);
+        final playlist = _object(play['PlayList']);
+        final master = _firstMaster(playlist);
+        final manifest = await _read('GET', master, null, referer, token, manifest: true);
+        final streams = parseManifest(master, manifest);
+        if (streams.isEmpty) throw const PandaLiveException(PandaLiveFailure.mediaUnavailable);
+        final rawChannel = play['channel']?.toString().trim() ?? '';
+        return _liveRoom(
+          userId,
+          profileIndex,
+          profile,
+          playMedia,
+          streams,
+          rawChannel.isEmpty ? userId : rawChannel,
+          _optionalText(play['token']),
+        );
+      });
 
   static PandaLiveCard parseCard(Map<String, dynamic> data) {
     final userId = _userId(data['userId']);
@@ -467,7 +469,6 @@ class PandaLiveApi {
     );
   }
 
-  /// 在播的这条是不是录播重播：`onAirType` 或 `liveType` 为 `rec`（上游 M4.U.25）。
   static bool isRerun(Map<String, dynamic> media) =>
       _text(media['onAirType']) == 'rec' || _text(media['liveType']) == 'rec';
 
@@ -617,10 +618,10 @@ class PandaLiveApi {
     int userIndex,
     Map<String, dynamic> profile,
     Map<String, dynamic> media,
-    List<PandaLiveStream> streams, {
-    String? chatToken,
-    String? chatChannel,
-  }) => PandaLiveRoom(
+    List<PandaLiveStream> streams,
+    String chatChannel,
+    String chatToken,
+  ) => PandaLiveRoom(
     userId: userId,
     userIndex: userIndex,
     nickname: _text(media['userNick'] ?? profile['nick']),
@@ -634,9 +635,9 @@ class PandaLiveApi {
     state: PandaLiveState.live,
     access: PandaLiveAccess.public,
     streams: streams,
-    chatToken: chatToken,
-    chatChannel: chatChannel,
     isRerun: isRerun(media),
+    chatChannel: chatChannel,
+    chatToken: chatToken,
   );
 
   static void _validateMediaIdentity(Map<String, dynamic> media, String userId, int userIndex) {

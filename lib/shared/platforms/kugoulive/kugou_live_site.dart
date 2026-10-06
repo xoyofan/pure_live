@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
@@ -12,6 +11,8 @@ import 'package:pure_live/core/utils/i18n.dart';
 import 'package:pure_live/shared/platforms/live_external_room.dart';
 
 import 'kugou_live_api.dart';
+import 'kugou_live_danmaku.dart';
+import 'kugou_live_link_danmaku.dart';
 import 'kugou_live_link.dart';
 
 final class KugouLiveSite extends LiveSite
@@ -25,7 +26,6 @@ final class KugouLiveSite extends LiveSite
         LivePlayRecoveryResolver,
         LivePlayLeaseMetadata,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     final id = sanitizedExternalRoomId(liveroom.roomId);
@@ -49,7 +49,7 @@ final class KugouLiveSite extends LiveSite
   String get directoryNoticeKey => 'kugoulive_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => KugouLiveLinkDanmaku();
 
   @override
   Future<List<LiveCategory>> getCategores(int page, int pageSize) async {
@@ -100,7 +100,6 @@ final class KugouLiveSite extends LiveSite
     final primary = online ?? popularity;
     final notice = <String>[
       if (room.state == KugouLiveState.restricted) i18n('kugoulive_restricted_notice'),
-      // 聊天公告排在平台说明之前（上游 29-2）。
       if (room.notice.isNotEmpty) room.notice,
       i18n('kugoulive_chat_notice'),
     ];
@@ -130,6 +129,7 @@ final class KugouLiveSite extends LiveSite
           : AudienceMetricType.unknown,
       notice: notice.join('\n'),
       httpHeaders: KugouLiveApi.mediaHeaders(room.roomId),
+      danmakuData: room.state == KugouLiveState.live ? KugouLiveDanmakuArgs(roomId: room.roomId) : null,
       data: includeMedia ? room : null,
     );
   }
@@ -213,7 +213,6 @@ final class KugouLiveSite extends LiveSite
     final known = _known[normalized];
     if (known != null) room = room.enrich(known);
     _known[normalized] = room;
-    // 详情没有直播标题，保留调用方（卡片/关注）那份的标题（上游 29-2）。
     return _room(room, includeMedia: includeMedia).fillFromDetail(liveroom);
   }
 

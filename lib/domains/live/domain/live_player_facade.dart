@@ -4,10 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:pure_live/get/get.dart';
 import 'package:media_core/media_core.dart';
 import 'package:media_core_live/media_core_live.dart';
+import 'package:flame_barrage/flame_barrage.dart';
+import 'package:pure_live/core/models/live_message.dart';
 import 'package:pure_live/core/models/live_room.dart';
 import 'package:pure_live/core/player/models/player_engine.dart';
 import 'package:pure_live/core/stream/hls_source_query_policy.dart';
+import 'package:pure_live/core/player/core/audio_only_mode_policy.dart';
+import 'package:pure_live/core/player/core/dummy_video_policy.dart';
+import 'package:pure_live/core/player/core/playback_source.dart';
 import 'package:pure_live/core/models/live_play_quality.dart';
+import 'package:pure_live/shared/platforms/live_site.dart' show LiveStreamFacts;
+import 'package:pure_live/domains/live/domain/playback_source_interceptor.dart';
+import 'package:pure_live/domains/live/domain/playback_source_refresh.dart';
 import 'package:media_core_media_kit/media_core_media_kit.dart';
 import 'package:pure_live/core/player/kernel/floating_playback.dart';
 import 'package:pure_live/core/player/presentation/windows_pip_driver.dart';
@@ -16,19 +24,25 @@ import 'package:pure_live/core/player/kernel/player_kernel_service.dart';
 import 'package:pure_live/core/player/presentation/fullscreen_window.dart' show fullscreenDriver;
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:pure_live/domains/live/presentation/playback/widgets/danmaku/compact_danmaku_overlay.dart';
+// media_kit exports its own `VideoController`, so the room's controller needs a
+// prefix to be named at all here.
+import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/video_controller.dart' as room_surface;
 import 'package:media_core_better_player/media_core_better_player.dart' show kBetterPlayerBackendId;
 import 'package:media_core_ijk_player/media_core_ijk_player.dart' show kIjkPlayerBackendId;
 
-///
-
 final class LivePlayerFacade {
-  LivePlayerFacade({
-    PlayerEngine defaultEngine = PlayerEngine.mediaKit,
-    Future<List<PlayerSource>> Function(List<PlayerSource> sources)? interceptSources,
-    EngineFallbackSourceResolver? onEngineFallbackSources,
-  }) : preferredEngine = defaultEngine {
-    _interceptSources = interceptSources;
-    _controller = LivePlaybackController(kernel, onEngineFallbackSources: onEngineFallbackSources);
+  LivePlayerFacade({PlayerEngine defaultEngine = PlayerEngine.mediaKit, PlaybackSourceInterceptor? sourceInterceptor})
+    : preferredEngine = defaultEngine {
+    _sourceInterceptor = sourceInterceptor;
+    // Both refresh questions — "the lines died, give me new ones" and "the
+    // engine is changing, give me lines it can use" — have one answer: ask the
+    // platform again. The engine id the second port passes adds nothing the
+    // resolver could act on, since a refreshed plan is rebuilt from the room.
+    _controller = LivePlaybackController(
+      kernel,
+      onRecoverySources: _refreshSources,
+      onEngineFallbackSources: (nextEngine, current) => _refreshSources(current),
+    );
     _bindController();
     // The fullscreen driver is the single source of truth for the fullscreen
     // presentation; the Rx mirror only makes it observable to GetX widgets.
@@ -40,7 +54,9 @@ final class LivePlayerFacade {
     isSystemFullscreen.value = fullscreenDriver.isSystemFullscreen;
   }
 
-  Future<List<PlayerSource>> Function(List<PlayerSource> sources)? _interceptSources;
+  PlaybackSourceInterceptor? _sourceInterceptor;
+
+  PlaybackSourceResolver? _sourceResolver;
 
   static PlayerKernel get kernel => PlayerKernelService.instance.kernel;
 
@@ -61,17 +77,10 @@ final class LivePlayerFacade {
 
   FacadeStreamCommit? commit;
   Map<String, String> _lastHeaders = const {};
+  /// Kernel preference order: the line swept first, the rest behind it.
   List<String> _lastLines = const [];
   LiveRoom? _room;
 
-  /// 源提交代次，每次发布递增。
-  ///
-  /// 两个消费者（`PlayerController.applySourceCommit` 与 `VideoController`
-  /// 的 `_handleSourceCommit`）都用 `commit.revision <= 已应用代次` 丢弃过期提交。
-  /// 这个代次必须由这里发：默认值恒为 0 时，守卫 `0 <= 0` 会**整批丢掉**每一次提交，
-  /// 房间首次加载看不出来（它走显式的 `updatePlayer`），但切换清晰度/线路时
-  /// `_applyOpenReceipt` 会把提交当成过期回执而抛 `_StreamSelectionCancelled`——
-  /// 切换过程照跑、状态永不回写、界面停在旧选项。
   int _commitRevision = 0;
 
   LiveRoom? get room => _room;
@@ -102,6 +111,7 @@ final class LivePlayerFacade {
     _stateSub = _controller.onStateChanged.listen((state) {
       _stateSubject.add(state);
       _onStateChanged(state);
+      _tryApplyPendingSeek();
       final playing = state.playback == PlayerPlaybackState.playing;
       if (playing != _lastPlaying) {
         _lastPlaying = playing;
@@ -133,7 +143,8 @@ final class LivePlayerFacade {
     Object? sourceSelection,
   }) async {
     if (_disposed) return;
-    if (audioOnly) await setAudioOnlyMode(true);
+    _sourceResolver = sourceResolver;
+    if (audioOnly) await setAudioOnlyMode(true, stopVideoDecoding: true);
     final sourceUrl = url.trim();
     if (sourceUrl.isEmpty) throw ArgumentError('Remote playback source is empty');
 
@@ -142,17 +153,20 @@ final class LivePlayerFacade {
     _lastHeaders = Map<String, String>.unmodifiable(headers);
     _lastLines = List<String>.unmodifiable(urls);
 
+    // The caller's sourceSelection (the quality confirmation from the stream
+    // switch) is authoritative: dropping it left the quality label pinned on the
+    // first entry after every switch. It also carries the platform's per-line
+    // stream facts, which is what the ingest wiring decides from.
+    final committed = sourceSelection is PlaybackSourceQualitySelection ? sourceSelection : null;
+    final streamFacts = committed?.streamFacts ?? const <String, LiveStreamFacts>{};
+
     await _controller.play(
       LiveSourceRequest(
-        sources: await _intercept([
-          for (final url in urls)
-            PlayerSource(
-              id: SourceId('live-$url'),
-              uri: Uri.parse(url),
-              type: SourceType.live,
-              headers: SourceHeaders(headers),
-            ),
-        ]),
+        sources: await _intercept(
+          livePlanSources(urls, headers: headers, streamFacts: streamFacts),
+          streamFacts: streamFacts,
+          sourceQueryPolicies: committed?.sourceQueryPolicies ?? const {},
+        ),
         title: liveroom?.title,
       ),
       preferredBackend: backendIdOfEngine(preferredEngine),
@@ -161,37 +175,35 @@ final class LivePlayerFacade {
     // selector, the label and the next-line cycling are all written against.
     // `_lastLines` above is the kernel's fallback preference (selected first)
     // and must not leak into it, or every commit would report line 1.
-    // The caller's sourceSelection (the quality confirmation from the stream
-    // switch) is authoritative: dropping it left the quality label pinned on
-    // the first entry after every switch.
-    final committed = sourceSelection is PlaybackSourceQualitySelection ? sourceSelection : null;
-    _publishCommit(sourceUrl, playUrls, committed?.qualities ?? qualities, committed?.currentQuality ?? currentQuality);
+    _declaredAspectRatio = committed?.declaredAspectRatio;
+    _pendingSeekAt = committed?.startAt;
+    _publishCommit(
+      sourceUrl,
+      playUrls,
+      committed?.qualities ?? qualities,
+      committed?.currentQuality ?? currentQuality,
+      streamFacts: streamFacts,
+    );
     if (liveroom != null) await setVolume(liveroom.getSavedVolume().clamp(0.0, 1.0));
   }
 
   Future<void> playOwned(
-    Object recipe,
+    OwnedPlaybackSource source,
     LiveRoom liveroom, {
     List<LivePlayQuality> qualities = const [],
     int currentQuality = 0,
     Object? sourceSelection,
+    bool audioOnly = false,
+    PlaybackSourceResolver? sourceResolver,
   }) async {
     if (_disposed) return;
+    _sourceResolver = sourceResolver;
+    if (audioOnly) await setAudioOnlyMode(true, stopVideoDecoding: true);
     _room = liveroom;
     _lastHeaders = const {};
     _lastLines = const [];
     await _controller.play(
-      LiveSourceRequest(
-        sources: await _intercept([
-          PlayerSource(
-            id: SourceId('owned-${liveroom.identityKey}'),
-            uri: Uri(scheme: 'owned', path: liveroom.identityKey),
-            type: SourceType.live,
-            protocol: SourceProtocol.custom,
-            metadata: <String, Object?>{kMediaKitCustomInputKey: recipe},
-          ),
-        ]),
-      ),
+      LiveSourceRequest(sources: await _intercept([ownedPlanSource(source, liveroom)])),
       preferredBackend: backendIdOfEngine(preferredEngine),
     );
     final committed = sourceSelection is PlaybackSourceQualitySelection ? sourceSelection : null;
@@ -200,11 +212,19 @@ final class LivePlayerFacade {
       const [],
       committed?.qualities ?? qualities,
       committed?.currentQuality ?? currentQuality,
+      source: source,
     );
     await setVolume(liveroom.getSavedVolume().clamp(0.0, 1.0));
   }
 
-  void _publishCommit(String url, List<String> uiLines, List<LivePlayQuality> qualities, int currentQuality) {
+  void _publishCommit(
+    String url,
+    List<String> uiLines,
+    List<LivePlayQuality> qualities,
+    int currentQuality, {
+    Map<String, LiveStreamFacts> streamFacts = const {},
+    Object? source,
+  }) {
     // `uiLines` is the platform-ordered line list; the index is the line the
     // selector highlighted. Deriving it from `_lastLines` (kernel fallback
     // order, selected line first) would report line 1 for every commit.
@@ -218,21 +238,25 @@ final class LivePlayerFacade {
       headers: _lastHeaders,
       qualities: List<LivePlayQuality>.unmodifiable(qualities),
       currentQuality: currentQuality,
+      streamFacts: streamFacts,
+      source: source,
     );
     _commitSubject.add(commit);
   }
 
   Future<void> playSource(
-    Object source, {
+    OwnedPlaybackSource source, {
     LiveRoom? liveroom,
     bool audioOnly = false,
-    Object? sourceResolver,
+    PlaybackSourceResolver? sourceResolver,
     Object? sourceSelection,
     DateTime? sourceRefreshAt,
   }) => playOwned(
     source,
     liveroom ?? _room ?? LiveRoom(platform: '', roomId: ''),
     sourceSelection: sourceSelection,
+    audioOnly: audioOnly,
+    sourceResolver: sourceResolver,
   );
 
   Future<void> switchLine(int index) => _controller.switchLine(index);
@@ -256,15 +280,11 @@ final class LivePlayerFacade {
           : <String>[current.currentUrl, ...current.urls.where((url) => url != current.currentUrl)];
       await _controller.play(
         LiveSourceRequest(
-          sources: await _intercept([
-            for (final url in lines)
-              PlayerSource(
-                id: SourceId('live-$url'),
-                uri: Uri.parse(url),
-                type: SourceType.live,
-                headers: SourceHeaders(current.headers),
-              ),
-          ]),
+          sources: await _intercept(
+            livePlanSources(lines, headers: current.headers, streamFacts: current.streamFacts),
+            streamFacts: current.streamFacts,
+            sourceQueryPolicies: current.sourceQueryPolicies,
+          ),
           title: _room?.title,
         ),
         preferredBackend: backendIdOfEngine(engine),
@@ -279,6 +299,8 @@ final class LivePlayerFacade {
   final RxBool hasError = false.obs;
   final RxBool _audioOnlyMode = false.obs;
   final RxBool isVerticalVideo = false.obs;
+
+  final RxBool isDummyVideo = false.obs;
   final _loadingSubject = StreamController<bool>.broadcast();
   bool _lastLoading = false;
 
@@ -290,9 +312,11 @@ final class LivePlayerFacade {
   FacadeStreamCommit? get currentSourceCommit => commit;
   bool isSourceCommitCurrent(FacadeStreamCommit value) => identical(value, commit);
 
-  Future<void> setAudioOnlyMode(bool audioOnly) async {
+  Future<void> setAudioOnlyMode(bool audioOnly, {bool stopVideoDecoding = false}) async {
     _audioOnlyMode.value = audioOnly;
-    await setAudioOnly(audioOnly);
+    if (audioOnlyStopsVideoDecoding(entering: audioOnly, stopVideoDecoding: stopVideoDecoding)) {
+      await setAudioOnly(audioOnly);
+    }
   }
 
   Widget getVideoWidget(BoxFit fit) {
@@ -365,6 +389,9 @@ final class LivePlayerFacade {
     final size = handle?.combinedSnapshot.geometry.videoSize;
     final next = size != null && size.height > size.width;
     if (next != isVerticalVideo.value) isVerticalVideo.value = next;
+    final dummy = (size != null && isDummyVideoSize(width: size.width, height: size.height)) ||
+        isAudioOnlyPlatform(_room?.platform);
+    if (dummy != isDummyVideo.value) isDummyVideo.value = dummy;
     // The compact window is shaped from the aspect it was fed when PiP began.
     // A live stream often reports its real size only after the first frame, and
     // a room can switch between landscape and portrait, so keep feeding it:
@@ -376,11 +403,58 @@ final class LivePlayerFacade {
     videoGeometryState.value = _computeVideoGeometry();
   }
 
-  Future<List<PlayerSource>> _intercept(List<PlayerSource> sources) async {
-    final interceptor = _interceptSources;
+  Future<List<PlayerSource>> _intercept(
+    List<PlayerSource> sources, {
+    Map<String, LiveStreamFacts> streamFacts = const {},
+    Map<String, HlsSourceQueryPolicy> sourceQueryPolicies = const {},
+  }) async {
+    final interceptor = _sourceInterceptor;
     if (interceptor == null) return sources;
-    final intercepted = await interceptor(sources);
+    final intercepted = await interceptor.intercept(
+      PlaybackSourceInterception(sources: sources, streamFacts: streamFacts, sourceQueryPolicies: sourceQueryPolicies),
+    );
     return intercepted.isEmpty ? sources : intercepted;
+  }
+
+  Future<List<PlayerSource>> _refreshSources(List<PlayerSource> current) async {
+    final resolver = _sourceResolver;
+    final committed = commit;
+    final room = _room;
+    if (resolver == null || committed == null || room == null || _disposed) return const [];
+
+    final fenceRevision = _commitRevision;
+    final result = await resolver(sourceRefreshRequestFor(committed));
+    if (!canAdoptSourceRefresh(
+      disposed: _disposed,
+      sameRoom: identical(_room, room),
+      revisionMoved: _commitRevision != fenceRevision,
+      result: result,
+    )) {
+      return const [];
+    }
+
+    final refreshed = await refreshedPlaybackCommit(
+      result,
+      committed: committed,
+      room: room,
+      intercept: (sources) => _intercept(
+        sources,
+        streamFacts: result.selection?.streamFacts ?? const {},
+        sourceQueryPolicies: result.selection?.sourceQueryPolicies ?? const {},
+      ),
+    );
+    if (refreshed.sources.isEmpty) return const [];
+
+    _lastLines = refreshed.lines;
+    _publishCommit(
+      refreshed.currentUrl,
+      refreshed.urls,
+      refreshed.qualities,
+      refreshed.currentQuality,
+      streamFacts: refreshed.streamFacts,
+      source: refreshed.ownedSource,
+    );
+    return refreshed.sources;
   }
 
   final RxBool isInPip = false.obs;
@@ -406,11 +480,63 @@ final class LivePlayerFacade {
 
   bool get isAppFloatingActive => floating.isAppFloatingActive;
   bool get shouldKeepDanmakuForAppFloating => floating.isAppFloatingActive;
+
+  /// The small window's danmaku pool.
+  ///
+  /// The facade owns it, not the room's controller: the window outlives the
+  /// room's route, and a pool that died with the page is exactly why the window
+  /// used to show a picture with no danmaku.
+  final BarrageController floatingDanmaku = BarrageController();
+
+  /// Feeds the small window's own pool.
+  ///
+  /// Called for every chat line the session delivers, so the window's danmaku
+  /// never depends on the room's controller still being alive: the pool and the
+  /// feed are both the facade's. The room's full-size surface and PiP keep their
+  /// own pools, so a line is never drawn twice.
+  void sendFloatingDanmaku(LiveMessage msg) {
+    if (!floating.isAppFloatingActive) return;
+    if (msg.message.trim().isEmpty) return;
+    final placement = msg.isLocal ? msg.style?.placement : null;
+    floatingDanmaku.send(
+      BarrageItem(
+        content: msg.message,
+        type: switch (placement) {
+          LiveMessagePlacement.top => BarrageType.topFixed,
+          LiveMessagePlacement.bottom => BarrageType.bottomFixed,
+          _ => BarrageType.scroll,
+        },
+        userId: msg.userId,
+        userName: msg.userName,
+        id: msg.messageId,
+        textColor: Color.fromARGB(255, msg.color.r, msg.color.g, msg.color.b),
+        fixedDuration: placement == null ? null : const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  void clearFloatingDanmaku() {
+    floatingDanmaku.clear();
+  }
+
   void prepareAppFloating({Future<void> Function()? onClose, FacadeStreamCommit? session}) =>
-      // onClose 必须转交：悬浮窗被用户关闭时要停弹幕并释放房间侧资源。
       floating.prepare(onClose: onClose);
+
+  /// The danmaku surface of the in-app small window.
+  ///
+  /// The pool is the facade's, so the surface keeps rendering whether or not the
+  /// room's controller is still alive; the controller is only consulted for the
+  /// room's own style.
+  Widget buildFloatingDanmaku(BuildContext context) {
+    final controller = activeVideoController;
+    return CompactDanmakuOverlay(
+      controller: controller is room_surface.VideoController ? controller : null,
+      barrage: floatingDanmaku,
+    );
+  }
+
   Future<void> showAppFloating({Widget Function(BuildContext)? danmakuBuilder}) =>
-      floating.showAppFloating(danmakuBuilder: danmakuBuilder);
+      floating.showAppFloating(danmakuBuilder: danmakuBuilder ?? buildFloatingDanmaku);
   Future<void> closeAppFloating() => floating.closeAppFloating();
   void prepareRoomSessionReentry([LiveRoom? liveroom]) => floating.prepare();
   FacadeStreamCommit? consumeRoomSessionReentry([LiveRoom? liveroom]) {
@@ -458,15 +584,41 @@ final class LivePlayerFacade {
     }
   }
 
-  Widget buildPiPOverlay() => _PipOverlayView(
+  Widget buildPiPOverlay({Widget? pictureCover}) => _PipOverlayView(
     facade: this,
+    pictureCover: pictureCover,
     danmaku: _activeVideoController != null ? CompactDanmakuOverlay(controller: _activeVideoController) : null,
   );
 
   double get currentPresentationAspectRatio {
     final size = handle?.combinedSnapshot.geometry.videoSize;
-    if (size == null || size.width <= 0 || size.height <= 0) return 16 / 9;
+    if (size == null || size.width <= 0 || size.height <= 0) {
+      // 尺寸快照还没到时不能一律按 16:9 报：竖屏流会拿到一个横屏 PiP 窗口，
+      // contain 缩放后四周全是黑边。声明的比例优先，都没有时按已观察到的
+      // 方向（isVerticalVideo 由帧尺寸事件驱动）兜底。
+      if (_declaredAspectRatio != null) return _declaredAspectRatio!;
+      return isVerticalVideo.value ? 9 / 16 : 16 / 9;
+    }
     return size.width / size.height;
+  }
+
+  double? _declaredAspectRatio;
+
+  /// Applied once per source, so a reconnect does not seek back to the declared start.
+  Duration? _pendingSeekAt;
+
+  void _tryApplyPendingSeek() {
+    final pending = _pendingSeekAt;
+    if (pending == null || pending <= Duration.zero) return;
+    final player = handle;
+    if (player == null) return;
+    if (player.playback.duration <= pending) return;
+    _pendingSeekAt = null;
+    unawaited(
+      player.seek(pending).catchError((Object error, StackTrace stackTrace) {
+        debugPrint('Seek to the declared start failed: $error');
+      }),
+    );
   }
 
   VideoSourceOrientation get effectiveVideoOrientation =>
@@ -504,7 +656,7 @@ final class LivePlayerFacade {
     List<BoxFit>? fitList,
     Widget? controls,
     bool trackPipSource = false,
-    bool? audioOnlyOverride,
+    Widget? pictureCover,
     Color? surfaceColor,
     double? videoViewportAspectRatio,
     Object? portraitFullscreenDisplayMode,
@@ -513,19 +665,25 @@ final class LivePlayerFacade {
         ? (fitList == null || fitList.isEmpty ? BoxFit.contain : fitList[fit.clamp(0, fitList.length - 1)])
         : fit as BoxFit;
     final video = getVideoWidget(resolved);
-    if (controls == null) return video;
+    final children = <Widget>[video, ?pictureCover, ?controls];
+    if (children.length == 1) return video;
     // expand is load-bearing: a default (loose) Stack sizes itself to the
     // non-positioned child, and in an unbounded ancestor that hands the video
     // infinite constraints — MediaPlayerView's AspectRatio then throws
     // "BoxConstraints forces an infinite width and height" every frame and
     // the room shows nothing.
-    return Stack(fit: StackFit.expand, children: [video, controls]);
+    return Stack(fit: StackFit.expand, children: children);
   }
 
-  Future<void> close() => _controller.close();
+  Future<void> close() async {
+    await _sourceInterceptor?.release();
+    await _controller.close();
+  }
+
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    await _sourceInterceptor?.close();
     await _stateSub?.cancel();
     await _playingSub?.cancel();
     await _errorSub?.cancel();
@@ -556,6 +714,7 @@ class FacadeStreamCommit {
     this.dataSource = '',
     List<String>? playUrls,
     this.sourceQueryPolicies = const {},
+    this.streamFacts = const {},
     this.hasUseDefaultResolution = true,
   }) : urls = urls ?? playUrls ?? const [],
        currentUrl = currentUrl ?? dataSource,
@@ -575,6 +734,8 @@ class FacadeStreamCommit {
   final bool isLiving;
   final String dataSource;
   final Map<String, HlsSourceQueryPolicy> sourceQueryPolicies;
+
+  final Map<String, LiveStreamFacts> streamFacts;
   final bool hasUseDefaultResolution;
 
   FacadeStreamCommit copyWith({
@@ -583,6 +744,7 @@ class FacadeStreamCommit {
     Object? source,
     Object? ownedSource,
     Map<String, HlsSourceQueryPolicy>? sourceQueryPolicies,
+    Map<String, LiveStreamFacts>? streamFacts,
     Map<String, String>? headers,
     bool? isAudioOnly,
   }) => FacadeStreamCommit(
@@ -599,6 +761,7 @@ class FacadeStreamCommit {
     isLiving: isLiving,
     dataSource: dataSource ?? this.dataSource,
     sourceQueryPolicies: sourceQueryPolicies ?? this.sourceQueryPolicies,
+    streamFacts: streamFacts ?? this.streamFacts,
     hasUseDefaultResolution: hasUseDefaultResolution,
   );
 }
@@ -609,11 +772,16 @@ typedef PlaybackSourceResolver = Future<PlaybackSourceRefreshResult> Function(Pl
 
 extension FacadeStreamCommitLegacy on FacadeStreamCommit {
   List<String> get playUrls => urls;
-  Object? get source => null;
   String get currentUrl_ => currentUrl;
   Map<String, HlsSourceQueryPolicy> get queryPolicies => sourceQueryPolicies;
-  PlaybackSourceQualitySelection? get selection =>
-      qualities.isEmpty ? null : PlaybackSourceQualitySelection(qualities: qualities, currentQuality: currentQuality);
+  PlaybackSourceQualitySelection? get selection => qualities.isEmpty
+      ? null
+      : PlaybackSourceQualitySelection(
+          qualities: qualities,
+          currentQuality: currentQuality,
+          sourceQueryPolicies: sourceQueryPolicies,
+          streamFacts: streamFacts,
+        );
 }
 
 @immutable
@@ -662,7 +830,6 @@ class PlaybackSourceRefreshResult {
   final DateTime? invalidAt;
   final PlaybackSourceQualitySelection? selection;
 
-  /// 起播位置（点播稿件式的源才有：B 站轮播房的 `play_time`）。直播/回放恒为 0。
   final Duration startAt;
 }
 
@@ -672,10 +839,19 @@ class PlaybackSourceQualitySelection {
     required this.qualities,
     required this.currentQuality,
     this.sourceQueryPolicies = const {},
+    this.streamFacts = const {},
+    this.declaredAspectRatio,
+    this.startAt = Duration.zero,
   });
   final List<LivePlayQuality> qualities;
   final int currentQuality;
   final Map<String, HlsSourceQueryPolicy> sourceQueryPolicies;
+
+  final Map<String, LiveStreamFacts> streamFacts;
+
+  final double? declaredAspectRatio;
+
+  final Duration startAt;
 }
 
 /// The desktop/system PiP surface: hover reveals the controls (a large
@@ -683,10 +859,12 @@ class PlaybackSourceQualitySelection {
 /// and the pointer drag hands the window to the native move loop. Touch
 /// platforms keep the controls always visible — there is no hover there.
 class _PipOverlayView extends StatefulWidget {
-  const _PipOverlayView({required this.facade, required this.danmaku});
+  const _PipOverlayView({required this.facade, required this.danmaku, this.pictureCover});
 
   final LivePlayerFacade facade;
   final Widget? danmaku;
+
+  final Widget? pictureCover;
 
   @override
   State<_PipOverlayView> createState() => _PipOverlayViewState();
@@ -711,7 +889,9 @@ class _PipOverlayViewState extends State<_PipOverlayView> {
     return defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
   }
 
-  bool get _showControls => _isTouchDevice || _hovered;
+  // 触屏（移动端）的画中画不显示任何 UI 控件：窗口小，控件只会挡住画面，
+  // 系统的 PiP 窗口本身就带播放/暂停和全屏手势。桌面保留 hover 显隐。
+  bool get _showControls => !_isTouchDevice && _hovered;
 
   @override
   Widget build(BuildContext context) {
@@ -738,23 +918,32 @@ class _PipOverlayViewState extends State<_PipOverlayView> {
           children: [
             // Rounded video corners: the window itself is rounded by the
             // desktop backend; the clip keeps the surface corners soft even
-            // where the system does not round (older Windows).
+            // where the system does not round (older Windows). 移动端的系统
+            // PiP 窗口是方的且自己管理外观，别再裁圆角——圆角会切掉画面四角。
             ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: _isTouchDevice ? BorderRadius.zero : BorderRadius.circular(12),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  GestureDetector(
-                    // The video surface stays gesture-first: single tap
-                    // toggles playback, double tap leaves PiP, and a drag
-                    // hands the pointer to the native caption-drag loop —
-                    // the compact window has no title bar, so a
-                    // surface-initiated drag is the only way to move it.
-                    onDoubleTap: () => unawaited(facade.exitPip()),
-                    onTap: facade.togglePlayPause,
-                    onPanStart: (_) => unawaited(windowsPipWindow.startDragging()),
-                    child: facade.getVideoWidget(BoxFit.contain),
-                  ),
+                  // 触屏端（Android/iOS 系统 PiP）不挂任何手势识别器：Flutter
+                  // 一旦消费了拖动，系统的 PiP 窗口就收不到事件，窗口拖不动、
+                  // 单击也不会弹出系统的播放/关闭菜单。让系统全权处理。
+                  // 桌面小窗没有系统手势，surface 手势是唯一的操作入口。
+                  if (_isTouchDevice)
+                    facade.getVideoWidget(BoxFit.contain)
+                  else
+                    GestureDetector(
+                      // The video surface stays gesture-first: single tap
+                      // toggles playback, double tap leaves PiP, and a drag
+                      // hands the pointer to the native caption-drag loop —
+                      // the compact window has no title bar, so a
+                      // surface-initiated drag is the only way to move it.
+                      onDoubleTap: () => unawaited(facade.exitPip()),
+                      onTap: facade.togglePlayPause,
+                      onPanStart: (_) => unawaited(windowsPipWindow.startDragging()),
+                      child: facade.getVideoWidget(BoxFit.contain),
+                    ),
+                  ?widget.pictureCover,
                   if (widget.danmaku != null) Positioned.fill(child: widget.danmaku!),
                 ],
               ),
@@ -839,7 +1028,6 @@ class _PipOverlayViewState extends State<_PipOverlayView> {
   }
 }
 
-/// 引擎枚举到 media_core 后端 id 的映射，播放器工厂按 id 选实现。
 String backendIdOfEngine(PlayerEngine engine) => switch (engine) {
   PlayerEngine.mediaKit => kMediaKitPlayerBackendId,
   PlayerEngine.fijk => kIjkPlayerBackendId,

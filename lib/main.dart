@@ -14,6 +14,9 @@ import 'src/platforms/common/playback/window_presentation.dart';
 import 'src/platforms/common/proxy_setup.dart';
 import 'src/shared/presentation/tokens_override.dart';
 
+import 'package:pure_live/domains/live/domain/live_input_playback_binder.dart';
+import 'package:pure_live/domains/recorder/data/services/live_input_playback_binding.dart';
+
 /// 默认产品入口：全新的 Windows UI。
 /// 命令行参数(Flutter 桌面经 main args 注入,如 `--route /soop/category`)
 /// 供真机自动化验证直达目标页面。
@@ -50,5 +53,9 @@ Future<void> main(List<String> args) async {
   // pure_live 适配器字段(分类名/画质名/公告)走 i18n();zishu UI 不包
   // EasyLocalization,启动时载入打包 zh.json 作回落,否则界面上漏原始 key。
   await ensureZhTextFallback();
+  // owned-input 播放绑定(上游 e1b5055bd 起 binder 改为装配层安装制):
+  // zishu 不跑旧 UI bootstrap,这里装上游 bindSiteInputForPlayback
+  // (Bigo/Fc2/Niconico 三配方→HLS 座位,录制域实现)。
+  configureLiveInputPlaybackBinder(bindSiteInputForPlayback);
   runApp(const ProviderScope(child: WindowsApp()));
 }

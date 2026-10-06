@@ -1,14 +1,18 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:dio/dio.dart';
-import 'package:pure_live/core/stream/hls_source_query_policy.dart';
+import 'package:media_core_ingest/media_core_ingest.dart';
+import 'package:pure_live/core/player/core/ingest_ffmpeg_registry.dart';
+import 'package:pure_live/core/player/core/playback_input_lease.dart';
+import 'package:pure_live/core/player/core/playback_proxy_policy.dart';
 import 'package:pure_live/domains/recorder/data/services/ffmpeg_hls_input_relay.dart';
-import 'package:pure_live/domains/live/data/stream/flv_splice_relay.dart';
+import 'package:pure_live/shared/platforms/live_site.dart';
 
 import 'flv_legacy_hevc_relay.dart';
-
-import 'package:pure_live/core/player/core/playback_proxy_policy.dart';
-import 'package:pure_live/core/player/core/playback_input_lease.dart';
+import 'live_stream_ingest.dart';
+import 'playback_ingest_needs.dart';
+import 'playback_manifest_probe.dart';
 
 class _PlaybackInputCreation {
   _PlaybackInputCreation(this.joinOnCancel) {
@@ -30,6 +34,11 @@ class PlaybackSourceTransport {
   final Set<_PlaybackInputCreation> _creating = {};
   final Set<PlaybackInputLease> _pending = {};
   final Set<PlaybackInputLease> _retiring = {};
+
+  /// Inputs already superseded but kept open one round: the engine may still be
+  /// reading the loopback URI while the caller assembles its replacement source
+  /// list, so they are retired by the *next* transaction instead of immediately.
+  final Set<PlaybackInputLease> _stale = {};
   PlaybackInputLease? _active;
 
   /// Remote session closure can invalidate a committed input before a user
@@ -38,6 +47,9 @@ class PlaybackSourceTransport {
   int _generation = 0;
   bool _closed = false;
   Future<void>? _closing;
+
+  static String _perHostProxy(Uri uri) =>
+      playsDirectBehindProxy(uri) ? 'DIRECT' : PlaybackProxyPolicy.currentDirective();
 
   static Future<PlaybackInputLease> _createRelay(
     String url,
@@ -52,7 +64,6 @@ class PlaybackSourceTransport {
         throw const FormatException('Invalid playback input header');
       }
     }
-    final directive = PlaybackProxyPolicy.currentDirective();
     final relay = await FFmpegHlsInputRelay.startForArguments(
       [
         if (headers.isNotEmpty) ...['-headers', headers.entries.map((e) => '${e.key}: ${e.value}\r\n').join()],
@@ -60,92 +71,214 @@ class PlaybackSourceTransport {
         url,
       ],
       sourceQueryPolicy: policy,
-      findProxy: (_) => directive,
+      findProxy: _perHostProxy,
     );
     if (relay == null) throw const FormatException('Expected a policy-bound HLS input');
     return PlaybackInputLease(relay.inputUri, relay.close);
   }
 
-  static Future<PlaybackInputLease> _createSpliceRelay(
-    String url,
-    Map<String, String> headers,
-    DateTime refreshAt,
-    FlvSourceRenewer renew,
-  ) async {
-    final directive = PlaybackProxyPolicy.currentDirective();
-    final relay = await FlvSpliceRelay.start(
-      FlvLeasedSource(Uri.parse(url), refreshAt: refreshAt),
-      renew: renew,
-      headers: headers,
-      findProxy: (_) => directive,
-    );
-    return PlaybackInputLease(relay.inputUri, relay.close, isUsable: () => !relay.isClosed);
-  }
-
   static Future<PlaybackInputLease> _createLegacyHevcRelay(String url, Map<String, String> headers) async {
-    final directive = PlaybackProxyPolicy.currentDirective();
-    final relay = await FlvLegacyHevcRelay.start(url, headers, findProxy: (_) => directive);
+    final relay = await FlvLegacyHevcRelay.start(url, headers, findProxy: _perHostProxy);
     return PlaybackInputLease(relay.inputUri, relay.close, isUsable: () => !relay.isClosed);
   }
 
-  /// [rewriteLegacyHevcFlv] is for libmpv consumers only: its FFmpeg 7.1 does
-  /// not know codec-id-12 HEVC FLV, so known CDNs go through a local rewrite.
+  /// Serves a rewritten manifest tree from loopback: every child the player sees
+  /// is already an absolute loopback URL, so neither a bare `media.95.mp4` nor an
+  /// absolute path `/tc.livehls/...` can become a Windows path on the way to the
+  /// demuxer.
   ///
-  /// A leased FLV source ([refreshAt] and [renewFlv]) is served through
-  /// [FlvSpliceRelay], which replaces the expiring URL underneath one
-  /// continuous stream.
-  Future<void> open({
-    required String url,
-    required List<String> urls,
-    required Map<String, String> headers,
-    required HlsSourceQueryPolicy? policy,
-    required PlaybackNativeOpen nativeOpen,
-    bool rewriteLegacyHevcFlv = false,
-    DateTime? refreshAt,
-    FlvSourceRenewer? renewFlv,
-  }) {
-    final legacyFactory = _createInput;
-    if (policy == null &&
-        renewFlv != null &&
-        !FlvLegacyHevcRelay.appliesTo(url) &&
-        FlvSpliceRelay.appliesTo(url, refreshAt: refreshAt)) {
-      return _open(
-        url: url,
-        urls: urls,
-        headers: headers,
-        nativeOpen: nativeOpen,
-        joinCreationOnCancel: true,
-        createInput: (_) => _createSpliceRelay(url, Map<String, String>.unmodifiable(headers), refreshAt!, renewFlv),
-      );
+  /// The provider's session cookie travels with the tree. TwitCasting hands one
+  /// out *with the manifest* (`lvhls_ssid_<movie>`, scoped to the stream path,
+  /// ten minutes) and answers a segment request that lacks it with 401 — so a
+  /// relay that drops it reads the playlist fine and then starves on the first
+  /// segment. Every other relay here already fetched upstream through the
+  /// player's proxy; this one is the last that did not.
+  static Future<PlaybackInputLease> _createIngestRelay(
+    String url,
+    Map<String, String> headers, {
+    String? rootManifest,
+    Uri Function(Uri)? childUriPolicy,
+    HlsSourceQueryPolicy? matchesPolicy,
+  }) async {
+    final Uri source = Uri.parse(url);
+    if (matchesPolicy != null && !matchesPolicy.matchesSource(source)) {
+      throw const FormatException('Playback query policy does not match selected input');
     }
-    if (policy == null && rewriteLegacyHevcFlv && FlvLegacyHevcRelay.appliesTo(url)) {
-      return _open(
-        url: url,
-        urls: urls,
-        headers: headers,
-        nativeOpen: nativeOpen,
-        joinCreationOnCancel: true,
-        createInput: (_) => _createLegacyHevcRelay(url, Map<String, String>.unmodifiable(headers)),
-      );
-    }
-    return _open(
-      url: url,
-      urls: urls,
+    final relay = await LoopbackIngestRelay.start(
+      source: source,
       headers: headers,
-      nativeOpen: nativeOpen,
-      // Old injected factories have no cancellation contract; preserve their
-      // late-result ownership without making close wait for arbitrary futures.
-      joinCreationOnCancel: legacyFactory == null,
-      createInput: policy == null
-          ? null
-          : (_) {
-              final source = Uri.tryParse(url);
-              if (source == null || !policy.matchesSource(source)) {
-                throw const FormatException('Playback query policy does not match selected input');
-              }
-              return (legacyFactory ?? _createRelay)(url, Map<String, String>.unmodifiable(headers), policy);
-            },
+      rootManifest: rootManifest,
+      childUriPolicy: childUriPolicy,
+      sessionCookies: true,
+      findProxy: _perHostProxy,
     );
+    return PlaybackInputLease(relay.inputUri, relay.close, isUsable: () => !relay.isClosed);
+  }
+
+  /// Remuxes an upstream the player cannot parse: FFmpeg reads it once and the
+  /// player reads a plain local playlist instead.
+  static Future<PlaybackInputLease> _createFfmpegRelay(String url, Map<String, String> headers) async {
+    final relay = await FfmpegIngestRelay.start(
+      source: Uri.parse(url),
+      startFfmpeg: startIngestFfmpeg,
+      headers: headers,
+    );
+    return PlaybackInputLease(relay.inputUri, relay.close);
+  }
+
+  /// Prepares one remote line as a local input the player can read, or returns
+  /// null when the line is best handed over untouched.
+  ///
+  /// The caller swaps the returned loopback URI into its own source list; the
+  /// lease stays owned here and is released by the next transaction, by
+  /// [release] or by [close]. Relaying costs a process, a port and one to three
+  /// seconds of start-up, so only a declared need - or, on an undeclared line, a
+  /// manifest whose children really cannot be resolved natively - moves it off
+  /// the direct path.
+  ///
+  /// A relay that cannot start returns null instead of throwing: the caller then
+  /// plays the upstream URL directly, which is what happens with no transport.
+  Future<PlaybackInputLease?> prepare({
+    required String url,
+    required Map<String, String> headers,
+    LiveStreamFacts? facts,
+    HlsSourceQueryPolicy? policy,
+  }) async {
+    if (_closed) return null;
+    final int generation = ++_generation;
+    bool current() => !_closed && generation == _generation;
+    PlaybackInputLease? input;
+    try {
+      if (_creating.isNotEmpty || _pending.isNotEmpty || _stale.isNotEmpty) await _cancelPendingResources();
+      if (!current()) return null;
+      final PlaybackOwnedInputFactory? createInput = await _chooseInput(
+        url: url,
+        headers: headers,
+        facts: facts,
+        policy: policy,
+      );
+      // The superseded input stays open one more round: the engine may still be
+      // reading it while the caller assembles the replacement source list.
+      final PlaybackInputLease? previous = _active;
+      _active = null;
+      if (previous != null) _stale.add(previous);
+      if (createInput == null || !current()) return null;
+      input = await _acquire(createInput, current, joinOnCancel: true);
+      if (!current() || !input.isUsable) throw StateError('Playback input transaction was retired');
+      _active = input;
+      _pending.remove(input);
+      return _active;
+    } catch (error) {
+      if (input != null) {
+        _pending.remove(input);
+        await _retire(input);
+      }
+      developer.log('playback input relay unavailable: $error', name: 'PlaybackIngest');
+      return null;
+    }
+  }
+
+  /// Releases the input handed to the player without closing the owner: playback
+  /// stopped (room left, floating window closed) but a later line still gets one.
+  Future<void> release() async {
+    if (_closed) return;
+    _generation++;
+    final PlaybackInputLease? active = _active;
+    _active = null;
+    if (active != null) _stale.add(active);
+    await _cancelPendingResources();
+  }
+
+  /// The delivery decision for one line, as a factory [prepare] can acquire - or
+  /// null when the line goes to the player untouched.
+  Future<PlaybackOwnedInputFactory?> _chooseInput({
+    required String url,
+    required Map<String, String> headers,
+    required LiveStreamFacts? facts,
+    required HlsSourceQueryPolicy? policy,
+  }) async {
+    final Uri? source = Uri.tryParse(url);
+    if (source == null) return null;
+    final Map<String, String> frozen = Map<String, String>.unmodifiable(headers);
+    final bool manifest = isDeclaredManifest(facts, source);
+
+    if (policy != null) {
+      // An HLS source with a query-token policy goes through the same ingest
+      // relay as a rewritten manifest: the policy is applied to the *upstream*
+      // child requests, so the player only ever sees absolute loopback URLs.
+      final PlaybackInputFactory? legacyFactory = _createInput;
+      if (legacyFactory == null && manifest) {
+        return (_) => _createIngestRelay(url, frozen, childUriPolicy: policy.apply, matchesPolicy: policy);
+      }
+      return (_) {
+        if (!policy.matchesSource(source)) {
+          throw const FormatException('Playback query policy does not match selected input');
+        }
+        return (legacyFactory ?? _createRelay)(url, frozen, policy);
+      };
+    }
+
+    final ({Set<IngestNeed> needs, String? rootManifest}) decision = await _ingestNeeds(
+      url: url,
+      source: source,
+      headers: frozen,
+      facts: facts,
+      manifest: manifest,
+    );
+    final IngestPlan plan = resolveIngestPlan(needs: decision.needs, sourceIsManifest: manifest);
+    if (plan.isDirect) return null;
+    // Host only: a signed live URL carries its token in the query.
+    developer.log('${source.host} -> $plan', name: 'PlaybackIngest');
+    if (plan.strategy == IngestStrategy.manifestRelay) {
+      final String? rootManifest = decision.rootManifest;
+      return (_) => _createIngestRelay(url, frozen, rootManifest: rootManifest);
+    }
+    if (ingestFfmpegAvailable) {
+      // The player's own FFmpeg cannot parse this container (codec-id-12 HEVC
+      // inside FLV), so a local FFmpeg remuxes it into a loopback HLS tree.
+      return (_) => _createFfmpegRelay(url, frozen);
+    }
+    // Without an FFmpeg runtime the Dart tag rewriter still covers known CDNs.
+    if (FlvLegacyHevcRelay.appliesTo(url)) return (_) => _createLegacyHevcRelay(url, frozen);
+    return null;
+  }
+
+  /// Why this line cannot be handed to the player as it is, plus the manifest
+  /// body already read for that answer so the relay does not read it twice.
+  Future<({Set<IngestNeed> needs, String? rootManifest})> _ingestNeeds({
+    required String url,
+    required Uri source,
+    required Map<String, String> headers,
+    required LiveStreamFacts? facts,
+    required bool manifest,
+  }) async {
+    // A platform that declares its line is believed: that is the point of the
+    // declaration, and it saves a probe read on every HLS start.
+    if (facts != null) return (needs: ingestNeedsFor(facts), rootManifest: null);
+    if (manifest) {
+      // Decide from the manifest itself rather than from a per-platform list: a
+      // manifest whose children are bare names (`media.95.mp4`) or absolute paths
+      // cannot be handed to the native resolver, because a reader that loses the
+      // manifest URL looks for them next to itself and turns them into local
+      // paths (`No protocol handler found ... \tc.livehls\...\media.95.mp4`).
+      final PlaybackManifestProbe? probe = await probePlaybackManifest(url, headers: headers);
+      if (probe != null) {
+        final Set<IngestNeed> needs = probe.kind.requiresRewrite
+            ? const <IngestNeed>{IngestNeed.relativeChildren}
+            : const <IngestNeed>{};
+        developer.log(
+          'manifest ${source.host}: ${probe.kind.describe()} -> '
+          '${needs.isEmpty ? 'direct' : 'loopback rewrite'}',
+          name: 'PlaybackIngest',
+        );
+        return (needs: needs, rootManifest: probe.body);
+      }
+    }
+    // Nothing declared and nothing readable: fall back to the host table and to
+    // the CDNs known to serve HEVC inside FLV.
+    final Set<IngestNeed> needs = <IngestNeed>{...playbackIngestNeeds(source)};
+    if (FlvLegacyHevcRelay.appliesTo(url)) needs.add(IngestNeed.legacyContainer);
+    return (needs: Set<IngestNeed>.unmodifiable(needs), rootManifest: null);
   }
 
   /// No placeholder URL, raw cookies or signed websocket are sent to native.
@@ -166,7 +299,9 @@ class PlaybackSourceTransport {
     PlaybackInputLease? input;
     bool current() => !_closed && generation == _generation;
     try {
-      if (_creating.isNotEmpty || _pending.isNotEmpty || _retiring.isNotEmpty) await _cancelPendingResources();
+      if (_creating.isNotEmpty || _pending.isNotEmpty || _stale.isNotEmpty || _retiring.isNotEmpty) {
+        await _cancelPendingResources();
+      }
       if (!current()) throw StateError('Playback input transaction was retired');
       if (createInput != null) {
         input = await _acquire(createInput, current, joinOnCancel: joinCreationOnCancel);
@@ -239,8 +374,11 @@ class PlaybackSourceTransport {
     }
     final pending = _pending.toList();
     _pending.clear();
+    final stale = _stale.toList();
+    _stale.clear();
     await Future.wait([
       ...pending.map(_retire),
+      ...stale.map(_retire),
       ..._retiring.map((input) => input.close()),
       for (final creation in creating)
         if (creation.joinOnCancel) creation.settled.future,

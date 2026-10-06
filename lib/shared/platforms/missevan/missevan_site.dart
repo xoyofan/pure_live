@@ -1,6 +1,5 @@
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
@@ -12,6 +11,7 @@ import 'package:pure_live/core/models/live_play_quality.dart';
 import 'package:pure_live/shared/platforms/live_external_room.dart';
 
 import 'missevan_api.dart';
+import 'missevan_danmaku.dart';
 
 /// Anonymous directory, official keyword/exact search, playback and recording.
 /// Remote danmaku remains absent until its contract is verified.
@@ -25,7 +25,6 @@ class MissevanSite extends LiveSite
         LiveCancellableSearch,
         LiveSearchPaginationPolicy,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     // fork 修正(2026-10-03):上游用类字段 id(平台名)拼路径——所有站点

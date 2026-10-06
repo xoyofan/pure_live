@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
@@ -12,6 +11,7 @@ import 'package:pure_live/core/utils/i18n.dart';
 import 'package:pure_live/shared/platforms/live_external_room.dart';
 
 import 'baidu_live_api.dart';
+import 'baidu_live_danmaku.dart';
 import 'baidu_live_link.dart';
 
 final class BaiduLiveSite extends LiveSite
@@ -24,7 +24,6 @@ final class BaiduLiveSite extends LiveSite
         LivePlayUrlResolver,
         LivePlayRecoveryResolver,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     final id = sanitizedExternalRoomId(liveroom.roomId);
@@ -52,7 +51,7 @@ final class BaiduLiveSite extends LiveSite
   String get directoryNoticeKey => 'baidulive_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => BaiduLiveDanmaku();
 
   @override
   Future<List<LiveCategory>> getCategores(int page, int pageSize) async {
@@ -162,7 +161,6 @@ final class BaiduLiveSite extends LiveSite
         BaiduLiveState.preview || BaiduLiveState.offline => LiveStatus.offline,
         BaiduLiveState.restricted || BaiduLiveState.unknown => LiveStatus.unknown,
       },
-      // 付费/禁止访问是在播 + 限制（上游 30-5），播放时才说明原因。
       restriction: room.state == BaiduLiveState.live || room.state == BaiduLiveState.replay ? room.restriction : null,
       watching: online ?? '',
       onlineViewers: online,
@@ -170,6 +168,7 @@ final class BaiduLiveSite extends LiveSite
       audienceMetricType: online == null ? AudienceMetricType.unknown : AudienceMetricType.onlineViewers,
       notice: notice.join('\n'),
       httpHeaders: BaiduLiveApi.mediaHeaders(room.roomId),
+      danmakuData: room.danmakuArgs,
       data: includeMedia ? room : null,
     );
   }
@@ -308,9 +307,12 @@ final class BaiduLiveSite extends LiveSite
     final selectionId = quality.selectionId.toString();
     for (final variant in room.variants) {
       if (variant.id != selectionId) continue;
+      final urls = variant.urls.map((uri) => uri.toString()).toList(growable: false);
+      final format = variant.protocol == 'hls' ? LiveStreamFormat.hls : LiveStreamFormat.flv;
       return LivePlayUrlResolution(
-        urls: variant.urls.map((uri) => uri.toString()).toList(growable: false),
+        urls: urls,
         appliedQualityData: variant.id,
+        streamFacts: {for (final url in urls) url: (format: format, codec: variant.codec, unresolvedChildren: false)},
       );
     }
     throw const BaiduLiveException(BaiduLiveFailure.mediaUnavailable);

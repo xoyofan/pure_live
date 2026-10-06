@@ -75,6 +75,23 @@ class AccountPage extends GetView<AccountController> {
               );
             }),
             Obx(() {
+              final isLogined = cookie.bigoCookie.v.isNotEmpty;
+              return _buildAccountTile(
+                context,
+                logo: 'assets/images/bigo.png',
+                title: i18n("site_bigo"),
+                subtitle: isLogined ? i18n("logined") : i18n("set_cookie"),
+                isLogined: isLogined,
+                onTap: () => isLogined
+                    ? _showLogoutDialog(
+                        context,
+                        accountName: i18n('site_bigo'),
+                        onConfirm: () => cookie.bigoCookie.v = "",
+                      )
+                    : Get.toNamed(RoutePath.kBigoCookie),
+              );
+            }),
+            Obx(() {
               final isLogined = cookie.douyinCookie.v.isNotEmpty;
               return _buildAccountTile(
                 context,
@@ -171,7 +188,7 @@ class AccountPage extends GetView<AccountController> {
                     ? _showLogoutDialog(
                         context,
                         accountName: i18n('site_douyu'),
-                        onConfirm: () => cookie.douyuCookie.v = '',
+                        onConfirm: cookie.clearDouyuSession,
                       )
                     // A cookie that no longer holds a session is replaced, not
                     // signed out of: the editor is where the viewer fixes it.
@@ -179,6 +196,39 @@ class AccountPage extends GetView<AccountController> {
               );
             }),
           ]),
+          const SizedBox(height: 12),
+          Obx(() {
+            final enabled = cookie.hasAnyCredential;
+            final theme = Theme.of(context);
+            return context.buildModernCard([
+              ListTile(
+                enabled: enabled,
+                leading: Icon(
+                  Remix.delete_bin_2_line,
+                  size: 20,
+                  color: enabled ? theme.colorScheme.error.withValues(alpha: 0.85) : theme.disabledColor,
+                ),
+                title: Text(
+                  i18n('clear_all_accounts'),
+                  style: AppTextStyles.t15.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: enabled ? theme.colorScheme.error : theme.disabledColor,
+                  ),
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    i18n('clear_all_accounts_desc'),
+                    style: AppTextStyles.t12.copyWith(color: theme.hintColor.withValues(alpha: 0.75)),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                onTap: enabled ? () => _showClearAllDialog(context) : null,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              ),
+            ]);
+          }),
           const SizedBox(height: 32),
         ],
       ),
@@ -249,40 +299,70 @@ class AccountPage extends GetView<AccountController> {
     unawaited(
       controller.runLogoutTransaction(() async {
         if (!context.mounted) return;
-        final confirmed = await showDialog<bool>(
-          context: context,
-          useRootNavigator: true,
-          builder: (dialogContext) => AlertDialog(
-            scrollable: true,
-            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-            title: Text(i18n('logout')),
-            content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Text(i18n('confirm_logout_named', args: {'name': accountName})),
-            ),
-            actionsOverflowDirection: VerticalDirection.down,
-            actionsOverflowButtonSpacing: 8,
-            actions: [
-              TextButton(
-                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-                onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(false),
-                child: Text(i18n('cancel')),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(48, 48),
-                  backgroundColor: Theme.of(dialogContext).colorScheme.error,
-                  foregroundColor: Theme.of(dialogContext).colorScheme.onError,
-                ),
-                onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(true),
-                child: Text(i18n('logout')),
-              ),
-            ],
-          ),
+        final confirmed = await _confirmDangerDialog(
+          context,
+          title: i18n('logout'),
+          message: i18n('confirm_logout_named', args: {'name': accountName}),
+          confirmLabel: i18n('logout'),
         );
-        if (confirmed != true || !context.mounted) return;
+        if (!confirmed || !context.mounted) return;
         await onConfirm();
       }),
     );
+  }
+
+  void _showClearAllDialog(BuildContext context) {
+    unawaited(
+      controller.runLogoutTransaction(() async {
+        if (!context.mounted) return;
+        final confirmed = await _confirmDangerDialog(
+          context,
+          title: i18n('clear_all_accounts'),
+          message: i18n('confirm_clear_all_accounts'),
+          confirmLabel: i18n('clear'),
+        );
+        if (!confirmed || !context.mounted) return;
+        await BiliBiliAccountService.instance.logout();
+        controller.cookie.clearAllCookies();
+        ToastUtil.show(i18n('clear_all_accounts_done'));
+      }),
+    );
+  }
+
+  Future<bool> _confirmDangerDialog(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required String confirmLabel,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogContext) => AlertDialog(
+        scrollable: true,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        title: Text(title),
+        content: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: Text(message)),
+        actionsOverflowDirection: VerticalDirection.down,
+        actionsOverflowButtonSpacing: 8,
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+            onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(false),
+            child: Text(i18n('cancel')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+              foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
   }
 }

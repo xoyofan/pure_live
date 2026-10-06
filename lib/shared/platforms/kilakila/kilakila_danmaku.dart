@@ -1,178 +1,252 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
+import 'package:pure_live/core/logging/core_log.dart';
 import 'package:pure_live/core/models/live_message.dart';
+import 'package:pure_live/core/network/web_socket_util.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 
-/// KilaKila live chat via the public message REST interface, verified against
-/// the public endpoint (2026-10): `GET
-/// https://live.kilakila.cn/LiveRoom/latestQuery?roomId=` is anonymous and
-/// returns `b.data[]` rows of `{roomId, ownerUid, relativeTime, bizType,
-/// content: JSON string}`. The room's guest WebSocket exists but its
-/// handshake needs extra parameters, so the first version polls
-/// `latestQuery` on a fixed interval and dedupes rows by `relativeTime`.
 class KilakilaDanmakuArgs {
-  KilakilaDanmakuArgs({required this.roomId});
-
-  KilakilaDanmakuArgs.fromJson(Map<String, dynamic> json) : roomId = json['roomId'] ?? '';
+  const KilakilaDanmakuArgs({required this.roomId});
 
   final String roomId;
-
-  Map<String, dynamic> toJson() => <String, dynamic>{'roomId': roomId};
 }
 
-class KilakilaDanmaku implements LiveDanmaku {
-  bool _connected = false;
+class KilakilaDanmaku extends LiveDanmaku {
+  KilakilaDanmaku();
+
+  static const String _host = 'wim.hongrenshuo.com.cn';
+  static const String _namespace = '/live_chat_room_guest';
+  static const Duration _pingInterval = Duration(seconds: 25);
+  static const int _chatType = 200;
+  static const int _roomStateType = 637;
+
+  KilakilaDanmakuArgs? _args;
+  WebScoketUtils? _socket;
+  var _generation = 0;
+  var _running = false;
+  var _joined = false;
+  Timer? _pingTimer;
+  Timer? _joinTimer;
+
+  static String _query(String roomId) => 'roomId=$roomId&appId=111&clientType=1';
 
   @override
-  bool get isConnected => _connected;
-
-  @override
-  void markConnected() {
-    _connected = true;
-  }
-
-  @override
-  void markDisconnected() {
-    _connected = false;
-  }
-
-  // REST polling carries its own liveness; no socket keepalive applies.
-  @override
-  int heartbeatTime = 0;
-
-  // REST polling carries its own liveness.
-  @override
-  void heartbeat() {}
-
-  @override
-  Function(LiveMessage msg)? onMessage;
-  @override
-  Function(String msg)? onReconnect;
-  @override
-  Function(String msg)? onClose;
-  @override
-  Function()? onReady;
-
-  static const _latestQueryUrl = 'https://live.kilakila.cn/LiveRoom/latestQuery';
-  static const _pollInterval = Duration(seconds: 4);
-  static const _rowLimit = 20;
-
-  String? _roomId;
-  Timer? _pollTimer;
-  final Set<String> _seenRowKeys = <String>{};
-  int _consecutiveFailures = 0;
-
-  @override
-  Future<void> start(dynamic args) async {
-    if (args is! KilakilaDanmakuArgs || args.roomId.isEmpty) {
-      onClose?.call('KilaKila 弹幕参数缺失');
+  Future start(dynamic args) async {
+    if (args is! KilakilaDanmakuArgs || args.roomId.trim().isEmpty) {
+      onClose?.call('KilaKila：没有可用的房间');
       return;
     }
-    _roomId = args.roomId;
-    markConnected();
-    onReady?.call();
-    _pollTimer = Timer.periodic(_pollInterval, (_) => _poll());
-    _poll();
-  }
-
-  Future<void> _poll() async {
-    final roomId = _roomId;
-    if (roomId == null) return;
-    try {
-      final client = HttpClient()..userAgent = _pollUserAgent;
-      final request = await client.getUrl(
-        Uri.parse('$_latestQueryUrl?roomId=${Uri.encodeQueryComponent(roomId)}&pageNo=1&pageSize=$_rowLimit'),
-      );
-      request.headers.set(HttpHeaders.refererHeader, 'https://live.kilakila.cn/');
-      final response = await request.close().timeout(const Duration(seconds: 10));
-      final body = jsonDecode(await response.transform(utf8.decoder).join());
-      client.close(force: true);
-      final rows = envelopeRows(body) ?? const [];
-      _consecutiveFailures = 0;
-      for (final message in parseRows(rows, seenKeys: _seenRowKeys)) {
-        onMessage?.call(message);
-      }
-      // Bound the dedupe set so long sessions do not grow it indefinitely.
-      if (_seenRowKeys.length > 2000) _seenRowKeys.removeWhere((_) => _seenRowKeys.length > 1000);
-    } catch (error) {
-      _consecutiveFailures += 1;
-      if (_consecutiveFailures == 3) {
-        onReconnect?.call('弹幕轮询连续失败，仍在重试');
-      }
-      if (_consecutiveFailures >= 12) {
-        _pollTimer?.cancel();
-        markDisconnected();
-        onClose?.call('弹幕轮询持续失败，已停止');
-      }
-    }
+    _args = args;
+    _generation++;
+    final generation = _generation;
+    _running = true;
+    unawaited(_loop(generation));
   }
 
   @override
-  Future<void> stop() async {
-    _pollTimer?.cancel();
-    _pollTimer = null;
+  Future stop() async {
+    _running = false;
+    _generation++;
+    _pingTimer?.cancel();
+    _joinTimer?.cancel();
+    final socket = _socket;
+    _socket = null;
     markDisconnected();
-    onMessage = null;
-    onReconnect = null;
-    onClose = null;
-    onReady = null;
-    _roomId = null;
-    _seenRowKeys.clear();
+    await socket?.close();
   }
 
-  static const _pollUserAgent =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
-
-  /// Extracts `b.data[]` from the `{h:{code:200}, b:{data:[...]}}` envelope;
-  /// null when the envelope is not a successful latest-query response.
-  static List<Object?>? envelopeRows(Object? decoded) {
-    if (decoded is! Map) return null;
-    final header = decoded['h'];
-    if (header is! Map || header['code'] != 200) return null;
-    final body = decoded['b'];
-    if (body is! Map) return null;
-    final data = body['data'];
-    return data is List ? data : null;
-  }
-
-  /// Pure row decoder, also used by unit tests. Comment rows carry a JSON
-  /// string in `content` with a nickname-ish and a text-ish key; Q&A cards
-  /// (bizType 2) have neither at the top level and are filtered naturally.
-  /// Dedupe keys are `relativeTime:content`.
-  static List<LiveMessage> parseRows(List<Object?> rows, {Set<String>? seenKeys}) {
-    final messages = <LiveMessage>[];
-    for (final row in rows) {
-      if (row is! Map) continue;
-      final contentRaw = row['content'];
-      if (contentRaw is! String || contentRaw.isEmpty) continue;
-      Object? content;
+  Future<void> _loop(int generation) async {
+    var attempt = 0;
+    while (_running && generation == _generation) {
       try {
-        content = jsonDecode(contentRaw);
-      } catch (_) {
-        continue;
+        await _runSocket(generation);
+        attempt = 0;
+      } catch (error) {
+        if (generation != _generation) return;
+        CoreLog.error('KilaKila chat failed: $error');
+        onReconnect?.call('KilaKila 弹幕连接失败，正在重试');
+        attempt++;
       }
-      if (content is! Map) continue;
-      final text = _firstText([content['content'], content['message'], content['msg'], content['text']]);
-      if (text.isEmpty) continue;
-      final name = _firstText([content['nickname'], content['nick'], content['userNickname'], content['name']]);
-      final relativeTime = row['relativeTime']?.toString() ?? '';
-      final key = '$relativeTime:$text:$name';
-      if (seenKeys != null) {
-        if (!seenKeys.add(key)) continue;
-      }
-      messages.add(
-        LiveMessage(type: LiveMessageType.chat, color: LiveMessageColor.white, message: text, userName: name),
-      );
+      if (!_running || generation != _generation) return;
+      await Future<void>.delayed(Duration(seconds: attempt.clamp(1, 8)));
     }
-    return messages;
   }
 
-  static String _firstText(List<Object?> candidates) {
-    for (final candidate in candidates) {
-      if (candidate is String && candidate.trim().isNotEmpty) return candidate;
-    }
-    return '';
+  Future<void> _runSocket(int generation) async {
+    final ended = Completer<void>();
+    final roomId = _args?.roomId ?? '';
+    _joined = false;
+    final socket = WebScoketUtils(
+      url: 'wss://$_host/socket.io/?${_query(roomId)}&EIO=3&transport=websocket',
+      heartBeatTime: 0,
+      headers: const <String, String>{'Origin': 'https://www.hongrenshuo.com.cn', 'User-Agent': 'Mozilla/5.0'},
+      onReady: () {
+        if (generation != _generation) return;
+        _socket?.sendMessage('40$_namespace?${_query(roomId)},');
+        _pingTimer?.cancel();
+        _pingTimer = Timer.periodic(_pingInterval, (_) => _socket?.sendMessage('2'));
+        _joinTimer?.cancel();
+        _joinTimer = Timer(const Duration(seconds: 8), () {
+          if (generation != _generation || _joined) return;
+          if (!ended.isCompleted) ended.complete();
+        });
+      },
+      onMessage: (event) {
+        if (generation != _generation) return;
+        if (_handleFrame(event is String ? event : utf8.decode(event as List<int>, allowMalformed: true))) {
+          if (!ended.isCompleted) ended.complete();
+        }
+      },
+      onReconnect: () {
+        if (generation != _generation) return;
+        markDisconnected();
+        onReconnect?.call('与服务器断开连接，正在尝试重连');
+      },
+      onClose: (error) {
+        if (generation != _generation) return;
+        markDisconnected();
+        if (!ended.isCompleted) ended.complete();
+      },
+    );
+    _socket = socket;
+    await socket.connect();
+    await ended.future;
+    _pingTimer?.cancel();
+    _joinTimer?.cancel();
   }
+
+  bool _handleFrame(String data) {
+    final text = data.trim();
+    if (text.isEmpty) return false;
+    if (text == '3' || text.startsWith('2')) return false;
+    if (text.startsWith('1')) return true;
+    final rest = text.length > 1 ? text.substring(1) : '';
+    if (rest.isNotEmpty && !rest.startsWith(_namespace)) {
+      return false;
+    }
+    final after = rest.length <= _namespace.length ? '' : rest.substring(_namespace.length);
+    if (after.isNotEmpty && !after.startsWith(',')) return false;
+    final body = after.isEmpty ? '' : after.substring(1);
+    final kind = text.substring(0, 1);
+    switch (kind) {
+      case '0':
+        return true;
+      case '4':
+        final packet = text.length > 1 ? text.substring(1, 2) : '';
+        switch (packet) {
+          case '0':
+            _markJoined();
+            return false;
+          case '1':
+            return true;
+          case '4':
+            return _handleEvent(body);
+          default:
+            return false;
+        }
+      default:
+        return false;
+    }
+  }
+
+  bool _handleEvent(String body) {
+    final Object? decoded;
+    try {
+      decoded = json.decode(body);
+    } catch (_) {
+      return false;
+    }
+    if (decoded is! List || decoded.isEmpty) return false;
+    final name = decoded.first?.toString() ?? '';
+    final payload = decoded.length > 1 ? decoded[1] : null;
+    if (name == 'connect_error') {
+      final code = payload is Map ? payload['code'] : null;
+      if (code == 0) _markJoined();
+      return false;
+    }
+    if (name != 'text_message') return false;
+    final bodyJson = payload is String ? payload : null;
+    if (bodyJson == null) return false;
+    final Object? envelope;
+    try {
+      envelope = json.decode(bodyJson);
+    } catch (_) {
+      return false;
+    }
+    final Object? bodySource = envelope is Map ? envelope['body'] : null;
+    final Object? response = bodySource is Map ? bodySource['response'] : null;
+    final content = response is Map ? _object(response['content']) : null;
+    if (content == null) return false;
+    final message = switch (content['t']) {
+      _chatType => _chat(content, response),
+      _roomStateType => _audience(content),
+      _ => null,
+    };
+    if (message != null) onMessage?.call(message);
+    return false;
+  }
+
+  void _markJoined() {
+    if (_joined) return;
+    _joined = true;
+    _joinTimer?.cancel();
+    markConnected();
+    onReady?.call();
+  }
+
+  LiveMessage? _chat(Map<dynamic, dynamic> content, Object? responseRaw) {
+    final response = responseRaw is Map ? responseRaw : const <dynamic, dynamic>{};
+    final raw = content['c'];
+    if (raw is! String || raw.trim().isEmpty) return null;
+    final name = content['n'];
+    final created = response['created_at'];
+    return LiveMessage(
+      type: LiveMessageType.chat,
+      userName: name is String ? name : '',
+      userId: _scalar(content['u']),
+      message: raw.trim(),
+      color: LiveMessageColor.white,
+      userLevel: _scalar(content['l']),
+      messageId: _scalar(response['mid']),
+      sentAt: created is int && created > 0 && created <= 8640000000000000
+          ? DateTime.fromMillisecondsSinceEpoch(created)
+          : null,
+    );
+  }
+
+  LiveMessage? _audience(Map<dynamic, dynamic> content) {
+    final encoded = content['c'];
+    if (encoded is! String || encoded.isEmpty) return null;
+    final Object? state;
+    try {
+      state = json.decode(Uri.decodeComponent(encoded));
+    } catch (_) {
+      return null;
+    }
+    final watching = state is Map ? state['watchNumber'] : null;
+    if (watching is! int || watching < 0) return null;
+    return LiveMessage(
+      type: LiveMessageType.online,
+      data: LiveAudienceUpdate(kind: LiveAudienceMetricKind.onlineViewers, value: watching),
+      color: LiveMessageColor.white,
+      message: '',
+      userName: '',
+    );
+  }
+
+  static Map<dynamic, dynamic>? _object(Object? value) {
+    if (value is Map) return value;
+    if (value is String && value.trim().startsWith('{')) {
+      try {
+        final decoded = json.decode(value);
+        return decoded is Map ? decoded : null;
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  static String _scalar(Object? value) => value == null ? '' : '$value';
 }

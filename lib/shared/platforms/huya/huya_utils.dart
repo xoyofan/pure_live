@@ -3,6 +3,7 @@ import 'dart:math';
 import 'huya_request_params.dart';
 
 import 'package:pure_live/core/tars/types.dart';
+import 'package:pure_live/core/tars/game_event_message_board_panel.dart';
 import 'package:pure_live/core/models/live_message.dart';
 import 'package:pure_live/core/tars/base_tars_http.dart';
 import 'package:pure_live/core/tars/get_game_event_message_board_rsp.dart';
@@ -50,9 +51,19 @@ Future<List<LiveSuperChatMessage>> getHuyaSuperChatMessageList({
     // prevents outstanding HTTP requests from accumulating on repeated SCs.
     messageBoardClient.dio.close(force: true);
   }
-  final now = DateTime.now();
+  final messages = huyaSuperChatsFromPanel(rsp.tMessageBoardPanel);
+  if (first || messages.isEmpty) {
+    return messages;
+  } else {
+    messages.sort((a, b) => a.startTime.compareTo(b.startTime));
+    return [messages.last];
+  }
+}
+
+List<LiveSuperChatMessage> huyaSuperChatsFromPanel(GameEventMessageBoardPanel panel, {DateTime? now}) {
+  final at = now ?? DateTime.now();
   final List<LiveSuperChatMessage> messages = [];
-  for (final item in rsp.tMessageBoardPanel.vGameEventMessageBoardInfo) {
+  for (final item in panel.vGameEventMessageBoardInfo) {
     final content = item.sContent.trim();
     if (content.isEmpty) {
       continue;
@@ -70,28 +81,22 @@ Future<List<LiveSuperChatMessage>> getHuyaSuperChatMessageList({
       price = max(1, (item.iCostPay / 100).round());
     }
 
-    final endTime = now.add(Duration(seconds: remainSec));
+    final endTime = at.add(Duration(seconds: remainSec));
     final startTime = endTime.subtract(Duration(seconds: totalSeconds));
 
-    final message = LiveSuperChatMessage(
-      messageId: item.lMessageId > 0 ? 'huya:${item.lMessageId}' : '',
-      backgroundBottomColor: "#246488",
-      backgroundColor: "#ffffff",
-      endTime: endTime,
-      face: item.tMessageUser.sAvatar,
-      message: content,
-      price: price,
-      startTime: startTime,
-      userName: item.tMessageUser.sNick.trim(),
+    messages.add(
+      LiveSuperChatMessage(
+        messageId: item.lMessageId > 0 ? 'huya:${item.lMessageId}' : '',
+        backgroundBottomColor: "#246488",
+        backgroundColor: "#ffffff",
+        endTime: endTime,
+        face: item.tMessageUser.sAvatar,
+        message: content,
+        price: price,
+        startTime: startTime,
+        userName: item.tMessageUser.sNick.trim(),
+      ),
     );
-
-    messages.add(message);
   }
-  if (first || messages.isEmpty) {
-    return messages;
-  } else {
-    // huya 按money->level->countDown 排序 调整为 startTime
-    messages.sort((a, b) => a.startTime.compareTo(b.startTime));
-    return [messages.last];
-  }
+  return messages;
 }

@@ -1,7 +1,5 @@
 import 'package:pure_live/core/models/live_room.dart';
 import 'package:pure_live/core/models/live_area.dart';
-import 'package:pure_live/shared/platforms/acfun/acfun_danmaku.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_site.dart';
 import 'package:pure_live/core/models/live_play_quality.dart';
@@ -10,7 +8,9 @@ import 'package:pure_live/core/models/live_anchor_item.dart';
 import 'package:pure_live/shared/platforms/live_external_room.dart';
 
 import 'acfun_api.dart';
+import 'acfun_danmaku.dart';
 import 'acfun_directory.dart';
+import 'acfun_link_danmaku.dart';
 import 'acfun_search.dart';
 
 /// Anonymous AcFun live directory, author search, playback and recording.
@@ -21,11 +21,11 @@ class AcfunSite extends LiveSite
         LiveSiteRecordRoomResolver,
         LivePlayRecoveryResolver,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
-    // fork 修正(2026-10-03):上游用类字段 id(平台名)拼路径——所有站点
-    // 都会得到 douyu.com/douyu 式死链;改用房间号,空号返回 null 不伪造。
+    // fork 修正(2026-10-03,合并 e1b5055bd 回植):上游用类字段 id(平台名)
+    // 拼路径——会得到 live.acfun.cn/live/acfun 式死链;改用房间号,空号返回
+    // null 不伪造。
     final roomId = liveroom.roomId?.trim() ?? '';
     if (roomId.isEmpty) return null;
     final path = Uri.encodeComponent(roomId);
@@ -48,7 +48,7 @@ class AcfunSite extends LiveSite
   @override
   String get name => 'AcFun 直播';
   @override
-  LiveDanmaku getDanmaku() => AcFunDanmaku();
+  LiveDanmaku getDanmaku() => AcfunLinkDanmaku();
 
   static LiveRoom parseRoom(Map<String, dynamic> data, String roomId) {
     final live = AcfunApi.validateRoomInfo(data, roomId);
@@ -71,27 +71,17 @@ class AcfunSite extends LiveSite
       followers: AcfunApi.text(user['fanCountValue']),
       status: live,
       liveStatus: live ? LiveStatus.live : LiveStatus.offline,
-      // 付费演出（paidShowUuid）按在播 + paid 上报；匿名观众永远没买过
-      // （paidShowUserBuyStatus 不会是 true）。有付费字段但没有演出 → 无限制；
-      // 完全没有这两个字段 → 平台没说（null）（上游 10-5）。
       restriction: live ? _restriction(data) : null,
-      // 在播时 `createTime`（epoch 毫秒）就是这场直播的开播时间（上游 10-3）。
       startedAt: live ? _startedAt(data['createTime']) : null,
     );
   }
 
-  /// `createTime`：epoch 毫秒（13 位），读不出来或不是合理时间就不给
-  /// （上游 10-3 的同一规则）。
   static DateTime? _startedAt(Object? value) {
     final raw = AcfunApi.integer(value);
     if (raw == null || raw < 1000000000000 || raw >= 10000000000000) return null;
     return DateTime.fromMillisecondsSinceEpoch(raw, isUtc: true);
   }
 
-  /// `live/info`（与列表卡片同形）里的限制：
-  /// - `paidShowUuid` 非空 → 买过是 none，否则 paid；
-  /// - 只有 `paidShowUserBuyStatus`（没有演出）→ none；
-  /// - 两个都没有 → null（这次回答没说限制）。
   static LiveRestriction? _restriction(Map<String, dynamic> data) {
     if (AcfunApi.text(data['paidShowUuid']).isNotEmpty) {
       return data['paidShowUserBuyStatus'] == true ? LiveRestriction.none : LiveRestriction.paid;
@@ -142,8 +132,6 @@ class AcfunSite extends LiveSite
     if (type == null || categoryId == null || (category.platform != null && category.platform != id)) {
       throw const AcfunApiException(AcfunFailureKind.schema);
     }
-    // 「全部」（filter 0）列的是全站直播，与推荐完全相同，不带 filter 请求
-    // （上游 10-2：目录里已不再列出它，但存下来的旧条目仍要能打开）。
     final filters = categoryId == AcfunApi.allFilterId ? null : AcfunCategoryFilter.encode(type, categoryId);
     return _rooms(await _directory.page(page: page, count: pageSize, filters: filters));
   }
@@ -177,21 +165,26 @@ class AcfunSite extends LiveSite
     if (fresh.liveStatus == LiveStatus.live) {
       final playback = await _api.playback(fresh.roomId!);
       fresh.data = playback;
-      final comment = playback.comment;
-      if (comment != null) {
-        fresh.danmakuData = AcFunDanmakuArgs(
-          ticket: comment.ticket,
-          enterRoomAttach: comment.enterRoomAttach,
-          liveId: playback.liveId,
-          uid: comment.uid,
-          ssecurity: comment.ssecurity,
-          token: comment.token,
-          did: comment.did,
-          kpf: 'PC_WEB',
-        );
+      if (playback.tickets.isNotEmpty) {
+        fresh.danmakuData = await _danmakuArgs(AcfunApi.normalizeAuthorId(fresh.roomId!), playback);
       }
     }
     return fresh;
+  }
+
+  Future<AcfunDanmakuArgs> _danmakuArgs(String authorId, AcfunPlayback playback) async {
+    final visitor = await _api.visitorCredentials();
+    return AcfunDanmakuArgs(
+      authorId: authorId,
+      liveId: playback.liveId,
+      userId: visitor.userId,
+      deviceId: visitor.did,
+      visitorToken: visitor.token,
+      security: visitor.security,
+      tickets: playback.tickets,
+      enterRoomAttach: playback.enterRoomAttach,
+      refresh: () async => _danmakuArgs(authorId, await _api.playback(authorId)),
+    );
   }
 
   @override

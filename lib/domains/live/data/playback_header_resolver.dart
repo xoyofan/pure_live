@@ -113,8 +113,6 @@ class PlaybackHeaderResolver {
         };
         break;
       case Sites.twitchSite:
-        // 不把登录 Cookie 发给视频 CDN（上游 8-7）：媒体线路的授权在 usher 返回
-        // 的签名里，CDN 不需要账号 Cookie，发过去等于把登录凭据交给第三方。
         headers = <String, String>{
           'user-agent': TwitchSite.defaultUa,
           'origin': TwitchSite.baseUrl,
@@ -193,8 +191,11 @@ class PlaybackHeaderResolver {
       case Sites.pandaLiveSite:
         headers = PandaLiveApi.mediaHeaders(roomId);
         break;
+      // Anything not named above keeps the headers the room declared: a Referer
+      // rebuilt from roomId is wrong for most sites.
       default:
-        headers = const <String, String>{};
+        //
+        headers = roomHeaders;
     }
 
     return HttpHeaderPolicy.normalize(headers);

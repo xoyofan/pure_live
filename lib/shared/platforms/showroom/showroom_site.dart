@@ -1,12 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
 import 'package:pure_live/shared/platforms/live_site.dart';
-import 'package:pure_live/shared/platforms/showroom/showroom_danmaku.dart';
 import 'package:pure_live/core/models/live_category.dart';
 import 'package:pure_live/core/models/live_play_quality.dart';
 import 'package:pure_live/core/utils/i18n.dart';
@@ -14,6 +12,7 @@ import 'package:pure_live/shared/platforms/live_external_room.dart';
 import 'package:pure_live/shared/platforms/showroom/showroom_link.dart';
 
 import 'showroom_api.dart';
+import 'showroom_danmaku.dart';
 
 class _ShowroomPlayback {
   _ShowroomPlayback(this.roomId, Iterable<LivePlayQuality> qualities) : qualities = List.unmodifiable(qualities);
@@ -31,7 +30,6 @@ class ShowroomSite extends LiveSite
         LiveSiteRecordRoomResolver,
         LivePlayRecoveryResolver,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     final id = sanitizedExternalRoomId(liveroom.roomId);
@@ -201,7 +199,6 @@ class ShowroomSite extends LiveSite
       totalViewers: audience,
       audienceMetricType: AudienceMetricType.totalViewers,
       liveStatus: LiveStatus.live,
-      // `premium_room_type` 为 0 是人人可看的普通直播（上游 19-x）。
       restriction: live.restriction,
       httpHeaders: ShowroomApi.mediaHeaders,
     );
@@ -209,7 +206,6 @@ class ShowroomSite extends LiveSite
 
   LiveRoom _detailCard(ShowroomRoom room) {
     final profile = room.profile;
-    // 未开播的房间没有观众数（上游 19-4）：`view_num` 是上一场的残留。
     final audience = profile.isLive ? profile.totalViewers?.toString() : null;
     final qualities = room.streams.map(_quality).toList(growable: false)
       ..sort((left, right) {
@@ -234,16 +230,11 @@ class ShowroomSite extends LiveSite
       restriction: profile.isLive ? profile.restriction : null,
       startedAt: profile.isLive ? profile.startedAt : null,
       data: profile.isLive && qualities.isNotEmpty ? _ShowroomPlayback('${profile.roomId}', qualities) : null,
+      danmakuData: profile.isLive && room.chatHost.isNotEmpty && room.chatKey.isNotEmpty
+          ? ShowroomDanmakuArgs(roomId: profile.roomId, host: room.chatHost, key: room.chatKey)
+          : null,
       httpHeaders: ShowroomApi.mediaHeaders,
-      danmakuData: _detailDanmaku(room),
     );
-  }
-
-  /// 迭代4 弹幕:详情响应携带的评论服务器三元组;缺省(未开播等)不装配。
-  static ShowroomDanmakuArgs? _detailDanmaku(ShowroomRoom room) {
-    final comments = room.commentServer;
-    if (comments == null) return null;
-    return ShowroomDanmakuArgs(host: comments.host, port: comments.port, key: comments.key);
   }
 
   static LivePlayQuality _quality(ShowroomStream stream) {

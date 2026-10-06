@@ -1,16 +1,5 @@
-import 'package:dio/dio.dart';
-import 'package:pure_live/core/models/live_area.dart';
-import 'package:pure_live/core/models/live_category.dart';
-import 'package:pure_live/core/models/live_play_quality.dart';
-import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/core/utils/i18n.dart';
-import 'package:pure_live/shared/platforms/live_danmaku.dart';
-import 'package:pure_live/shared/platforms/live_directory.dart';
-import 'package:pure_live/shared/platforms/live_search.dart';
-import 'package:pure_live/shared/platforms/live_site.dart';
-import 'package:pure_live/shared/platforms/pandalive/pandalive_danmaku.dart';
-
 import 'pandalive_api.dart';
+import 'pandalive_danmaku.dart';
 import 'pandalive_link.dart';
 
 import 'package:dio/dio.dart';
@@ -22,7 +11,6 @@ import 'package:pure_live/shared/platforms/live_site.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/core/models/live_play_quality.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/shared/platforms/live_external_room.dart';
 
@@ -37,7 +25,6 @@ class PandaLiveSite extends LiveSite
         LivePlayRecoveryResolver,
         LivePlayLeaseMetadata,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     final id = sanitizedExternalRoomId(liveroom.roomId);
@@ -63,7 +50,7 @@ class PandaLiveSite extends LiveSite
   String get directoryNoticeKey => 'pandalive_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => PandaliveDanmaku();
+  LiveDanmaku getDanmaku() => PandaLiveDanmaku();
 
   @override
   Future<List<LiveCategory>> getCategores(int page, int pageSize) async => page == 1
@@ -125,14 +112,10 @@ class PandaLiveSite extends LiveSite
     area: room.category,
     link: PandaLiveLink.url(room.userId),
     liveStatus: switch (room.state) {
-      // 录播重播按直播推流，但状态是回放（上游 M4.U.25）。
       PandaLiveState.live => room.isRerun ? LiveStatus.replay : LiveStatus.live,
       PandaLiveState.offline => LiveStatus.offline,
       PandaLiveState.unknown => LiveStatus.unknown,
     },
-    danmakuData: (room.chatToken == null || room.chatToken!.isEmpty)
-        ? null
-        : PandaliveDanmakuArgs(token: room.chatToken!, channel: room.chatChannel ?? '${room.userIndex}'),
     onlineViewers: room.onlineViewers?.toString(),
     totalViewers: null,
     followers: room.followers?.toString(),
@@ -145,6 +128,13 @@ class PandaLiveSite extends LiveSite
       PandaLiveAccess.restricted => i18n('pandalive_restricted_notice'),
     },
     httpHeaders: PandaLiveApi.mediaHeaders(room.userId),
+    danmakuData: room.chatToken.isEmpty
+        ? null
+        : PandaLiveDanmakuArgs(
+            userId: room.userId,
+            channel: room.chatChannel.isEmpty ? room.userId : room.chatChannel,
+            token: room.chatToken,
+          ),
     data: includeMedia ? room : null,
   );
 
@@ -314,12 +304,8 @@ class PandaLiveSite extends LiveSite
     throw const PandaLiveException(PandaLiveFailure.mediaUnavailable);
   }
 
-  /// Amazon IVS 的 variant 播放列表 URL 只在签发后一段时间内有效（实测 34 分钟
-  /// 还能取到，87 分钟已 403），过期后播放会直接卡死。令牌本身是不透明的，读不出
-  /// 到期时间，所以按"签发后 30 分钟刷新"处理（上游 50d9e9fd4）。
   static const Duration _variantRefreshLead = Duration(minutes: 30);
 
-  /// URL → 解析时的时间。只保留最近 32 条，避免长时间播放无界增长。
   static final Map<String, DateTime> _issuedAt = {};
 
   static void _rememberIssued(String url, DateTime at) {
@@ -336,7 +322,6 @@ class PandaLiveSite extends LiveSite
     return issued?.toUtc().add(_variantRefreshLead);
   }
 
-  /// 令牌不透明，读不出到期时间：只有刷新时间，没有失效时间。
   @override
   DateTime? getPlayUrlInvalidAt(String url, {DateTime? now}) => null;
 

@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
@@ -12,6 +11,8 @@ import 'package:pure_live/core/utils/i18n.dart';
 import 'package:pure_live/shared/platforms/live_external_room.dart';
 
 import 'look_live_api.dart';
+import 'look_live_danmaku.dart';
+import 'look_live_link_danmaku.dart';
 import 'look_live_link.dart';
 
 final class LookLiveSite extends LiveSite
@@ -24,7 +25,6 @@ final class LookLiveSite extends LiveSite
         LivePlayUrlResolver,
         LivePlayRecoveryResolver,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     final id = sanitizedExternalRoomId(liveroom.roomId);
@@ -47,7 +47,7 @@ final class LookLiveSite extends LiveSite
   String get directoryNoticeKey => 'looklive_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => LookLiveDanmaku();
 
   @override
   Future<List<LiveCategory>> getCategores(int page, int pageSize) async {
@@ -128,6 +128,12 @@ final class LookLiveSite extends LiveSite
           : (popularity != null ? AudienceMetricType.popularity : AudienceMetricType.unknown),
       notice: notices.join('\n'),
       httpHeaders: LookLiveApi.mediaHeaders(room.roomId),
+      danmakuData: room.state == LookLiveState.live
+          ? LookLiveDanmakuArgs(
+              roomId: room.roomId,
+              chatroomId: room.chatroomId.isEmpty ? room.roomId : room.chatroomId,
+            )
+          : null,
       data: includeMedia ? room : null,
     );
   }

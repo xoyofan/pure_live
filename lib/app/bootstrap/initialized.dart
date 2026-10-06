@@ -23,6 +23,13 @@ import 'package:pure_live/core/platform/initial_room_handoff.dart';
 import 'package:pure_live/core/platform/windows_multi_instance_launcher.dart';
 import 'package:pure_live/core/player/kernel/player_kernel_service.dart';
 import 'package:pure_live/core/stream/upstream_proxy_routing.dart';
+import 'package:pure_live/core/player/core/playback_proxy_policy.dart';
+import 'package:pure_live/core/player/core/ingest_ffmpeg_registry.dart';
+import 'package:pure_live/domains/recorder/data/services/ffmpeg_ingest_starter.dart';
+import 'package:pure_live/domains/live/data/stream/ingest_source_interceptor.dart';
+import 'package:pure_live/domains/live/domain/global_player_service.dart';
+import 'package:pure_live/domains/live/domain/live_input_playback_binder.dart';
+import 'package:pure_live/domains/recorder/data/services/live_input_playback_binding.dart';
 import 'package:pure_live/features/backup/backup_controller.dart';
 import 'package:pure_live/domains/live/presentation/playback/controllers/player_room_context_bridge.dart';
 import 'package:pure_live/core/config/parser_runtime_binding.dart';
@@ -54,7 +61,6 @@ class AppInitializer {
     WidgetsFlutterBinding.ensureInitialized();
     configureDecodedImageCache(desktop: PlatformUtils.isDesktop);
     final String instanceId = WindowsMultiInstanceLauncher.instanceIdFromArgs(args);
-    // 一次性交接放在 Core，Features 读它时不必反向认识 App。
     InitialRoomHandoff.offer(WindowsMultiInstanceLauncher.roomFromArgs(args));
     await _initWindowsSingleInstance(args, instanceId);
 
@@ -96,7 +102,8 @@ class AppInitializer {
       final restored = await Get.find<BackupController>().recoverAndDelete(File(configFilePath));
       log('Windows multi-instance settings ${restored ? 'restored' : 'restore failed'}: $configFilePath');
     }
-    configureUpstreamProxyRouting((_) {
+    configureUpstreamProxyRouting((uri) {
+      if (playsDirectBehindProxy(uri)) return 'DIRECT';
       final proxy = SettingsService.to.proxy;
       return buildProxyDirective(
         enabled: proxy.enableAppProxy.v,
@@ -104,6 +111,16 @@ class AppInitializer {
         port: proxy.appProxyPort.v,
       );
     });
+    // The ingest pipelines remux a source FFmpeg understands better than the
+    // player does; they run on the recorder's FFmpegKit build instead of linking
+    // a second runtime.
+    configureIngestFfmpegStarter(ffmpegKitIngestStarter);
+    // The player hands its candidate sources to this interceptor before opening
+    // them, so a line the engine cannot parse is remuxed over loopback instead of
+    // failing. Registered here rather than in the domain: the domain only knows
+    // the abstraction, and the FFmpeg runtime above is what makes it work.
+    GlobalPlayerService.sourceInterceptorFactory = IngestSourceInterceptor.new;
+    configureLiveInputPlaybackBinder(bindSiteInputForPlayback);
     configureWebSocketProxyRouting((_) {
       final proxy = SettingsService.to.proxy;
       return buildProxyDirective(

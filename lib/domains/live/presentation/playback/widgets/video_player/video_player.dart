@@ -1,6 +1,7 @@
 import 'package:pure_live/core/index.dart';
 import 'package:pure_live/core/player/core/portrait_stream_support.dart';
 import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/video_controller.dart';
+import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/picture_cover.dart';
 import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/video_controller_panel.dart';
 import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/playback_failure_overlay.dart';
 import 'package:pure_live/domains/live/domain/global_player_service.dart';
@@ -26,17 +27,21 @@ class _VideoPlayerState extends State<VideoPlayer> {
   VideoController get controller => widget.controller;
   Widget _buildVideo() {
     return Obx(() {
-      final audioOnly = controller.audioOnlyState.value;
+      final player = GlobalPlayerService.instance.player;
       final hasError = controller.hasPlaybackError;
 
       return PlaybackFailureOverlay(
         hasError: hasError,
         onRetry: controller.refresh,
-        child: GlobalPlayerService.instance.player.getVideoWidgetCompat(
+        child: player.getVideoWidgetCompat(
           SettingsService.to.player.videoFitIndex.v,
           fitList: SettingsService.to.player.videoFitArray,
           trackPipSource: true,
-          audioOnlyOverride: audioOnly,
+          pictureCover: pictureCoverFor(
+            audioOnly: controller.audioOnlyState.value,
+            dummyVideo: player.isDummyVideo.value,
+            room: controller.room,
+          ),
           controls: VideoControllerPanel(controller: controller),
           surfaceColor: widget.surfaceColor,
           videoViewportAspectRatio: widget.videoViewportAspectRatio,

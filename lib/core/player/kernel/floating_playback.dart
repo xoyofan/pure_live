@@ -3,11 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:pure_live/core/index.dart';
 import 'package:pure_live/core/config/float_window_geometry.dart';
-import 'package:pure_live/core/player/presentation/compact_source_orientation.dart';
 import 'package:media_core_floating/media_core_floating.dart';
 import 'package:pure_live/domains/live/domain/live_player_facade.dart';
-
-///
 
 class FloatingPlayback {
   FloatingPlayback({required this.facade});
@@ -20,10 +17,6 @@ class FloatingPlayback {
   FacadeStreamCommit? _reentrySeed;
   bool _prepared = false;
 
-  /// 房间侧登记的收尾动作（停弹幕、释放 VideoController 等）。
-  ///
-  /// 只有用户主动关闭悬浮窗时才执行：进入房间路由时的让位关闭必须保留这些资源，
-  /// 房间页面还要接着用同一个播放器继续播。
   final List<Future<void> Function()> _pendingOwners = <Future<void> Function()>[];
 
   void prepare({Future<void> Function()? onClose}) {
@@ -33,11 +26,8 @@ class FloatingPlayback {
     _prepared = true;
   }
 
-  /// 用户点悬浮窗的"关闭"：先停播放器，再收起悬浮层并执行房间侧收尾。
-  ///
-  /// 顺序与上游一致（先 close 再收起）；[closeAppFloating] 单独调用只收起悬浮层，
-  /// 不停止播放——那条路径用于进入房间路由/打开别的直播间时让位。
   Future<void> stopFloatingPlayback() async {
+    facade.clearFloatingDanmaku();
     await facade.close();
     await closeAppFloating();
   }
@@ -73,37 +63,52 @@ class FloatingPlayback {
     }
     isFloatingVideoVisible.value = true;
 
+    // The window is remembered per surface orientation: a phone held upright
+    // and the same phone turned sideways have different room on screen, and a
+    // size that fits one of them is wrong in the other. The orientation is read
+    // inside the builder so a rotation mid-float picks up the other memory
+    // instead of restoring the shape of the surface that is gone.
     final entry = OverlayEntry(
-      builder: (context) => FloatingWindowOverlay(
-        visible: isFloatingVideoVisible.stream,
-        initiallyVisible: true,
-        // 160×90 (the library default) is a thumbnail, not a watchable
-        // window: a 16:9 stream gets a 380×214 surface with a 200×112 drag
-        // floor, still capped at half the screen by maxWidthFraction.
-        placement: const FloatingWindowPlacement(
-          config: FloatingPlacementConfig(
-            width: 380,
-            height: 214,
-            minWidth: 200,
-            minHeight: 112,
-            // A corner grip resizes; dragging the picture still moves the window.
-            resizableByDrag: true,
+      builder: (context) {
+        final isPortraitSurface = _isPortraitSurface(context);
+        return FloatingWindowOverlay(
+          visible: isFloatingVideoVisible.stream,
+          initiallyVisible: true,
+          // 160×90 (the library default) is a thumbnail, not a watchable
+          // window: a 16:9 stream gets a 380×214 surface with a 200×112 drag
+          // floor, still capped at half the screen by maxWidthFraction.
+          placement: const FloatingWindowPlacement(
+            config: FloatingPlacementConfig(
+              width: 380,
+              height: 214,
+              minWidth: 200,
+              minHeight: 112,
+              // The half-screen cap the library ships with made left/right
+              // resize look broken on a phone: 200 min width on a 400 px surface
+              // left the width clamped to one value. The window may use the
+              // whole surface and is still clamped inside it.
+              maxWidthFraction: 1.0,
+              // Every edge and corner resizes, freely: the viewer picks the
+              // width and the height, and the window keeps what they chose.
+              resizableByDrag: true,
+              // fork adapt(合并 e1b5055bd):resizeHandles/resizeKeepsAspectRatio
+              // 依赖上游作者本机未发布的 media_core_floating API,公开克隆无此
+              // 符号;去掉后用包默认把手(旧 UI 运行时绕过,编译级适配)。
+            ),
           ),
-        ),
-        // 上次显示时的位置与尺寸（按当前源方向选一套）；组件会按当前表面重新夹取，
-        // 所以旋转或改窗口大小之后不会把悬浮窗放到看不见的地方。
-        initialRect: _rememberedFloatRect(),
-        onRectChanged: _rememberFloatRect,
-        child: _FloatingSurface(
-          facade: facade,
-          onExit: () async {
-            final room = facade.room;
-            if (room != null) await AppNavigator.toLiveRoomDetail(liveRoom: room);
-          },
-          onClose: stopFloatingPlayback,
-          danmakuBuilder: danmakuBuilder,
-        ),
-      ),
+          initialRect: _rememberedFloatRect(isPortraitSurface),
+          onRectChanged: (rect) => _rememberFloatRect(isPortraitSurface, rect),
+          child: _FloatingSurface(
+            facade: facade,
+            onExit: () async {
+              final room = facade.room;
+              if (room != null) await AppNavigator.toLiveRoomDetail(liveRoom: room);
+            },
+            onClose: stopFloatingPlayback,
+            danmakuBuilder: danmakuBuilder,
+          ),
+        );
+      },
     );
     final overlay = Overlay.maybeOf(overlayContext, rootOverlay: true) ?? Overlay.of(overlayContext);
     overlay.insert(entry);
@@ -111,20 +116,20 @@ class FloatingPlayback {
     isFloating.value = true;
   }
 
-  /// 悬浮窗上次显示时的矩形；方向由 Core 端口决定（Core 不能反向依赖 live 域）。
-  Rect? _rememberedFloatRect() {
+  /// Whether the surface the window floats in is taller than it is wide.
+  static bool _isPortraitSurface(BuildContext context) =>
+      FloatWindowGeometry.isPortraitSurface(MediaQuery.maybeSizeOf(context) ?? Size.zero);
+
+  Rect? _rememberedFloatRect(bool isPortraitSurface) {
     final geometry = FloatWindowGeometry.decode(SettingsService.to.player.floatWindowGeometry.value);
-    return geometry.forPortrait(CompactSourceOrientation.isPortrait);
+    return geometry.forPortrait(isPortraitSurface);
   }
 
-  /// 记住刚稳定下来的矩形：拖动/缩放结束与隐藏时各报一次。
-  void _rememberFloatRect(Rect rect) {
+  void _rememberFloatRect(bool isPortraitSurface, Rect rect) {
     if (!rect.isFinite || rect.isEmpty) return;
     final settings = SettingsService.to.player;
     final geometry = FloatWindowGeometry.decode(settings.floatWindowGeometry.value);
-    settings.floatWindowGeometry.value = geometry
-        .withRect(isPortrait: CompactSourceOrientation.isPortrait, rect: rect)
-        .encode();
+    settings.floatWindowGeometry.value = geometry.withRect(isPortrait: isPortraitSurface, rect: rect).encode();
   }
 
   Future<void> closeAppFloating() async {
@@ -137,9 +142,6 @@ class FloatingPlayback {
       entry.remove();
     }
     isFloating.value = false;
-    // 房间侧收尾随悬浮窗一起结束（上游同样在收起时释放这些所有者）。放在这里
-    // 而不是只放在"用户点关闭"路径：让位给房间路由/多画面的关闭也必须释放，
-    // 否则旧房间的弹幕连接与 VideoController 会留到下一次关闭才被误执行。
     await _releasePendingOwners();
   }
 }

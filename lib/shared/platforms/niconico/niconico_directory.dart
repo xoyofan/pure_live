@@ -99,9 +99,15 @@ class NiconicoDirectory {
     }
     icon ??= social is Map ? social['thumbnailUrl'] : null;
     final count = _count(_object(row['statistics'])['watchCount']);
+    final roomId = _roomIdOf(
+      programId: id,
+      providerType: row['providerType'],
+      userId: provider is Map ? provider[search ? 'programProviderId' : 'id'] : null,
+      channelId: social is Map ? social['id'] : null,
+    );
     return LiveRoom(
       platform: 'niconico',
-      roomId: id,
+      roomId: roomId,
       title: _text(row['title']),
       nick: _text(nick),
       avatar: NiconicoWatch.publicImage(icon) ?? '',
@@ -114,6 +120,23 @@ class NiconicoDirectory {
       totalViewers: count?.toString(),
       audienceMetricType: AudienceMetricType.totalViewers,
     );
+  }
+
+  static String _roomIdOf({
+    required String programId,
+    required Object? providerType,
+    required Object? userId,
+    required Object? channelId,
+  }) {
+    final user = userId?.toString() ?? '';
+    if ((providerType == 'community' || providerType == 'user') &&
+        RegExp(r'^[1-9][0-9]{0,17}$').hasMatch(user)) {
+      return 'user/$user';
+    }
+    if (providerType == 'channel' && channelId is String && NiconicoApi.isBroadcasterRoomId(channelId)) {
+      return channelId;
+    }
+    return programId;
   }
 
   static Map<String, dynamic> _object(Object? value) {

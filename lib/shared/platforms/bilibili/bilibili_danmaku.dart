@@ -16,8 +16,6 @@ import 'package:pure_live/core/utils/type_cast.dart';
 import 'package:pure_live/core/network/web_socket_util.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 
-/// 一条礼物（`SEND_GIFT`/`COMBO_SEND`/`GUARD_BUY`）的内容，放在礼物消息的
-/// `data` 里（上游 bilibili 4-x 的 `BilibiliGift`）。
 class BilibiliGift {
   const BilibiliGift({
     required this.id,
@@ -27,19 +25,14 @@ class BilibiliGift {
     this.comboId = '',
   });
 
-  /// `giftId`/`gift_id`；缺失或 0 时为空串。
   final String id;
 
-  /// `giftName`/`gift_name`（小心心、舰长……）。
   final String name;
 
-  /// 这条给了多少，至少 1（连击取 `total_num`，上舰取月数）。
   final int count;
 
-  /// 价值多少金瓜子（1000 = 1 元）；免费（银瓜子）礼物或缺失为 0。
   final int goldCoins;
 
-  /// `batch_combo_id`：同一次连击的每条消息共享它。
   final String comboId;
 }
 
@@ -259,24 +252,17 @@ class BiliBiliDanmaku implements LiveDanmaku {
 
   List<int> encodeData(String msg, int action) {
     var data = utf8.encode(msg);
-    //头部长度固定16
     var length = data.length + 16;
     var buffer = Uint8List(length);
 
     var writer = BinaryWriter([]);
 
-    //数据包长度
     writer.writeInt(buffer.length, 4);
-    //数据包头部长度,固定16
     writer.writeInt(16, 2);
 
-    //协议版本，0=JSON,1=Int32,2=Buffer
     writer.writeInt(0, 2);
 
-    //操作类型
     writer.writeInt(action, 4);
-
-    //数据包头部长度,固定1
 
     writer.writeInt(1, 4);
 
@@ -343,8 +329,6 @@ class BiliBiliDanmaku implements LiveDanmaku {
     if (operation == 3) {
       if (body.length < 4) return;
       final online = readInt(body, 0, 4);
-      // 游客拿到的热度是占位值 1（上游 REG-BILIBILI-015）：房间详情里的真实热度
-      // 不能被它顶掉，否则一进房人气就掉到 1。
       if (online <= 1) return;
       onMessage?.call(
         LiveMessage(
@@ -402,8 +386,6 @@ class BiliBiliDanmaku implements LiveDanmaku {
       var obj = json.decode(jsonMessage);
       _acknowledgeIfRequired(obj);
       var cmd = obj["cmd"].toString();
-      // 撤回要排在 DANMU_MSG 之前：`RECALL_DANMU_MSG` 里也含 `DANMU_MSG`，否则会被
-      // 当成一条普通聊天（上游 bilibili 4-x）。
       if (cmd == "RECALL_DANMU_MSG") {
         final data = obj["data"];
         if (data is Map) {
@@ -414,12 +396,10 @@ class BiliBiliDanmaku implements LiveDanmaku {
             final uid =
                 (uinfo is Map ? int.tryParse(uinfo["uid"]?.toString() ?? '') : null) ??
                 int.tryParse(data["target_id"]?.toString() ?? '');
-            // uid 0 是游客看到的占位（所有人都被打成 0），撤它等于撤所有人。
             target = uid == null || uid <= 0 ? null : LiveRetraction.user('$uid');
           } else if (recallType == 3) {
             target = const LiveRetraction.all();
           } else {
-            // 0 是"什么都没撤"，1 是单条（网页播放器自己也不在这里处理）。
             target = null;
           }
           if (target != null) {
@@ -446,6 +426,7 @@ class BiliBiliDanmaku implements LiveDanmaku {
             final sentAt = rawTimestamp == null
                 ? null
                 : DateTime.fromMillisecondsSinceEpoch(rawTimestamp > 100000000000 ? rawTimestamp : rawTimestamp * 1000);
+            final medal = _medal(metadata, obj["info"].length > 3 ? obj["info"][3] : null);
             var liveMsg = LiveMessage(
               type: LiveMessageType.chat,
               userName: username,
@@ -454,8 +435,10 @@ class BiliBiliDanmaku implements LiveDanmaku {
               color: color == 0 ? LiveMessageColor.white : LiveMessageColor.numberToColor(color),
               messageId: rawNonce.isEmpty ? '' : 'bilibili:$rawNonce',
               sentAt: sentAt,
-              // 贴纸与内联表情（上游 M13.16）。
               emotes: _emotes(message, metadata),
+              fansName: medal.name,
+              fansLevel: medal.level,
+              avatar: _avatar(metadata),
             );
             onMessage?.call(liveMsg);
           }
@@ -474,18 +457,12 @@ class BiliBiliDanmaku implements LiveDanmaku {
           );
         }
       } else if (cmd == "SEND_GIFT" || cmd == "COMBO_SEND") {
-        // 礼物：`SEND_GIFT`（`giftName`/`num`/gold `total_coin`）与 `COMBO_SEND`
-        // （`gift_name`/`total_num`/`combo_total_coin`），两者都有 `uid`/`uname`/
-        // `batch_combo_id`（上游 bilibili 4-x 的 `_gift`）。
         final gift = _giftMessage(obj["data"], combo: cmd == "COMBO_SEND");
         if (gift != null) onMessage?.call(gift);
       } else if (cmd == "GUARD_BUY") {
-        // 上舰：`gift_name` 买了 `num` 个月，每月 `price` 金瓜子（上游 `_guard`）。
         final guard = _guardMessage(obj["data"]);
         if (guard != null) onMessage?.call(guard);
       } else if (cmd == "WARNING" || cmd == "CUT_OFF") {
-        // 平台公告：`WARNING` 是管理员警告，`CUT_OFF` 是切断直播；两者都把自己的
-        // 原因放在 `msg` 里（上游 bilibili 4-x 的 `_notify`）。
         final reason = obj["msg"]?.toString().trim() ?? '';
         final lead = cmd == "WARNING" ? "直播间收到警告" : "直播被切断";
         onMessage?.call(
@@ -515,14 +492,11 @@ class BiliBiliDanmaku implements LiveDanmaku {
           userName: "SUPER_CHAT_MESSAGE",
           message: "SUPER_CHAT_MESSAGE",
           color: LiveMessageColor.white,
-          // 同一条醒目留言的 id：稍后 `SUPER_CHAT_MESSAGE_DELETE` 按它撤回
-          // （上游 bilibili 4-x）。
           messageId: obj["data"]["id"] == null ? '' : 'bilibili:${obj["data"]["id"]}',
           data: sc,
         );
         onMessage?.call(liveMsg);
       } else if (cmd == "SUPER_CHAT_MESSAGE_DELETE") {
-        // 被退款/下架的醒目留言：按 id 逐条撤回（上游 bilibili 4-x）。
         final ids = obj["data"] is Map ? obj["data"]["ids"] : null;
         if (ids is List) {
           for (final raw in ids) {
@@ -545,8 +519,6 @@ class BiliBiliDanmaku implements LiveDanmaku {
     }
   }
 
-  /// `SEND_GIFT` / `COMBO_SEND` → 一条 [LiveMessageType.gift]，文本 `<名称> ×<数量>`，
-  /// `data` 里带 [BilibiliGift]；没有礼物名时不产生消息（上游 bilibili 4-x）。
   static LiveMessage? _giftMessage(dynamic raw, {required bool combo}) {
     if (raw is! Map) return null;
     final name = (combo ? raw['gift_name'] : raw['giftName'])?.toString().trim() ?? '';
@@ -579,7 +551,6 @@ class BiliBiliDanmaku implements LiveDanmaku {
     );
   }
 
-  /// `GUARD_BUY` → 上舰同样是礼物消息（上游 bilibili 4-x）。
   static LiveMessage? _guardMessage(dynamic raw) {
     if (raw is! Map) return null;
     final name = raw['gift_name']?.toString().trim() ?? '';
@@ -611,9 +582,46 @@ class BiliBiliDanmaku implements LiveDanmaku {
     return id == '0' ? '' : id;
   }
 
-  /// 一条聊天里的表情图片（上游 bilibili 4-x 的 `emotes`，M13.16）：贴纸
-  /// （`info[0][12]` 为 1，图片在 `info[0][13].url`）就是整条消息；否则取内联
-  /// 编码（`[dog]`）中出现在文本里的那些，映射来自 `info[0][15].extra.emots`。
+  static ({String name, String level}) _medal(List<dynamic> metadata, Object? legacy) {
+    final rich = metadata.length > 15 ? _asJsonObject(metadata[15]) : null;
+    final rawUser = rich is Map ? rich['user'] : null;
+    final user = rawUser is Map ? rawUser : rich;
+    final medal = user is Map ? user['medal'] : null;
+    final name = medal is Map ? (medal['name']?.toString().trim() ?? '') : '';
+    if (name.isNotEmpty) {
+      return (name: name, level: _medalLevel(medal is Map ? medal['level'] : null));
+    }
+    if (legacy is List && legacy.length > 1) {
+      final legacyName = legacy[1]?.toString().trim() ?? '';
+      if (legacyName.isNotEmpty) return (name: legacyName, level: _medalLevel(legacy[0]));
+    }
+    return (name: '', level: '');
+  }
+
+  static String _medalLevel(Object? raw) {
+    final value = int.tryParse(raw?.toString() ?? '') ?? 0;
+    return value > 0 ? '$value' : '';
+  }
+
+  static String _avatar(List<dynamic> metadata) {
+    final rich = metadata.length > 15 ? _asJsonObject(metadata[15]) : null;
+    if (rich is! Map) return '';
+    final rawUser = rich['user'];
+    final user = rawUser is Map ? rawUser : rich;
+    final base = user['base'];
+    if (base is! Map) return '';
+    var url = _pictureUrl(base['face']);
+    if (url.isEmpty) {
+      final origin = base['origin_info'];
+      if (origin is Map) url = _pictureUrl(origin['face']);
+    }
+    if (url.isEmpty) return '';
+    final uri = Uri.tryParse(url);
+    if (uri == null) return '';
+    final small = (uri.host == 'hdslb.com' || uri.host.endsWith('.hdslb.com')) && !uri.path.contains('@');
+    return small ? '$url@96w_96h.jpg' : url;
+  }
+
   static List<LiveEmote> _emotes(String text, List<dynamic> meta) {
     if (text.isEmpty) return const <LiveEmote>[];
     final sticker = meta.length > 13 ? meta[13] : null;
@@ -650,7 +658,6 @@ class BiliBiliDanmaku implements LiveDanmaku {
   static Object? _asJsonObject(Object? value) =>
       value is Map ? value : (value is String ? _decodeJsonObject(value) : null);
 
-  /// 表情图片地址：能规范化成 http(s) 就用它，否则当作没有。
   static String _pictureUrl(Object? raw) {
     final value = normalizeNetworkImageUrl(raw?.toString());
     return value.startsWith('http') ? value : '';

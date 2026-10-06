@@ -1,10 +1,8 @@
 import 'dart:convert';
 
 class LivePlayQuality {
-  /// 清晰度
   final String quality;
 
-  /// 清晰度信息
   final dynamic data;
 
   /// Stable platform identifier used to confirm that a requested quality was
@@ -18,7 +16,16 @@ class LivePlayQuality {
   /// requested name/id. Missing acknowledgements must not rename request data.
   final bool isPlaybackUnconfirmed;
 
-  LivePlayQuality({required this.quality, this.data, this.id, this.sort = 0, this.isPlaybackUnconfirmed = false});
+  LivePlayQuality({
+    required this.quality,
+    this.data,
+    this.id,
+    this.sort = 0,
+    this.isPlaybackUnconfirmed = false,
+    this.declaredAspectRatio,
+  });
+
+  final double? declaredAspectRatio;
 
   LivePlayQuality withPlaybackUnconfirmed(bool value) => value == isPlaybackUnconfirmed
       ? this

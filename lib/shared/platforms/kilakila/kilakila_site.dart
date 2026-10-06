@@ -2,8 +2,6 @@ import 'package:dio/dio.dart';
 import 'package:pure_live/core/index.dart' show i18n;
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
-import 'package:pure_live/shared/platforms/kilakila/kilakila_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
@@ -13,6 +11,7 @@ import 'package:pure_live/core/models/live_play_quality.dart';
 import 'package:pure_live/shared/platforms/live_external_room.dart';
 
 import 'kilakila_api.dart';
+import 'kilakila_danmaku.dart';
 import 'kilakila_link.dart';
 
 /// App identities are anchor UIDs, never one-broadcast IDs or display numbers.
@@ -26,7 +25,6 @@ class KilakilaSite extends LiveSite
         LiveCancellableSearch,
         LiveSearchPaginationPolicy,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     final id = sanitizedExternalRoomId(liveroom.roomId);
@@ -57,14 +55,9 @@ class KilakilaSite extends LiveSite
     cover: snapshot.cover,
     avatar: snapshot.avatar,
     link: ownerUrl(snapshot.userId),
-    // latestQuery 弹幕轮询用的是 liveRoomId( roomIdStr ),不是 UID。
-    danmakuData: snapshot.roomId.isEmpty ? null : KilakilaDanmakuArgs(roomId: snapshot.roomId),
-    // watchNumber 是平台自身的观看数(并发/累计语义未验证),原样透出展示。
-    watching: snapshot.watchNumber != null && snapshot.watchNumber! > 0 ? '${snapshot.watchNumber}' : '',
+    watching: '',
     audienceMetricType: AudienceMetricType.unknown,
     status: snapshot.isLive ? true : null,
-    // status 10 是"已结束"：明确的结束状态按未开播处理，其余未知状态保持
-    // unknown（上游 15-1）。
     liveStatus: snapshot.isLive
         ? LiveStatus.live
         : snapshot.statusCode == 10
@@ -72,6 +65,9 @@ class KilakilaSite extends LiveSite
         : LiveStatus.unknown,
     // watchNumber has no verified concurrent-viewer semantics. Broadcast IDs
     // and signed media remain ephemeral; favorites/backup retain only the UID.
+    danmakuData: snapshot.isLive && snapshot.roomId.trim().isNotEmpty
+        ? KilakilaDanmakuArgs(roomId: snapshot.roomId)
+        : null,
     data: snapshot.media.isEmpty
         ? null
         : [
@@ -199,7 +195,6 @@ class KilakilaSite extends LiveSite
     final owner = await _api.owner(uid);
     final current = owner.currentRoom;
     if (current == null) {
-      // 主播资料卡上没有在播节目就是下播（上游 15-1：此前保留 unknown）。
       return LiveRoom(
         platform: id,
         roomId: owner.userId,

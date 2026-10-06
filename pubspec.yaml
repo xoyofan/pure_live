@@ -55,10 +55,8 @@ dependencies:
   loading_animation_widget: ^1.3.0
   loading_indicator: ^4.0.2
   # 本地引擎仓库（与下面 F:/media_core 同款绝对路径依赖）：本仓用到了它 0.0.8 上
-  # 新增的宿主撤回接口 `BarrageController.retractWhere`（弹幕撤回要按条撤下已上屏
-  # 的消息），pub.dev 上的 0.0.8 还没有这个接口。
-  flame_barrage:
-    path: F:/flame_barrage
+  # flame_barrage 转托管源 ^0.0.9(上游 7bb5afc70):撤回接口 retractWhere
+  # 已随 0.0.9 发布,fork 的 F:/flame_barrage 本地克隆适配退役(合并 e1b5055bd)。
 
   # Keep this exact: 0.6.2 preserves argv through FFmpeg/FFprobe/FFplay.
   # Platform URL overrides below select our verified FFmpeg 9.0.2 bundles;
@@ -140,6 +138,10 @@ dependencies:
     path: F:/media_core/packages/media_core_presentation
   media_core_floating:
     path: F:/media_core/packages/media_core_floating
+  media_core_list_playback:
+    path: F:/media_core/packages/media_core_list_playback
+  media_core_feed:
+    path: F:/media_core/packages/media_core_feed
   media_core_ijk_player:
     path: F:/media_core/packages/media_core_ijk_player
   media_core_better_player:

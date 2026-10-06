@@ -738,12 +738,13 @@ packages:
     source: hosted
     version: "1.38.2"
   flame_barrage:
-    dependency: "direct main"
+    dependency: transitive
     description:
-      path: "F:/flame_barrage"
-      relative: false
-    source: path
-    version: "0.0.8"
+      name: flame_barrage
+      sha256: "15541ff9c2b9afc003b3a607754a8dbcce8679b6868e9c1da83927f6389b9bc5"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.9"
   flex_color_picker:
     dependency: "direct main"
     description:
@@ -763,10 +764,9 @@ packages:
   floating:
     dependency: transitive
     description:
-      name: floating
-      sha256: e51ce1dbcab3ea83da0ad1b07f2091b99c0e8680184c780a000567f41234d454
-      url: "https://pub.dev"
-    source: hosted
+      path: "../../media_core/packages/floating"
+      relative: true
+    source: path
     version: "6.0.0"
   flutter:
     dependency: "direct main"
@@ -1380,6 +1380,13 @@ packages:
       relative: false
     source: path
     version: "0.1.0"
+  media_core_feed:
+    dependency: "direct main"
+    description:
+      path: "F:/media_core/packages/media_core_feed"
+      relative: false
+    source: path
+    version: "0.1.0"
   media_core_floating:
     dependency: "direct main"
     description:
@@ -1405,6 +1412,13 @@ packages:
     dependency: "direct main"
     description:
       path: "F:/media_core/packages/media_core_ingest"
+      relative: false
+    source: path
+    version: "0.1.0"
+  media_core_list_playback:
+    dependency: "direct main"
+    description:
+      path: "F:/media_core/packages/media_core_list_playback"
       relative: false
     source: path
     version: "0.1.0"
@@ -1439,8 +1453,8 @@ packages:
   media_core_memory:
     dependency: "direct main"
     description:
-      path: "F:/media_core/packages/media_core_memory"
-      relative: false
+      path: "../../media_core/packages/media_core_memory"
+      relative: true
     source: path
     version: "0.1.0"
   media_core_multiview:
@@ -1474,8 +1488,8 @@ packages:
   media_core_win32:
     dependency: "direct main"
     description:
-      path: "F:/media_core/packages/media_core_win32"
-      relative: false
+      path: "../../media_core/packages/media_core_win32"
+      relative: true
     source: path
     version: "0.1.0"
   media_kit:
@@ -2558,10 +2572,10 @@ packages:
     dependency: "direct main"
     description:
       name: video_player
-      sha256: "8c837b570dccb9ae6ff73d2e0b03c7e708bfefd3bd1194faa7f3e7f200dfc399"
+      sha256: "07ae1e03f2d4c8e2e9a75ee678f90acbc4506d4458a9c628512d119a1eee5754"
       url: "https://pub.dev"
     source: hosted
-    version: "2.14.0"
+    version: "2.14.1"
   video_player_android:
     dependency: transitive
     description:

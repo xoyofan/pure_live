@@ -1,8 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/shared/platforms/bigo/bigo_danmaku.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
@@ -13,6 +11,7 @@ import 'package:pure_live/core/utils/i18n.dart';
 import 'package:pure_live/shared/platforms/live_external_room.dart';
 
 import 'bigo_api.dart';
+import 'bigo_danmaku.dart';
 import 'bigo_input_recipe.dart';
 import 'bigo_link.dart';
 
@@ -26,7 +25,6 @@ final class BigoSite extends LiveSite
         LivePlayUrlResolver,
         LivePlayRecoveryResolver,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     final id = sanitizedExternalRoomId(liveroom.roomId);
@@ -146,7 +144,6 @@ final class BigoSite extends LiveSite
       area: 'Bigo Live',
       link: BigoLink.url(card.siteId),
       liveStatus: LiveStatus.live,
-      // 上锁的列表行照常列出、也算在播，只是标成密码房（上游 24-2）。
       restriction: card.locked ? LiveRestriction.password : null,
       watching: viewers ?? '',
       onlineViewers: viewers,
@@ -159,15 +156,11 @@ final class BigoSite extends LiveSite
 
   LiveRoom _room(BigoStudioRoom room, {required bool includeMedia}) {
     final status = room.status;
-    // 在播判定只看 access+reportedAlive:room.hls 只有 null/真实 URL 两态,
-    // 旧写法 `(public, true, Uri())` 用空 Uri 常量匹配永假 → 在播房间全部
-    // 落 unknown,owned-input 配方站的取流前置(effectiveLiveStatus==live)
-    // 必失败(2026-10-02 首页/直播页对齐探针实锤)。受限仍按在播(上游 24-2)。
     final restriction = BigoApi.restrictionOf(status, hasMedia: room.hls != null);
-    final liveStatus = switch ((status.access, status.reportedAlive)) {
-      (BigoAccess.public, true) => LiveStatus.live,
-      (BigoAccess.public, false) => LiveStatus.offline,
-      (_, true) => LiveStatus.live,
+    final liveStatus = switch ((status.access, status.reportedAlive, room.hls)) {
+      (BigoAccess.public, true, Uri()) => LiveStatus.live,
+      (BigoAccess.public, false, _) => LiveStatus.offline,
+      (_, true, _) => LiveStatus.live,
       _ => LiveStatus.unknown,
     };
     final notice = switch (status.access) {
@@ -179,22 +172,22 @@ final class BigoSite extends LiveSite
       platform: id,
       roomId: status.canonicalSiteId,
       userId: '${status.ownerId}',
-      danmakuData: BigoDanmakuArgs(siteId: status.canonicalSiteId, roomId: room.roomId ?? '${status.ownerId}'),
       title: room.title.isEmpty ? room.nickname : room.title,
       nick: room.nickname,
       avatar: room.avatar ?? '',
-      // 封面用直播间截图，头像兜底（上游 24-1）：3.x 与改前都拿头像当封面，
-      // 于是直播间卡片显示的是主播头像而不是画面。
       cover: room.snapshot.isNotEmpty ? room.snapshot : (room.avatar ?? ''),
       area: room.category.isEmpty ? name : room.category,
       link: BigoLink.url(status.canonicalSiteId),
       liveStatus: liveStatus,
-      // 限制种类：登录/密码房/付费房/公开但拿不到地址（上游 24-2）。
-      restriction: liveStatus == LiveStatus.live ? restriction : null,
+      restriction: liveStatus == LiveStatus.live || status.access != BigoAccess.public ? restriction : null,
       onlineViewers: null,
       totalViewers: null,
       notice: notice,
       httpHeaders: BigoApi.headers,
+      danmakuData:
+          liveStatus == LiveStatus.live && (room.roomId ?? '').isNotEmpty && restriction != LiveRestriction.password
+          ? BigoDanmakuArgs(siteId: status.canonicalSiteId, ownerId: status.ownerId, roomId: room.roomId!)
+          : null,
       data: includeMedia && liveStatus == LiveStatus.live ? room : null,
     );
   }

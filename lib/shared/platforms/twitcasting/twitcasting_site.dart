@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
 import 'package:pure_live/shared/platforms/live_site.dart';
@@ -11,6 +10,7 @@ import 'package:pure_live/core/models/live_play_quality.dart';
 import 'package:pure_live/shared/platforms/live_external_room.dart';
 
 import 'twitcasting_api.dart';
+import 'twitcasting_danmaku.dart';
 
 class TwitcastingSite extends LiveSite
     implements
@@ -18,8 +18,8 @@ class TwitcastingSite extends LiveSite
         LiveSiteRecordRoomResolver,
         LivePlayRecoveryResolver,
         LiveCancellableSearch,
+        LivePlayStreamFacts,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     // fork 修正(2026-10-03):上游用类字段 id(平台名)拼路径——所有站点
@@ -114,9 +114,22 @@ class TwitcastingSite extends LiveSite
     required LivePlayQuality quality,
   }) async {
     final fresh = await getRoomDetail(liveroom);
+    final urls = await getPlayUrls(liveroom: fresh, quality: quality);
     return LivePlayUrlResolution(
-      urls: await getPlayUrls(liveroom: fresh, quality: quality),
+      urls: urls,
       appliedQualityData: quality.selectionId,
+      streamFacts: declareStreamFacts(urls),
     );
+  }
+
+  @override
+  Map<String, LiveStreamFacts> declareStreamFacts(List<String> urls) => <String, LiveStreamFacts>{
+    for (final url in urls)
+      if (_isTwitCastingHost(url)) url: (format: LiveStreamFormat.hls, codec: null, unresolvedChildren: true),
+  };
+
+  static bool _isTwitCastingHost(String url) {
+    final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
+    return host == 'twitcasting.tv' || host.endsWith('.twitcasting.tv');
   }
 }

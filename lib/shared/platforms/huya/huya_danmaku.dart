@@ -12,6 +12,7 @@ import 'package:pure_live/core/network/web_socket_util.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/core/tars/codec/tars_input_stream.dart';
 import 'package:pure_live/core/tars/codec/tars_output_stream.dart';
+import 'package:pure_live/core/tars/game_event_message_board_panel.dart';
 
 // ignore_for_file: no_leading_underscores_for_local_identifiers
 
@@ -221,21 +222,33 @@ class HuyaDanmaku implements LiveDanmaku {
         ),
       );
     } else if (uri == 2001314) {
+      final fromPanel = HuyaDanmaku.superChatsFromPanel(payload);
+      if (fromPanel != null) {
+        for (final chat in fromPanel) {
+          if (!_rememberSuperChat(chat)) continue;
+          onMessage?.call(
+            LiveMessage(
+              type: LiveMessageType.superChat,
+              userName: 'SUPER_CHAT_MESSAGE',
+              message: 'SUPER_CHAT_MESSAGE',
+              color: LiveMessageColor.white,
+              data: chat,
+            ),
+          );
+        }
+        return;
+      }
       // The notification can arrive before the message-board WUP result is
       // updated. Fetching once here loses that SC until a manual room refresh;
       // awaiting the HTTP call also serializes unrelated websocket messages.
       // Reconcile in the background with a small bounded retry window instead.
       _scheduleSuperChatRefresh(_generation);
     } else if (uri == 8001) {
-      // `EndLiveNotice`：主播结束直播（Tars 字段 0 是 lPresenterUid，0 表示没点名）。
-      // 服务器不会关掉这条 socket，3.x 也忽略了它，于是房间一直停在"直播中"
-      // （上游 C-10）。这里照虎牙网页客户端的行为结束这一路弹幕。
       var presenterUid = 0;
       try {
         final raw = TarsInputStream(Uint8List.fromList(payload)).read(0, 0, false);
         presenterUid = raw is int ? raw : 0;
       } catch (_) {
-        // 不是结束通知：当作没收到。
         return;
       }
       final mine = danmakuArgs.uid;
@@ -244,6 +257,20 @@ class HuyaDanmaku implements LiveDanmaku {
         await stop();
       }
     }
+  }
+
+  @visibleForTesting
+  static List<LiveSuperChatMessage>? superChatsFromPanel(List<int> payload, {DateTime? now}) {
+    if (payload.isEmpty) return null;
+    final GameEventMessageBoardPanel panel;
+    try {
+      final bytes = Uint8List.fromList(payload);
+      if (!TarsInputStream(bytes).skipToTag(1)) return null;
+      panel = GameEventMessageBoardPanel()..readFrom(TarsInputStream(bytes));
+    } catch (_) {
+      return null;
+    }
+    return huyaSuperChatsFromPanel(panel, now: now);
   }
 
   void _scheduleSuperChatRefresh(int generation) {

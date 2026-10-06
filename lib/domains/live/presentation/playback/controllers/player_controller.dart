@@ -10,6 +10,7 @@ import 'package:pure_live/shared/platforms/live_site.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:pure_live/core/player/kernel/player_consts.dart';
 import 'package:pure_live/core/player/core/playback_source.dart';
+import 'package:pure_live/core/network/site_transport_failure.dart';
 import 'package:media_core/media_core.dart' show PlayerException, PlayerErrorCode;
 import 'package:pure_live/core/utils/live_quality_label.dart';
 import 'package:pure_live/domains/live/domain/live_player_facade.dart';
@@ -108,6 +109,18 @@ List<LivePlayQuality> _qualityChoicesWithConfirmation(
   ]);
 }
 
+/// Which message a failed stream-metadata request deserves.
+///
+/// A site adapter's `transport` failure says the platform never gave a usable
+/// answer — that is a statement about reaching the platform, not about the
+/// room. Which leg broke matters here, because the two proxy switches are easy
+/// what the page and API calls that produced that address go through. Reporting
+/// adapter instead of the setting that governs it.
+@visibleForTesting
+String streamMetadataFailureKey({required Object error, required bool appProxyEnabled}) =>
+    isUnreachableSiteFailure(error)
+        ? (appProxyEnabled ? 'site_unreachable_via_proxy' : 'site_unreachable')
+        : 'read_video_failed';
 @visibleForTesting
 List<LivePlayQuality> normalizePlayQualities(Iterable<LivePlayQuality> qualities) {
   final unique = <LivePlayQuality>[];
@@ -152,6 +165,7 @@ abstract interface class PlayerSessionHost {
     int? currentQuality,
     List<String>? playUrls,
     Map<String, HlsSourceQueryPolicy>? sourceQueryPolicies,
+    Map<String, LiveStreamFacts>? streamFacts,
     OwnedPlaybackSource? ownedSource,
     bool clearOwnedSource = false,
     int? currentLineIndex,
@@ -283,10 +297,6 @@ class PlayerController extends GetxController {
         current?.platform == liveroom.platform;
   }
 
-  /// 解析指定站点/房间的播放请求头（单一事实来源）。
-  ///
-  /// 主房间路径（[getHeaders]）与 multiview 每格解析器共用此入口，
-  /// 保证 Cookie/UA/Referer 等鉴权头逻辑不发生漂移。
   static Future<Map<String, String>> resolvePlaybackHeaders({required Site site, required LiveRoom? liveroom}) async {
     return PlaybackHeaderResolver.resolve(
       platform: site.id,
@@ -360,6 +370,9 @@ class PlayerController extends GetxController {
         preferredLineIndex: preferredIndex,
         selection: PlaybackSourceQualitySelection(
           sourceQueryPolicies: resolution.sourceQueryPolicies,
+          streamFacts: resolution.streamFacts,
+          declaredAspectRatio: resolution.declaredAspectRatio,
+          startAt: resolution.startAt,
           qualities: _qualityChoicesWithConfirmation(choices, requestedIndex, resolution),
           currentQuality: resolveAppliedQualityIndex(
             qualities: choices,
@@ -373,7 +386,6 @@ class PlayerController extends GetxController {
         invalidAt: liveSite is LivePlayLeaseMetadata
             ? (liveSite as LivePlayLeaseMetadata).getPlayUrlInvalidAt(urls[preferredIndex])
             : null,
-        // 轮播房的起播位置（点播稿件，直播/回放恒为 0）。
         startAt: resolution.startAt,
       );
     };
@@ -398,8 +410,9 @@ class PlayerController extends GetxController {
       qualites: selection?.qualities,
       currentQuality: selection?.currentQuality,
       playUrls: commit.urls,
-      ownedSource: commit.source is OwnedPlaybackSource ? commit.source as OwnedPlaybackSource : null,
+      ownedSource: commit.ownedSource is OwnedPlaybackSource ? commit.ownedSource as OwnedPlaybackSource : null,
       sourceQueryPolicies: selection?.sourceQueryPolicies ?? const {},
+      streamFacts: commit.streamFacts,
       currentLineIndex: commit.currentLineIndex,
     );
     _main.updateRoom(success: true, isLoading: false, loadError: null);
@@ -458,6 +471,7 @@ class PlayerController extends GetxController {
           : null,
       sourceSelection: PlaybackSourceQualitySelection(
         sourceQueryPolicies: playerState.sourceQueryPolicies,
+        streamFacts: playerState.streamFacts,
         qualities: playerState.qualites,
         currentQuality: playerState.currentQuality,
       ),
@@ -523,6 +537,7 @@ class PlayerController extends GetxController {
       currentQuality: currentQuality,
       playUrls: playUrls,
       sourceQueryPolicies: session.sourceQueryPolicies,
+      streamFacts: session.streamFacts,
       ownedSource: session.ownedSource as OwnedPlaybackSource?,
       currentLineIndex: currentLineIndex,
       isCurrentRoomAudioOnly: manager.desiredAudioOnlyMode,
@@ -560,6 +575,7 @@ class PlayerController extends GetxController {
         qualities: qualities,
         currentQuality: currentQuality,
         sourceQueryPolicies: session.sourceQueryPolicies,
+        streamFacts: session.streamFacts,
       ),
       livePlayController: _videoSessionController,
       onSourceCommitted: applySourceCommit,
@@ -616,7 +632,10 @@ class PlayerController extends GetxController {
         name: 'PlayerController',
         stackTrace: stackTrace,
       );
-      ToastUtil.show(i18n('read_video_failed'));
+      ToastUtil.show(i18n(streamMetadataFailureKey(
+        error: error,
+        appProxyEnabled: SettingsService.to.proxy.enableAppProxy.v,
+      )));
       _main.updateRoom(success: false);
     }
   }
@@ -677,6 +696,7 @@ class PlayerController extends GetxController {
       playUrls: List<String>.unmodifiable(resolution.urls),
       ownedSource: owned,
       sourceQueryPolicies: resolution.sourceQueryPolicies,
+      streamFacts: resolution.streamFacts,
       currentQuality: appliedQuality,
       currentLineIndex: lineIndex,
     );
@@ -734,6 +754,7 @@ class PlayerController extends GetxController {
           : LivePlayUrlResolution.withSourcePolicies(
               urls: List<String>.from(before.playUrls),
               sourceQueryPolicies: before.sourceQueryPolicies,
+              streamFacts: before.streamFacts,
               appliedQualityData: before.qualites[before.currentQuality].selectionId,
               qualityUnconfirmed: before.qualitySafe.isPlaybackUnconfirmed,
             );
@@ -787,6 +808,7 @@ class PlayerController extends GetxController {
         qualities: committedChoices,
         currentQuality: selection.qualityIndex,
         sourceQueryPolicies: resolution.sourceQueryPolicies,
+        streamFacts: resolution.streamFacts,
       );
       final resolver = _buildSourceResolver(
         site: site,
@@ -821,6 +843,7 @@ class PlayerController extends GetxController {
           playUrls: immutableUrls,
           ownedSource: owned,
           sourceQueryPolicies: resolution.sourceQueryPolicies,
+          streamFacts: resolution.streamFacts,
           currentLineIndex: selection.lineIndex,
           hasUseDefaultResolution: true,
         );
@@ -843,6 +866,7 @@ class PlayerController extends GetxController {
             playUrls: before.playUrls,
             ownedSource: before.ownedSource,
             sourceQueryPolicies: before.sourceQueryPolicies,
+            streamFacts: before.streamFacts,
             currentLineIndex: before.currentLineIndex,
             hasUseDefaultResolution: before.hasUseDefaultResolution,
           );
@@ -854,7 +878,10 @@ class PlayerController extends GetxController {
             error: error,
             stackTrace: stackTrace,
           );
-          ToastUtil.show(i18n('read_video_failed'));
+          ToastUtil.show(i18n(streamMetadataFailureKey(
+            error: error,
+            appProxyEnabled: SettingsService.to.proxy.enableAppProxy.v,
+          )));
         }
       }
       return false;
@@ -913,7 +940,6 @@ class PlayerController extends GetxController {
   @override
   @override
   void onInit() {
-    // 站点适配器需要只读地知道当前在播的房间，由这里挂载，数据层不再 find 页面控制器。
     CurrentLiveRoom.provider = () => currentRoom;
     super.onInit();
   }

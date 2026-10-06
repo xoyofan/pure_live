@@ -2,6 +2,7 @@ import 'package:pure_live/core/player/core/playback_source.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pure_live/core/stream/hls_source_query_policy.dart';
 import 'package:pure_live/core/models/live_play_quality.dart';
+import 'package:pure_live/shared/platforms/live_site.dart' show LiveStreamFacts;
 import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/video_controller.dart';
 
 /// Resolves the route-scoped video controller for a partial player-state update.
@@ -25,6 +26,8 @@ class PlayerState {
   int get lineCount => ownedSource == null ? playUrls.length : 1;
   bool get hasPlaybackSource => lineCount > 0;
   final Map<String, HlsSourceQueryPolicy> sourceQueryPolicies;
+
+  final Map<String, LiveStreamFacts> streamFacts;
   final int currentLineIndex;
   final bool isCurrentRoomAudioOnly;
   final bool hasUseDefaultResolution;
@@ -36,6 +39,7 @@ class PlayerState {
     this.playUrls = const [],
     this.ownedSource,
     this.sourceQueryPolicies = const {},
+    this.streamFacts = const {},
     this.currentLineIndex = 0,
     this.isCurrentRoomAudioOnly = false,
     this.hasUseDefaultResolution = false,
@@ -65,6 +69,7 @@ class PlayerState {
     OwnedPlaybackSource? ownedSource,
     bool clearOwnedSource = false,
     Map<String, HlsSourceQueryPolicy>? sourceQueryPolicies,
+    Map<String, LiveStreamFacts>? streamFacts,
     int? currentLineIndex,
     bool? isCurrentRoomAudioOnly,
     bool? hasUseDefaultResolution,
@@ -81,6 +86,11 @@ class PlayerState {
       // source. Never carry a previous resolver's policy into that cohort.
       sourceQueryPolicies: Map<String, HlsSourceQueryPolicy>.unmodifiable(
         sourceQueryPolicies ?? (playUrls == null ? this.sourceQueryPolicies : const {}),
+      ),
+      // Same rule as the query policies: facts describe one cohort of URLs, so a
+      // new URL list without a new declaration starts undeclared.
+      streamFacts: Map<String, LiveStreamFacts>.unmodifiable(
+        streamFacts ?? (playUrls == null ? this.streamFacts : const {}),
       ),
       currentLineIndex: currentLineIndex ?? this.currentLineIndex,
       isCurrentRoomAudioOnly: isCurrentRoomAudioOnly ?? this.isCurrentRoomAudioOnly,
@@ -111,6 +121,7 @@ class PlayerState {
         listEquals(other.playUrls, playUrls) &&
         other.ownedSource == ownedSource &&
         mapEquals(other.sourceQueryPolicies, sourceQueryPolicies) &&
+        mapEquals(other.streamFacts, streamFacts) &&
         other.currentLineIndex == currentLineIndex &&
         other.isCurrentRoomAudioOnly == isCurrentRoomAudioOnly &&
         other.hasUseDefaultResolution == hasUseDefaultResolution;
@@ -124,11 +135,11 @@ class PlayerState {
     Object.hashAll(playUrls),
     ownedSource,
     Object.hashAllUnordered(sourceQueryPolicies.entries.map((entry) => Object.hash(entry.key, entry.value))),
+    Object.hashAllUnordered(streamFacts.entries.map((entry) => Object.hash(entry.key, entry.value))),
     currentLineIndex,
     isCurrentRoomAudioOnly,
     hasUseDefaultResolution,
   );
 }
 
-/// 一次房间数据重载的原因。
 enum ReloadDataType { refresh, changeLine, changeQuality }

@@ -12,14 +12,17 @@ import 'package:pure_live/core/network/http_client.dart';
 import 'package:pure_live/core/network/request_scope.dart';
 
 import 'look_live_link.dart';
+import 'package:pure_live/core/network/site_transport_failure.dart';
 
 enum LookLiveFailure { transport, access, missing, rateLimited, service, schema, identity, cancelled, mediaUnavailable }
 
-final class LookLiveException implements Exception {
+final class LookLiveException implements Exception, SiteTransportFailure {
   const LookLiveException(this.kind);
 
   final LookLiveFailure kind;
 
+  @override
+  bool get isSiteUnreachable => kind == LookLiveFailure.transport;
   @override
   String toString() => 'LOOK Live ${kind.name}';
 }
@@ -51,11 +54,14 @@ final class LookLiveRoom {
     required this.popularity,
     required this.currentViewers,
     required Iterable<LookLiveVariant> variants,
+    this.chatroomId = '',
   }) : variants = List.unmodifiable(variants);
 
   final String roomId;
   final String userId;
   final String sessionId;
+
+  final String chatroomId;
   final String title;
   final String nick;
   final String avatar;
@@ -244,6 +250,30 @@ class LookLiveApi {
     return _object(root['data']);
   }
 
+  static const String chatAddressPath = '/weapi/livestream/chat/address';
+
+  static final RegExp _chatAddress = RegExp(
+    r'^([a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+):([0-9]{1,5})$',
+  );
+
+  Future<List<({String host, int port})>> chatServers(String roomId, {CancelToken? cancel}) async {
+    final id = LookLiveLink.requireRoomId(roomId);
+    final data = await _post(chatAddressPath, <String, Object?>{'liveRoomNo': id, 'os': 0}, cancel: cancel);
+    final rows = data['address'];
+    if (rows is! List) throw const LookLiveException(LookLiveFailure.schema);
+    final servers = <({String host, int port})>[];
+    for (final raw in rows) {
+      final text = raw?.toString().trim().toLowerCase() ?? '';
+      final match = _chatAddress.firstMatch(text);
+      if (match == null) continue;
+      final port = int.tryParse(match.group(4)!);
+      if (port == null || port < 1 || port > 65535) continue;
+      servers.add((host: match.group(1)!, port: port));
+    }
+    if (servers.isEmpty) throw const LookLiveException(LookLiveFailure.schema);
+    return List.unmodifiable(servers);
+  }
+
   Future<LookLivePage> directory({required LookLiveKind kind, int page = 1, CancelToken? cancel}) async {
     if (page < 1 || page > 10000) throw const LookLiveException(LookLiveFailure.schema);
     final path = kind == LookLiveKind.audio
@@ -279,9 +309,6 @@ class LookLiveApi {
     if (returnedId != id) throw const LookLiveException(LookLiveFailure.identity);
     final info = _object(data['roomInfo']);
     final liveType = _integer(info['liveType']);
-    // LOOK 的网页客户端把 -10 叫 FORBID：它与 -4（违规整改中）都是封禁；-2 是
-    // 未开播（上游 32-2；3.x 一律 unknown）。封禁的房间不是"直播中"，但状态查询
-    // 本身不该失败，播放时再说明原因。
     final state = switch (_integer(data['liveStatus'])) {
       1 => LookLiveState.live,
       0 || -1 || -2 => LookLiveState.offline,
@@ -293,6 +320,7 @@ class LookLiveApi {
       roomId: id,
       userId: _identifier(anchor['userId']),
       sessionId: _identifier(info['id']),
+      chatroomId: _text(info['roomId']),
       title: _text(info['title']),
       nick: _text(anchor['nickName']),
       avatar: _picture(anchor['avatarUrl']),

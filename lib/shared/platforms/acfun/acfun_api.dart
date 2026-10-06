@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:pure_live/core/network/http_client.dart';
+import 'package:pure_live/core/network/site_transport_failure.dart';
 
 typedef AcfunRequest = Future<Object?> Function(
   String method,
@@ -14,12 +15,14 @@ typedef AcfunRequest = Future<Object?> Function(
 enum AcfunFailureKind { transport, service, schema, qualityUnavailable, paginationExpired }
 
 /// Safe to log: never retains the response body, visitor credential or URL.
-class AcfunApiException implements Exception {
+class AcfunApiException implements Exception, SiteTransportFailure {
   const AcfunApiException(this.kind, {this.result});
 
   final AcfunFailureKind kind;
   final int? result;
 
+  @override
+  bool get isSiteUnreachable => kind == AcfunFailureKind.transport;
   @override
   String toString() => 'AcFun ${kind.name}${result == null ? '' : ' (result=$result)'}';
 }
@@ -57,42 +60,28 @@ class AcfunStreamQuality {
 }
 
 class AcfunPlayback {
-  const AcfunPlayback({required this.liveId, required this.qualities, this.comment});
+  const AcfunPlayback({
+    required this.liveId,
+    required this.qualities,
+    this.tickets = const <String>[],
+    this.enterRoomAttach = '',
+  });
   final String liveId;
   final List<AcfunStreamQuality> qualities;
 
-  /// Danmaku session credentials from the same startPlay response; null when
-  /// the live is missing them (e.g. replay-only rooms).
-  final AcfunCommentCredentials? comment;
-}
+  final List<String> tickets;
 
-/// Everything the comment WebSocket needs; ssecurity/token/uid/did come from
-/// the anonymous visitor session that also authorized startPlay.
-class AcfunCommentCredentials {
-  const AcfunCommentCredentials({
-    required this.ticket,
-    required this.enterRoomAttach,
-    required this.ssecurity,
-    required this.token,
-    required this.uid,
-    required this.did,
-  });
-
-  final String ticket;
   final String enterRoomAttach;
-  final String ssecurity;
-  final String token;
-  final String uid;
-  final String did;
 }
 
 class _VisitorSession {
-  const _VisitorSession(this.did, this.userId, this.token, this.ssecurity, this.expiresAt);
+  const _VisitorSession(this.did, this.userId, this.token, this.expiresAt, {this.security = ''});
   final String did;
   final String userId;
   final String token;
-  final String ssecurity;
   final DateTime expiresAt;
+
+  final String security;
 }
 
 /// Public, anonymous AcFun protocol. Directory/refresh reads never log in;
@@ -224,8 +213,6 @@ class AcfunApi {
         if (type == null || type < 0 || id == null || id < 0 || name.isEmpty) {
           throw const AcfunApiException(AcfunFailureKind.schema);
         }
-        // 「全部」列的是全站直播，与推荐相同，不作为分区列出（上游 10-2；
-        // 3.x 会列出来）。
         if (id == allFilterId) continue;
         result.putIfAbsent((
           type,
@@ -236,7 +223,6 @@ class AcfunApi {
     return List.unmodifiable(result.values);
   }
 
-  /// 「全部」的 filter id：它列的是全站直播（推荐），不是一个分区（上游 10-2）。
   static const int allFilterId = 0;
 
   Future<Map<String, dynamic>> roomInfo(String authorId) async {
@@ -284,9 +270,14 @@ class AcfunApi {
     _success(data, 0);
     final userId = normalizeAuthorId(text(data['userId']));
     final token = text(data['acfun.api.visitor_st']);
-    final ssecurity = text(data['acSecurity']);
     if (token.isEmpty) throw const AcfunApiException(AcfunFailureKind.schema);
-    final session = _VisitorSession(did, userId, token, ssecurity, _clock().add(const Duration(minutes: 5)));
+    final session = _VisitorSession(
+      did,
+      userId,
+      token,
+      _clock().add(const Duration(minutes: 5)),
+      security: text(data['acSecurity']),
+    );
     _visitor = session;
     return session;
   }
@@ -316,22 +307,25 @@ class AcfunApi {
     final payload = object(data['data']);
     final liveId = text(payload['liveId']);
     if (liveId.isEmpty) throw const AcfunApiException(AcfunFailureKind.schema);
-    // The same response carries the comment credentials; without them the
-    // room plays but has no danmaku session (e.g. replay-only entries).
-    final tickets = payload['availableTickets'];
-    final ticket = tickets is List && tickets.isNotEmpty ? text(tickets.first) : '';
-    final attach = text(payload['enterRoomAttach']);
-    final comment = ticket.isEmpty || attach.isEmpty
-        ? null
-        : AcfunCommentCredentials(
-            ticket: ticket,
-            enterRoomAttach: attach,
-            ssecurity: session.ssecurity,
-            token: session.token,
-            uid: session.userId,
-            did: session.did,
-          );
-    return AcfunPlayback(liveId: liveId, qualities: parseQualities(payload['videoPlayRes']), comment: comment);
+    final tickets = <String>[];
+    final rawTickets = payload['availableTickets'];
+    if (rawTickets is List) {
+      for (final entry in rawTickets) {
+        final value = text(entry).trim();
+        if (value.isNotEmpty) tickets.add(value);
+      }
+    }
+    return AcfunPlayback(
+      liveId: liveId,
+      qualities: parseQualities(payload['videoPlayRes']),
+      tickets: List.unmodifiable(tickets),
+      enterRoomAttach: text(payload['enterRoomAttach']),
+    );
+  }
+
+  Future<({String userId, String did, String token, String security})> visitorCredentials() async {
+    final session = await _session();
+    return (userId: session.userId, did: session.did, token: session.token, security: session.security);
   }
 
   static List<AcfunStreamQuality> parseQualities(Object? raw) {

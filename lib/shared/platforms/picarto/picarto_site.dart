@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
@@ -13,6 +12,7 @@ import 'package:pure_live/core/utils/i18n.dart';
 import 'package:pure_live/shared/platforms/live_external_room.dart';
 
 import 'picarto_api.dart';
+import 'picarto_danmaku.dart';
 import 'picarto_hls.dart';
 
 class PicartoSite extends LiveSite
@@ -23,7 +23,6 @@ class PicartoSite extends LiveSite
         LiveSiteDirectoryPager,
         LiveCancellableSearch,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     // fork 修正(2026-10-03):上游用类字段 id(平台名)拼路径——所有站点

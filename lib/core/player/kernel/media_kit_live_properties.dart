@@ -1,8 +1,12 @@
 import 'dart:io';
+import 'dart:developer' as developer;
 
 import 'package:media_core/media_core.dart';
+import 'package:media_core_ingest/media_core_ingest.dart' show isHlsManifestUri;
 import 'package:media_core_media_kit/media_core_media_kit.dart';
 import 'package:pure_live/core/player/kernel/player_preset.dart';
+import 'package:pure_live/core/player/core/playback_proxy_policy.dart';
+import 'package:pure_live/core/player/core/playback_source_hints.dart';
 import 'package:pure_live/core/player/super_resolution.dart';
 import 'package:media_core_media_kit/media_core_media_kit.dart' as mkv;
 import 'package:pure_live/core/index.dart';
@@ -33,6 +37,15 @@ abstract final class MediaKitLiveProperties {
   }
 
   /// The full property map handed to the adapter's `extraProperties`.
+  ///
+  /// Only properties that are the same for every source belong here. Anything
+  /// that depends on the source being opened — the proxy, the container, the
+  /// live-playlist cache policy — is written by [applyToSource] instead, because
+  /// two writers for one property do not have a deterministic order: the
+  /// factory's `configure` hook takes a `void` callback, so the future returned
+  /// here is dropped and these writes can land *after* a source has opened.
+  /// A Twitch reproduction showed exactly that, with the per-source
+  /// `force-seekable=no` overwritten by this table's `yes` a few lines later.
   static Map<String, String> build() {
     final properties = <String, String>{
       'protocol_whitelist': 'httpproxy,udp,rtp,tcp,tls,data,file,http,https,crypto,rtmp,rtmps,rtsp,srt',
@@ -42,7 +55,6 @@ abstract final class MediaKitLiveProperties {
       // Drop a failing hw decoder after one bad frame.
       'hwdec-software-fallback': '1',
       // Network cache-secs takes precedence over the smaller base readahead.
-      'force-seekable': 'yes',
       'cache': 'yes',
       'cache-on-disk': 'no',
       'cache-secs': cacheSeconds.toString(),
@@ -51,8 +63,8 @@ abstract final class MediaKitLiveProperties {
       // Past media must not borrow the unused forward reserve.
       'demuxer-donate-buffer': 'no',
       'demuxer-readahead-secs': readaheadSeconds.toString(),
-      // Refill-then-resume: wait for a healthy buffer after a stall.
-      'cache-pause': 'yes',
+      // Refill-then-resume: wait for a healthy buffer after a stall. Whether it
+      // is enabled at all is a per-source decision (see [sourceProperties]).
       'cache-pause-wait': cachePauseWaitSeconds.toString(),
       'demuxer-thread': 'yes',
       // Drop late frames instead of stacking lag.
@@ -182,6 +194,41 @@ abstract final class MediaKitLiveProperties {
   /// initializes later.
   static Future<void> applyTo(MediaKitPlayerAdapter adapter) async {
     adapter.applyEngineOptions(await engineOptions());
+  }
+
+  /// The native player configuration; only the log level differs from media_kit's
+  /// defaults, since passing this object at all means restating them.
+  static mkv.PlayerConfiguration playerConfiguration() => mkv.PlayerConfiguration(
+    logLevel: const bool.fromEnvironment('dart.vm.product') ? mkv.MPVLogLevel.warn : mkv.MPVLogLevel.v,
+  );
+
+  static Map<String, String> sourceProperties({
+    required Uri uri,
+    required String? declaredFormat,
+    required String proxy,
+  }) {
+    final bool privateInput = isPrivatePlaybackInput(uri);
+    final bool playlist = (declaredFormat ?? (isHlsManifestUri(uri) ? 'hls' : null)) == 'hls';
+    return <String, String>{
+      'http-proxy': privateInput || playsDirectBehindProxy(uri) ? '' : proxy,
+      'demuxer-lavf-format': playlist && !privateInput ? 'hls' : '',
+      'force-seekable': playlist ? 'no' : 'yes',
+      'cache-pause': playlist ? 'no' : 'yes',
+    };
+  }
+
+  static Future<void> applyToSource(Player player, PlayerSource source) async {
+    final platform = player.platform;
+    if (platform is! NativePlayer) return;
+    final properties = sourceProperties(
+      uri: source.uri,
+      declaredFormat: declaredStreamFormatOf(source),
+      proxy: PlaybackProxyPolicy.currentNativeUrl(privateInput: false),
+    );
+    developer.log('${source.uri.host} -> $properties', name: 'PlaybackProxy');
+    for (final entry in properties.entries) {
+      await platform.setProperty(entry.key, entry.value);
+    }
   }
 
   /// Whether the super-resolution shaders should mount on this machine.

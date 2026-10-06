@@ -225,13 +225,9 @@ class LiveUrlTool {
         if (session.isClosed || cancel.isCancelled) return [];
         return [shortId, Sites.liveMeSite];
       }
-      // niconico 主播链接（watch/user、watch/ch、用户页、频道页）：房间身份仍是
-      // 节目号，所以这里用一次 watch 页请求换出"该主播当前在播的节目"（上游 17-2）。
       final niconicoBroadcaster = NiconicoLink.parseBroadcaster(raw);
       if (niconicoBroadcaster != null) {
-        final programId = await niconicoApi.resolveBroadcasterProgram(niconicoBroadcaster, cancel: cancel);
-        if (session.isClosed || cancel.isCancelled) return [];
-        return [programId, Sites.niconicoSite];
+        return [niconicoBroadcaster, Sites.niconicoSite];
       }
       final tiktok = TikTokLink.parse(raw);
       if (tiktok != null) {

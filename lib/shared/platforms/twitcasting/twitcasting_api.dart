@@ -10,13 +10,16 @@ import 'package:pure_live/core/models/live_room.dart';
 import 'package:pure_live/core/network/http_client.dart';
 import 'package:pure_live/core/network/request_scope.dart';
 import 'package:pure_live/core/models/live_play_quality.dart';
-import 'package:pure_live/shared/platforms/twitcasting/twitcasting_danmaku.dart';
+import 'twitcasting_danmaku.dart';
+import 'package:pure_live/core/network/site_transport_failure.dart';
 
 enum TwitcastingFailure { transport, access, rateLimited, service, notFound, schema, cancelled, qualityUnavailable }
 
-class TwitcastingException implements Exception {
+class TwitcastingException implements Exception, SiteTransportFailure {
   const TwitcastingException(this.kind);
   final TwitcastingFailure kind;
+  @override
+  bool get isSiteUnreachable => kind == TwitcastingFailure.transport;
   @override
   String toString() => 'TwitCasting ${kind.name}';
 }
@@ -235,10 +238,8 @@ class TwitcastingApi {
           link.pathSegments.join('/') != '$channel/movie/$movie') {
         throw const TwitcastingException(TwitcastingFailure.schema);
       }
-      // Recent(_system_new) 等新着目录对部分条目不回 current_viewer_count
-      // (实测 null)——按未知观看数放行, 不让单条目炸掉整个目录页。
       final count = integer(row['current_viewer_count']);
-      if (count != null && count < 0) throw const TwitcastingException(TwitcastingFailure.schema);
+      if (count == null || count < 0) throw const TwitcastingException(TwitcastingFailure.schema);
       rooms.putIfAbsent(
         channel,
         () => LiveRoom(
@@ -250,12 +251,11 @@ class TwitcastingApi {
           cover: picture(row['thumbnail_url']),
           avatar: picture(row['user_icon_url']),
           link: '$origin/$channel',
-          watching: count?.toString() ?? '',
-          onlineViewers: count?.toString() ?? '',
+          watching: '$count',
+          onlineViewers: '$count',
           audienceMetricType: AudienceMetricType.onlineViewers,
           status: true,
           liveStatus: LiveStatus.live,
-          // 上了锁的直播仍然是"在播"，只是需要房间密码（上游 12-x）。
           restriction: row['is_locked'] == true ? LiveRestriction.password : LiveRestriction.none,
         ),
       );
@@ -312,18 +312,14 @@ class TwitcastingApi {
           channelUri.hasFragment ||
           channelUri.pathSegments.length != 1 ||
           movieUri.pathSegments.length != 3) {
-        // 读不出来的行只丢它自己（上游：坏行不该让整页搜索失败）。
         continue;
       }
-      // 不是"正在直播"的行不列出来；播放包装不存在时，徽章写着 private 的就是
-      // 私密直播，其它的说明平台没给可播的流（上游 12-5）。
       if (row.querySelector('.tw-movie-thumbnail2-badge[data-status="live"]') == null) continue;
       final playable = row.querySelector('.tw-movie-thumbnail2-image-wrapper[data-can-play="true"]') != null;
-      final private =
-          !playable &&
+      final private = !playable &&
           row
-              .querySelectorAll('.tw-movie-thumbnail2-badge')
-              .any((badge) => badge.text.trim().toLowerCase() == 'private');
+                  .querySelectorAll('.tw-movie-thumbnail2-badge')
+                  .any((badge) => badge.text.trim().toLowerCase() == 'private');
       final restriction = playable
           ? LiveRestriction.none
           : private
@@ -362,8 +358,6 @@ class TwitcastingApi {
   Future<LiveRoom> detail(String input, {bool includeMedia = true, CancelToken? cancel}) async {
     final channel = channelName(input);
     final page = await read(Uri.parse('$origin/$channel'), cancel: cancel);
-    // 要"合言葉"的直播仍然是"在播"，只是本客户端播不了（上游 12-x）：此前直接抛
-    // access，于是连房间信息都看不到。
     if (page.contains('Enter the secret word to access')) {
       return LiveRoom(
         platform: 'twitcasting',
@@ -397,12 +391,10 @@ class TwitcastingApi {
     final movie = object(stream['movie']);
     if (movie['live'] is! bool) throw const TwitcastingException(TwitcastingFailure.schema);
     final live = movie['live'] == true;
-    // 标题优先取直播的 telop（播放器标题下方那行）。只取该元素自己的文本节点，
-    // 话题标签在子元素里，天然被排除；没有 telop 才退回页面的 `twitter:title`
-    // （上游 12-1）。`twitter:description` 不再作为退路：没有 telop 时它是主播
-    // 的简介。
     final telopTag = document.querySelector('.tw-player-page-title-description');
-    final telop = telopTag == null ? '' : telopTag.nodes.whereType<Text>().map((node) => node.text).join().trim();
+    final telop = telopTag == null
+        ? ''
+        : telopTag.nodes.whereType<Text>().map((node) => node.text).join().trim();
     final twitterTitle = document.querySelector('meta[name="twitter:title"]')?.attributes['content']?.trim() ?? '';
     final room = LiveRoom(
       platform: 'twitcasting',
@@ -425,9 +417,7 @@ class TwitcastingApi {
     }
     final movieId = integer(movie['id']);
     if (movieId == null || movieId <= 0) throw const TwitcastingException(TwitcastingFailure.schema);
-    // The comment pubsub endpoint needs the live movie id; access-protected
-    // lives never reach here because the secret word check threw earlier.
-    room.danmakuData = TwitcastingDanmakuArgs(movieId: '$movieId');
+    room.danmakuData = TwitcastingDanmakuArgs(movieId: movieId);
     final streams = object(object(stream['tc-hls'])['streams']);
     final qualities = <LivePlayQuality>[];
     for (final key in ['high', 'medium', 'low']) {

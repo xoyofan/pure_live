@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:pure_live/core/models/live_room.dart';
 import 'package:pure_live/core/network/http_client.dart';
 import 'package:pure_live/core/network/request_scope.dart';
+import 'package:pure_live/core/network/site_transport_failure.dart';
 
 enum ShowroomFailure {
   transport,
@@ -20,11 +21,13 @@ enum ShowroomFailure {
   mediaUnavailable,
 }
 
-class ShowroomException implements Exception {
+class ShowroomException implements Exception, SiteTransportFailure {
   const ShowroomException(this.kind);
 
   final ShowroomFailure kind;
 
+  @override
+  bool get isSiteUnreachable => kind == ShowroomFailure.transport;
   @override
   String toString() => 'Showroom ${kind.name}';
 }
@@ -75,8 +78,6 @@ class ShowroomLive {
   final String telop;
   final List<ShowroomStream> streams;
 
-  /// `premium_room_type` 说明的限制（上游 19-x）：0 是普通直播、人人可看 →
-  /// [LiveRestriction.none]；其它取值没有记录说明是什么，留 null（未知）。
   final LiveRestriction? restriction;
 }
 
@@ -131,11 +132,8 @@ class ShowroomProfile {
   final String description;
   final bool isLive;
 
-  /// `current_live_started_at`（Unix 秒）对应的本场开播时间；只有直播详情会给
-  /// （上游 19-x）。读不出来或不在 2000–2100 年就是 null。
   final DateTime? startedAt;
 
-  /// 见 [ShowroomLive.restriction]。
   final LiveRestriction? restriction;
 
   ShowroomProfile withLiveStatus(bool value) => ShowroomProfile(
@@ -154,23 +152,15 @@ class ShowroomProfile {
   );
 }
 
-class ShowroomCommentServer {
-  const ShowroomCommentServer({required this.host, required this.port, required this.key});
-
-  final String host;
-  final int port;
-  final String key;
-}
-
 class ShowroomRoom {
-  ShowroomRoom(this.profile, Iterable<ShowroomStream> streams, {this.commentServer})
+  ShowroomRoom(this.profile, Iterable<ShowroomStream> streams, {this.chatHost = '', this.chatKey = ''})
     : streams = List.unmodifiable(streams);
 
   final ShowroomProfile profile;
   final List<ShowroomStream> streams;
 
-  /// Live comment server endpoint; null when the room is not broadcasting.
-  final ShowroomCommentServer? commentServer;
+  final String chatHost;
+  final String chatKey;
 }
 
 /// Public SHOWROOM web contracts. The directory is a complete snapshot rather
@@ -326,8 +316,6 @@ class ShowroomApi {
     );
   }
 
-  /// `current_live_started_at`（Unix 秒）→ UTC；读不出来或不在 2000–2100 年时
-  /// 返回 null（上游 19-x 的 `startTime` 规则）。
   static DateTime? _startedAt(Object? value) {
     final seconds = _optionalNonNegativeInt(value);
     if (seconds == null || seconds <= 0) return null;
@@ -343,27 +331,6 @@ class ShowroomApi {
     final status = _nonNegativeInt(data['live_status']);
     if (status > 2) throw const ShowroomException(ShowroomFailure.schema);
     return status == 2;
-  }
-
-  /// Live comment server endpoint parsed from the room's live_info payload.
-  /// Null when the room is not broadcasting; anything that is not a
-  /// showroom-operated comment host is a schema failure so the danmaku
-  /// transport cannot be pointed at an arbitrary host.
-  Future<ShowroomCommentServer?> commentServer(int roomId, {CancelToken? cancel}) async {
-    if (roomId <= 0) throw const ShowroomException(ShowroomFailure.identity);
-    final data = _object(await _get('/api/live/live_info', {'room_id': '$roomId'}, cancel));
-    final actualId = _positiveInt(data['room_id']);
-    if (actualId != roomId) throw const ShowroomException(ShowroomFailure.identity);
-    final status = _nonNegativeInt(data['live_status']);
-    if (status > 2) throw const ShowroomException(ShowroomFailure.schema);
-    if (status != 2) return null;
-    final host = _text(data['bcsvr_host']);
-    final port = _nonNegativeInt(data['bcsvr_port']);
-    final key = _text(data['bcsvr_key']);
-    if (host.isEmpty || key.isEmpty || port <= 0 || port > 65535 || !host.endsWith('.showroom-live.com')) {
-      throw const ShowroomException(ShowroomFailure.schema);
-    }
-    return ShowroomCommentServer(host: host, port: port, key: key);
   }
 
   Future<List<ShowroomStream>> streams(int roomId, {CancelToken? cancel}) async {
@@ -393,18 +360,37 @@ class ShowroomApi {
 
   Future<ShowroomRoom> room(String reference, {required bool playback, CancelToken? cancel}) async {
     final roomId = await resolveRoomId(reference, cancel: cancel);
-    // live_info doubles as the live-status probe and carries the comment
-    // server identity, so one request serves both consumers.
-    final results = await Future.wait<Object?>([
-      profile(roomId, cancel: cancel),
-      commentServer(roomId, cancel: cancel),
-    ]);
-    final comments = results[1] as ShowroomCommentServer?;
-    final profileResult = (results[0] as ShowroomProfile).withLiveStatus(comments != null);
-    if (!playback || comments == null) return ShowroomRoom(profileResult, const [], commentServer: comments);
+    final results = await Future.wait<Object>([profile(roomId, cancel: cancel), liveStatus(roomId, cancel: cancel)]);
+    final profileResult = (results[0] as ShowroomProfile).withLiveStatus(results[1] as bool);
+    if (!profileResult.isLive) return ShowroomRoom(profileResult, const []);
+    final chat = await commentServer(roomId, cancel: cancel);
+    if (!playback) return ShowroomRoom(profileResult, const [], chatHost: chat.host, chatKey: chat.key);
     final media = await streams(roomId, cancel: cancel);
     if (media.isEmpty) throw const ShowroomException(ShowroomFailure.mediaUnavailable);
-    return ShowroomRoom(profileResult, media, commentServer: comments);
+    return ShowroomRoom(profileResult, media, chatHost: chat.host, chatKey: chat.key);
+  }
+
+  Future<({String host, String key})> commentServer(int roomId, {CancelToken? cancel}) async {
+    if (roomId <= 0) return (host: '', key: '');
+    final data = _object(await _get('/api/live/live_info', {'room_id': '$roomId'}, cancel));
+    return (host: commentHost(data['bcsvr_host']), key: commentKey(data['bcsvr_key']));
+  }
+
+  static String commentHost(Object? raw) {
+    final value = _optionalText(raw).trim().toLowerCase();
+    if (value.isEmpty) return '';
+    if (value.contains('/') || value.contains(':') || value.contains(' ')) return '';
+    if (value != 'showroom-live.com' && !value.endsWith('.showroom-live.com')) return '';
+    return value;
+  }
+
+  static String commentKey(Object? raw) {
+    final value = _optionalText(raw).trim();
+    if (value.isEmpty || value.length > 256) return '';
+    for (final code in value.codeUnits) {
+      if (code <= 0x20 || code == 0x7f) return '';
+    }
+    return value;
   }
 
   static ShowroomLive _live(Map<String, dynamic> data) {
@@ -443,9 +429,6 @@ class ShowroomApi {
     );
   }
 
-  /// `premium_room_type` 说明的限制（上游 19-x）：0 是普通直播、人人可看 →
-  /// [LiveRestriction.none]；其它取值没有记录说明是什么，返回 null（未知，不能
-  /// 凭空猜成付费 —— 样本里所有房间都是 0，包括排了付费直播的房间）。
   static LiveRestriction? restrictionOf(Object? premiumRoomType) =>
       _optionalNonNegativeInt(premiumRoomType) == 0 ? LiveRestriction.none : null;
 

@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:media_core_media_kit/media_core_media_kit.dart' as mk;
 import 'package:pure_live/core/player/core/playback_input_lease.dart';
+import 'package:pure_live/core/player/core/playback_source.dart';
 
 typedef OwnedInputRecipe = Future<PlaybackInputLease> Function(CancelToken cancel);
 
 OwnedInputRecipe? asOwnedInputRecipe(Object? recipe) => recipe is OwnedInputRecipe ? recipe : null;
+
+Object customInputMetadataOf(OwnedPlaybackSource source) => source.createInput;
 
 class _OwnedLeaseState {
   PlaybackInputLease? active;
@@ -32,8 +35,6 @@ Future<void> openOwnedInputOnKernelPlayer(dynamic player, Object recipe) async {
   final lease = await owned(CancelToken());
   state.active = lease;
   try {
-    final platform = mkPlayer.platform as dynamic;
-    await platform.setProperty('http-proxy', '');
     await mkPlayer.open(mk.Media(lease.uri.toString()), play: true);
   } catch (error) {
     if (identical(state.active, lease)) {

@@ -1,8 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
-import 'package:pure_live/shared/platforms/fc2live/fc2_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
@@ -15,6 +13,7 @@ import 'package:pure_live/shared/platforms/live_external_room.dart';
 import 'fc2_api.dart';
 import 'fc2_input_recipe.dart';
 import 'fc2_link.dart';
+import 'fc2_live_danmaku.dart';
 
 final class Fc2Site extends LiveSite
     implements
@@ -26,7 +25,6 @@ final class Fc2Site extends LiveSite
         LivePlayUrlResolver,
         LivePlayRecoveryResolver,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     final id = sanitizedExternalRoomId(liveroom.roomId);
@@ -50,7 +48,7 @@ final class Fc2Site extends LiveSite
   String get directoryNoticeKey => 'fc2live_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => Fc2Danmaku();
+  LiveDanmaku getDanmaku() => Fc2LiveDanmaku();
 
   Future<Fc2Directory> _directory({CancelToken? cancel}) {
     if (cancel != null) return _api.directory(cancel: cancel);
@@ -120,18 +118,14 @@ final class Fc2Site extends LiveSite
   }
 
   static LiveRoom _room(Fc2Room room, {required bool includeMedia}) {
-    // 受限的直播仍然是"在播"（上游 26-9）：状态是直播，另带限制种类，
-    // 播放时才说明原因。
     final live = room.state != Fc2State.offline;
     final liveStatus = live ? LiveStatus.live : LiveStatus.offline;
-    // 未开播的详情没有观众数（上游 26-8）：`count`/`total` 是上一场的残留。
     final viewers = live ? room.currentViewers?.toString() : null;
     final totalViewers = live ? room.totalViewers?.toString() : null;
     return LiveRoom(
       platform: 'fc2live',
       roomId: room.channelId,
       userId: room.channelId,
-      danmakuData: Fc2DanmakuArgs(channelId: room.channelId),
       title: room.title,
       nick: room.userName,
       avatar: room.cover,
@@ -151,6 +145,7 @@ final class Fc2Site extends LiveSite
           ? i18n('fc2live_adult_notice')
           : i18n('fc2live_chat_notice'),
       httpHeaders: Fc2Api.mediaHeaders(room.channelId),
+      danmakuData: liveStatus == LiveStatus.live ? Fc2LiveDanmakuArgs(channelId: room.channelId) : null,
       data: includeMedia && liveStatus == LiveStatus.live ? room : null,
     );
   }

@@ -9,6 +9,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:pure_live/core/index.dart';
 import 'package:flame_barrage/flame_barrage.dart';
 import 'package:pure_live/core/platform/platform_utils.dart';
+import 'package:pure_live/core/consts/platform_ids.dart';
+import 'package:pure_live/core/config/cookie_settings_controller.dart';
 import 'package:pure_live/domains/live/presentation/playback/states/ui_state.dart';
 import 'package:pure_live/domains/live/presentation/playback/controllers/live_play_controller.dart';
 import 'package:pure_live/domains/live/presentation/playback/widgets/danmaku/danmaku_message_actions.dart';
@@ -283,6 +285,44 @@ class DanmakuListViewState extends State<DanmakuListView> {
     return item;
   }
 
+  Widget _nameHintBar(BuildContext context) {
+    if (widget.room.platform != PlatformIds.bilibili) return const SizedBox.shrink();
+    final signedIn = CookieSettingsController.to.bilibiliCookie.v.trim().isNotEmpty;
+    final String? text;
+    final String? action;
+    if (!signedIn) {
+      text = i18n('bilibili_guest_names_hidden');
+      action = i18n('bilibili_go_login');
+    } else if (widget.controller.danmakuController.sawMaskedName) {
+      text = i18n('bilibili_login_expired_short');
+      action = i18n('bilibili_login_again');
+    } else {
+      return const SizedBox.shrink();
+    }
+    final theme = Theme.of(context);
+    return Padding(
+      key: const ValueKey('live-play-name-hint'),
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 0),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 14, color: theme.colorScheme.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ),
+          TextButton(
+            key: const ValueKey('live-play-name-hint-login'),
+            onPressed: () => AppNavigator.toBiliBiliLogin(),
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -307,6 +347,7 @@ class DanmakuListViewState extends State<DanmakuListView> {
             borderRadius: radius,
             child: Column(
               children: [
+                _nameHintBar(context),
                 Expanded(
                   child: Stack(
                     children: [
@@ -478,7 +519,7 @@ class DanmakuItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: cardBgColor, // 动态背景色
+            color: cardBgColor,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: vibrantColor.withValues(alpha: 0.08), width: 0.5),
           ),
@@ -504,6 +545,45 @@ class DanmakuItem extends StatelessWidget {
                     child: Text.rich(
                       TextSpan(
                         children: [
+                          if (danmaku.avatar.isNotEmpty)
+                            WidgetSpan(
+                              alignment: PlaceholderAlignment.middle,
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 4),
+                                child: ClipOval(
+                                  child: Image.network(
+                                    danmaku.avatar,
+                                    width: 16,
+                                    height: 16,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (danmaku.fansName.isNotEmpty)
+                            WidgetSpan(
+                              alignment: PlaceholderAlignment.middle,
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: textColor.withValues(alpha: 0.18),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: Text(
+                                  danmaku.fansLevel.isEmpty
+                                      ? danmaku.fansName
+                                      : '${danmaku.fansName} ${danmaku.fansLevel}',
+                                  style: AppTextStyles.t14.copyWith(
+                                    fontSize: 10,
+                                    height: 1.2,
+                                    fontWeight: FontWeight.w600,
+                                    color: textColor,
+                                  ),
+                                ),
+                              ),
+                            ),
                           TextSpan(
                             text: "${danmaku.userName}: ",
                             style: AppTextStyles.t14.copyWith(fontWeight: FontWeight.w700, color: textColor),
@@ -513,7 +593,6 @@ class DanmakuItem extends StatelessWidget {
                               danmaku.message,
                               AppTextStyles.t14.fontSize!,
                               textColor,
-                              // 本条弹幕自带的表情图片（上游 M13.16）。
                               emoteUrls: danmaku.emotes.isEmpty
                                   ? null
                                   : {for (final emote in danmaku.emotes) emote.code: emote.url},
@@ -552,9 +631,6 @@ class EmojiToken {
 }
 
 List<EmojiToken> _parseEmojiTokens(String text, {Map<String, String>? emoteUrls}) {
-  // 本条消息自带的表情（LiveMessage.emotes）优先：它们不一定在全局图集里，所以
-  // 要和图集正则合并成一个分词正则；带它们时也不走缓存（缓存以文本为 key，
-  // 同一条文本在不同消息里表情可能不同）。
   final extras = <String>[if (emoteUrls != null) ...emoteUrls.keys.where((code) => code.isNotEmpty)];
   if (extras.isEmpty) {
     final cached = emojiCache[text];
@@ -623,7 +699,6 @@ List<InlineSpan> parseEmojis(String text, double size, Color color, {Map<String,
       continue;
     }
 
-    // 消息自带的表情：直接用它的图片地址画，图集里没有也能显示。
     final url = emoteUrls?[token.value];
     if (url != null && url.isNotEmpty) {
       spans.add(

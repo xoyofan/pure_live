@@ -63,20 +63,22 @@ class NiconicoApi {
   }
 
   Future<NiconicoWatch> room(String roomId, {CancelToken? cancel}) => _load((transport) async {
-    NiconicoWatch.validateProgramId(roomId);
-    final body = await _requestBody(Uri.parse('$origin/watch/$roomId'), transport);
-    return NiconicoWatch.parsePage(body, programId: roomId);
+    final programId = isProgramId(roomId)
+        ? roomId
+        : await _programOfBroadcaster(roomId, transport);
+    NiconicoWatch.validateProgramId(programId);
+    final body = await _requestBody(Uri.parse('$origin/watch/$programId'), transport);
+    return NiconicoWatch.parsePage(body, programId: programId);
   }, cancel);
 
-  /// 主播链接 → 该主播当前的节目号（上游 17-2：一次 watch 页请求，取不到就报
-  /// "没有在播"）。`broadcaster` 形如 `user/<id>` 或 `ch<n>`，由
-  /// `NiconicoLink.parseBroadcaster` 给出。
-  Future<String> resolveBroadcasterProgram(String broadcaster, {CancelToken? cancel}) => _load((transport) async {
-    if (!RegExp(r'^(?:user/[1-9][0-9]{0,17}|ch[1-9][0-9]{0,17})$').hasMatch(broadcaster)) {
+  Future<String> resolveBroadcasterProgram(String broadcaster, {CancelToken? cancel}) =>
+      _load((transport) => _programOfBroadcaster(broadcaster, transport), cancel);
+
+  Future<String> _programOfBroadcaster(String broadcaster, CancelToken transport) async {
+    if (!isBroadcasterRoomId(broadcaster)) {
       throw const NiconicoException(NiconicoFailure.identity);
     }
     final body = await _requestBody(Uri.parse('$origin/watch/$broadcaster'), transport);
-    // 页面上的规范链接最可靠；没有再退到页面里出现的第一个节目号。
     final canonical = RegExp(
       r'''<link[^>]+rel=["']canonical["'][^>]+href=["'][^"']*?/watch/(lv[1-9][0-9]{0,17})["']''',
       caseSensitive: false,
@@ -84,7 +86,12 @@ class NiconicoApi {
     final programId = canonical ?? RegExp(r'lv[1-9][0-9]{0,17}').firstMatch(body)?.group(0);
     if (programId == null) throw const NiconicoException(NiconicoFailure.identity);
     return NiconicoWatch.validateProgramId(programId);
-  }, cancel);
+  }
+
+  static bool isProgramId(String value) => RegExp(r'^lv[1-9][0-9]{0,17}$').hasMatch(value);
+
+  static bool isBroadcasterRoomId(String value) =>
+      RegExp(r'^(?:user/[1-9][0-9]{0,17}|ch[1-9][0-9]{0,17})$').hasMatch(value);
 
   /// Bounded public listing transport. The two observed endpoints use different
   /// envelopes and fixed page sizes; their parsers live in NiconicoDirectory.

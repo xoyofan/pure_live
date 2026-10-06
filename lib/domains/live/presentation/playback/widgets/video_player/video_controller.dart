@@ -39,7 +39,6 @@ typedef EpgProgrammeLoader = Future<List<database.EpgProgramme>> Function({
 
 enum PlayerStatus { idle, loading, playing, error, disposed }
 
-// 平台工具类
 class PlatformHelper {
   static bool get isMobile => Platform.isAndroid || Platform.isIOS;
   static bool get isDesktop => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
@@ -48,7 +47,6 @@ class PlatformHelper {
   static bool get supportsBatteryMonitoring => Platform.isAndroid || Platform.isIOS;
 }
 
-// 弹幕管理器
 class DanmakuManager {
   final BarrageController controller;
   final BarrageController pipController;
@@ -71,7 +69,6 @@ class DanmakuManager {
   void setupWorkers() {
     final dm = settingsService.danmaku;
 
-    // 设置初始值
     videoController.hideDanmaku.value = dm.hideDanmaku.v;
     videoController.noEmojiMode.value = dm.noEmojiMode.v;
     videoController.danmakuArea.value = dm.danmakuArea.v;
@@ -92,7 +89,6 @@ class DanmakuManager {
     videoController.danmakuFps.value = dm.danmakuFps.v;
     videoController.danmakuFontFamilyName.value = dm.danmakuFontFamilyName.v;
 
-    // 设置 workers
     workers.add(ever<bool>(videoController.hideDanmaku, (data) => dm.hideDanmaku.v = data));
 
     final List<Rx> visualProperties = [
@@ -202,7 +198,6 @@ class DanmakuManager {
           },
           userId: msg.userId,
           userName: msg.userName,
-          // 引擎不读它，但宿主撤回时要按这个 id 把这一条撤下来。
           id: msg.messageId,
           textColor: originalColor,
           fontSize: localStyle?.fontSize,
@@ -337,7 +332,6 @@ Future<void> exitFullscreenWithOrientationRestore({
 }
 
 class VideoController with ChangeNotifier implements DanmakuSettingsSource {
-  // 常量定义
   // Two seconds was shorter than the orientation animation plus an
   // accessibility scan on phones, so controls could disappear before a user
   // reached Fullscreen or the local composer. Four seconds matches common
@@ -348,7 +342,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
   static const _epgLookBackDays = 2;
   static const _epgLookForwardDays = 1;
 
-  // 依赖注入
   final LiveRoom room;
   final String datasource;
   final List<String> playUrs;
@@ -378,10 +371,8 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
   final LivePlayController _livePlayController;
   final EpgProgrammeLoader? _loadEpgProgrammes;
 
-  // 资源管理
   final List<StreamSubscription> _subscriptions = [];
 
-  // 状态
   PlayerStatus _status = PlayerStatus.idle;
   PlayerStatus get status => _status;
   bool _playerListenerBound = false;
@@ -398,7 +389,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
   final currentVolume = 1.0.obs;
   final FullscreenOrientationRestoreState _fullscreenOrientationRestore = FullscreenOrientationRestoreState();
 
-  // 弹幕相关
   final hideDanmaku = false.obs;
   @override
   final noEmojiMode = false.obs;
@@ -422,16 +412,11 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
   final danmakuLetterSpacing = 0.0.obs;
   @override
   final danmakuOpacity = 1.0.obs;
-  // 小窗弹幕比例不属于播放器会话：紧凑弹幕层直接读设置单例，这里若再持有一份影子
-  // 字段，设置页的写入既不落盘也不影响小窗（改成 0.5 完全无效）。直接委托单例，
-  // 写入即持久化，渲染端读到同一份值。
   @override
   RxBool get pipDanmakuScaleAuto => SettingsService.to.danmaku.pipDanmakuScaleAuto;
   @override
   RxDouble get pipDanmakuScaleValue => SettingsService.to.danmaku.pipDanmakuScaleValue;
   @override
-  // 同屏条数同 pipDanmakuScale* 一个道理：渲染端读的始终是设置单例，这里再持一份
-  // 影子字段（旧值是固定的 48）会让设置页的滑块既不落盘也不影响画面。直接委托。
   @override
   RxInt get danmakuMaxVisibleCount => SettingsService.to.danmaku.danmakuMaxVisibleCount;
   @override
@@ -440,7 +425,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
   final danmakuFps = 60.obs;
   final danmakuFontFamilyName = ''.obs;
 
-  // EPG相关
   final RxList<database.EpgProgramme> currentChannelSchedule = <database.EpgProgramme>[].obs;
   final scheduleLoading = false.obs;
   final scheduleLoadFailed = false.obs;
@@ -448,7 +432,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
   bool hasScrolledToLive = false;
   int _epgLoadEpoch = 0;
 
-  // 控制器
   late final VolumeController _volumeController;
   final VolumeController? _injectedVolumeController;
   static const _volumeOperationTimeout = Duration(seconds: 2);
@@ -463,7 +446,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
   final danmuKey = GlobalKey();
   GlobalKey playerKey = GlobalKey();
 
-  // 屏幕亮度
   ScreenBrightnessPlatform? _brightnessController;
   ScreenBrightnessPlatform? get brightnessController {
     if (!PlatformHelper.supportsBrightness) return null;
@@ -474,10 +456,8 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
   bool get supportWindowFull => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
   late final Future<void> initialization;
 
-  // 暴露 livePlayController 的 getter
   LivePlayController get livePlayController => _livePlayController;
 
-  // 构造函数
   VideoController({
     required this.room,
     required this.datasource,
@@ -517,10 +497,12 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     _initPagesConfig();
   }
 
-  // 初始化方法
   void _initControllers() {
     danmakuController = BarrageController();
-    pipDanmakuController = BarrageController();
+    // The small window renders the facade's pool: it outlives this controller, so a
+    // pool created here disappeared with the room's route and left the window with
+    // a picture and no danmaku.
+    pipDanmakuController = _playerManager.floatingDanmaku;
     _danmakuManager = DanmakuManager(
       controller: danmakuController,
       pipController: pipDanmakuController,
@@ -541,7 +523,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     initBattery();
   }
 
-  // 播放器初始化
   Future<void> initVideoController() async {
     _setStatus(PlayerStatus.loading);
     // Bind before opening the source. Native open/decode failures can arrive
@@ -638,22 +619,11 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     );
   }
 
-  /// Rebinds the existing room controller to a freshly-created native player.
-  ///
-  /// The UI controller deliberately survives this operation. Recreating it on
-  /// every headphone tap used to give the replacement button a separate
-  /// transition lock while the previous native player was still shutting down,
-  /// so repeated audio/video taps could overlap and replace the video area with
-  /// Flutter's release-mode error widget.
   Future<void> changeAudioOnlyMode(bool value) async {
     if (_isDisposed || isAudioOnly == value) return;
     final previous = isAudioOnly;
     final enteringAudioMode = value && !previous;
     if (enteringAudioMode) {
-      // Present the stable room-level audio UI before the Android native track
-      // command completes. mpv reports buffering while it drops the video
-      // decoder; leaving the old video presentation visible during that window
-      // looked like an endless spinner even though audio kept playing.
       audioOnlyState.value = true;
     }
     try {
@@ -685,7 +655,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     enableController();
   }
 
-  // 资源管理方法
   void _addSubscription(StreamSubscription subscription) {
     _subscriptions.add(subscription);
   }
@@ -721,7 +690,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     notifyListeners();
   }
 
-  // 播放器监听
   void initPlayerListener() {
     if (_playerListenerBound || _isDisposed) return;
     _playerListenerBound = true;
@@ -809,7 +777,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     ToastUtil.show(errorMessage);
   }
 
-  // 电池管理
   void initBattery() {
     if (!PlatformHelper.supportsBatteryMonitoring) return;
 
@@ -824,7 +791,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     _addSubscription(batterySub);
   }
 
-  // 音量管理
   void registerVolumeListener() {
     if (!_ownsVolume) return;
     final volumeSub = _volumeController.addListener((volume) {
@@ -895,7 +861,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     }
   }
 
-  // 亮度管理
   Future<double> brightness() async {
     if (PlatformHelper.supportsBrightness) {
       return await brightnessController!.application;
@@ -912,7 +877,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     }
   }
 
-  // 控制器显示管理
   void enableController() {
     if (_isDisposed) return;
     showController.value = true;
@@ -948,14 +912,12 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     _controllerHideDeadlineMs = null;
   }
 
-  // 鼠标进入控制器区域
   void onMouseEnterController([Object? owner]) {
     if (_isDisposed || !_controlHoverOwners.add(owner ?? _legacyControlHoverOwner)) return;
     stopHideController();
     showController.value = true;
   }
 
-  // 鼠标离开控制器区域
   void onMouseExitController([Object? owner]) {
     if (_isDisposed || !_controlHoverOwners.remove(owner ?? _legacyControlHoverOwner)) return;
     // Unmount can occur during build. Re-arm without publishing Rx changes,
@@ -963,7 +925,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     _armControllerHide();
   }
 
-  // 鼠标进入播放器区域
   void onMouseEnterPlayer() {
     _isMouseOverPlayer = true;
     showController.value = true;
@@ -978,13 +939,11 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     enableController();
   }
 
-  // 鼠标离开播放器区域
   void onMouseExitPlayer() {
     _isMouseOverPlayer = false;
-    enableController(); // 重新开始计时
+    enableController();
   }
 
-  // 手动切换控制器显示
   void toggleController() {
     if (showController.value) {
       showController.value = false;
@@ -994,7 +953,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     }
   }
 
-  // 弹幕管理
   void updateDanmaku() {
     final settings = SettingsService.to.danmaku;
     final resolvedFps = settings.danmakuAutoFps.v
@@ -1017,9 +975,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
         showStroke: enableDanmakuStroke.value,
         noEmojiMode: noEmojiMode.value,
         fps: resolvedFps,
-        // 这份 Config 会直接推进已挂载的引擎（帧回调阶段），面板 widget 的重建在
-        // 同一帧的 build 阶段随后覆盖它。海量模式的三个字段两边必须一致，否则
-        // 只靠 updateDanmaku 触发的那次（例如刷新率变化）会把海量模式悄悄改回去。
         realtimeMode: danmakuMassMode.value,
         maxVisibleCount: settings.effectiveMaxVisibleCount,
         maxPendingCount: 120,
@@ -1037,9 +992,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     _danmakuManager.sendDanmaku(msg, _playerManager.isPlayingNow, _playerManager.isCompactModeActive);
   }
 
-  /// 平台撤回了弹幕：按目标把已上屏（或还在等轨道）的消息按条撤下来
-  /// （`flame_barrage` 的 `retractWhere`）。撤回全部时调用方直接用
-  /// [clearDanmaku]，这里只处理按观众/按消息 id 两种目标。
   int retractDanmaku(bool Function(LiveMessage message) predicate) {
     return _danmakuManager.controller.retractWhere(
       (item) => predicate(
@@ -1101,7 +1053,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     pipDanmakuController.clear();
   }
 
-  // EPG管理
   Future<void> loadFullChannelSchedule(String? epgId) async {
     final loadEpoch = ++_epgLoadEpoch;
     if (_isDisposed) return;
@@ -1176,7 +1127,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     log('EPG load error', error: error, stackTrace: stackTrace);
   }
 
-  // 回放URL生成
   String generateCatchupUrl({
     required String originalUrl,
     required database.EpgProgramme programme,
@@ -1342,7 +1292,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     return _livePlayController.returnToLive();
   }
 
-  // 播放控制
   Future<void> toggleAudioOnly() async {
     if (audioModeSwitching.value) return;
     audioModeSwitching.value = true;
@@ -1407,7 +1356,6 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     });
   }
 
-  // 全屏管理
   Future<void> exitFullScreen() async {
     await exitFullscreenWithOrientationRestore(
       state: _fullscreenOrientationRestore,
@@ -1618,12 +1566,10 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     enableController();
   }
 
-  // 视频适配
   void setVideoFit(int index) {
     _playerManager.changeVideoFit(index);
   }
 
-  // 资源销毁
   Future<void> destory() async {
     if (_resourcesDestroyed) return;
     _resourcesDestroyed = true;
@@ -1639,14 +1585,12 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     _epgLoadEpoch++;
     _setStatus(PlayerStatus.disposed);
 
-    // 清理资源
     _playerManager.detachVideoController(this);
     _danmakuManager.dispose();
     _cancelAllTimers();
     scheduleScrollController.dispose();
     _controlHoverOwners.clear();
     _isMouseOverPlayer = false;
-    // 异步清理
     unawaited(_disposeAsync());
 
     super.dispose();
@@ -1657,11 +1601,9 @@ class VideoController with ChangeNotifier implements DanmakuSettingsSource {
     await destory();
   }
 
-  // 兼容性属性
   Timer? showControllerTimer;
   final Stopwatch _controllerIdleClock = Stopwatch();
   int? _controllerHideDeadlineMs;
-  // 添加鼠标状态跟踪
   final _controlHoverOwners = <Object>{};
   final _legacyControlHoverOwner = Object();
   bool get _isMouseOverController => _controlHoverOwners.isNotEmpty;

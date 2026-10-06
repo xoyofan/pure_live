@@ -48,7 +48,6 @@ class HuyaSite
         LivePlayLeaseMetadata,
         LiveSiteWarmUp,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     // fork 修正(2026-10-03):上游用类字段 id(平台名)拼路径——所有站点
@@ -208,7 +207,6 @@ class HuyaSite
     var result = await HttpClient.instance.getJson(
       "https://live.cdn.huya.com/liveconfig/game/bussLive",
       queryParameters: {"bussType": liveCategory.id},
-      // 不带 UA 会被虎牙回 HTTP 403 "Not allowed"（上游 M4.D）：分组树整棵拉不到。
       header: {"user-agent": kUserAgent},
     );
 
@@ -291,7 +289,6 @@ class HuyaSite
   }
 
   /// Exposes only rates returned by Huya. The old fallback invented a 2000
-  /// kbps "高清" option when the room returned no rate list, so tapping it
   /// could only reopen the same source stream while the UI claimed a change.
   @visibleForTesting
   static List<LivePlayQuality> parsePlayQualities(HuyaUrlDataModel data) {
@@ -679,7 +676,6 @@ class HuyaSite
       var subSid = 0;
       var huyaLines = <HuyaLineModel>[];
       var huyaBiterates = <HuyaBitRateModel>[];
-      //读取可用线路
 
       var baseSteamInfoList = data['stream']['baseSteamInfoList'] as List<dynamic>;
 
@@ -750,7 +746,6 @@ class HuyaSite
           }
         }
       }
-      //清晰度
       final encodedBitRates = data['liveData']['bitRateInfo'];
       dynamic rawBitRates;
       if (encodedBitRates is String && encodedBitRates.trim().isNotEmpty) {
@@ -931,7 +926,7 @@ class HuyaSite
     try {
       final matchingObject = list.firstWhere(
         (item) => item['uid'] == targetUid && item['yyid'] == targetYyid,
-        orElse: () => throw StateError("No matching object found"), // 当找不到匹配项时抛出错误
+        orElse: () => throw StateError("No matching object found"),
       );
       return matchingObject["room_id"].toString();
     } catch (e) {
@@ -955,7 +950,6 @@ class HuyaSite
         "rows": effectivePageSize,
         "start": (page - 1) * effectivePageSize,
       },
-      // 搜索同样要求 UA，否则 HTTP 403 "Not allowed"（上游 M4.D）。
       header: {"user-agent": kUserAgent},
     );
     var result = json.decode(resultText);
@@ -987,7 +981,6 @@ class HuyaSite
         popularity: item["game_total_count"].toString(),
         audienceMetricType: AudienceMetricType.popularity,
         platform: PlatformIds.huya,
-        // 搜索卡片同样带付费标记（上游 huya 4-x）。
         restriction: _huyaPayRestriction(item),
       );
       items.add(roomItem);
@@ -995,8 +988,6 @@ class HuyaSite
     return items;
   }
 
-  /// 虎牙列表/搜索卡片的付费标记 `isRoomPay`（上游 huya 4-x）：true → paid，
-  /// false → 无限制，缺失/读不出来 → null（平台没说）。
   static LiveRestriction? _huyaPayRestriction(Map item) {
     final raw = item['isRoomPay'];
     final paid = raw is bool
@@ -1031,7 +1022,6 @@ class HuyaSite
         "rows": pageSize,
         "start": (page - 1) * pageSize,
       },
-      // 与房间搜索同一条接口，同样需要 UA（上游 M4.D）。
       header: {"user-agent": kUserAgent},
     );
     var result = json.decode(resultText);
@@ -1048,7 +1038,6 @@ class HuyaSite
     return items;
   }
 
-  /// 匿名登录获取uid
   Future<String> getAnonymousUid() async {
     var result = await HttpClient.instance.postJson(
       "https://udblgn.huya.com/web/anonymousLogin",

@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:pure_live/core/models/live_area.dart';
 import 'package:pure_live/core/models/live_room.dart';
-import 'package:pure_live/shared/platforms/empty_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/shared/platforms/live_directory.dart';
 import 'package:pure_live/shared/platforms/live_search.dart';
@@ -12,6 +11,7 @@ import 'package:pure_live/core/utils/i18n.dart';
 import 'package:pure_live/shared/platforms/live_external_room.dart';
 
 import 'jd_live_api.dart';
+import 'jd_live_danmaku.dart';
 import 'jd_live_link.dart';
 
 final class JdLiveSite extends LiveSite
@@ -24,7 +24,6 @@ final class JdLiveSite extends LiveSite
         LivePlayUrlResolver,
         LivePlayRecoveryResolver,
         LiveSiteExternalRoomResolver {
-  /// 该站点自己的官方房间地址（网页与可选的客户端 scheme）。
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
     final id = sanitizedExternalRoomId(liveroom.roomId);
@@ -48,7 +47,7 @@ final class JdLiveSite extends LiveSite
   String get directoryNoticeKey => 'jdlive_directory_scope';
 
   @override
-  LiveDanmaku getDanmaku() => EmptyDanmaku();
+  LiveDanmaku getDanmaku() => JdLiveDanmaku();
 
   @override
   Future<List<LiveCategory>> getCategores(int page, int pageSize) async => page == 1 && pageSize > 0
@@ -100,12 +99,12 @@ final class JdLiveSite extends LiveSite
       area: 'JD Live',
       link: JdLiveLink.watchUrl(room.liveId),
       liveStatus: status,
-      // 仅 App 可看/在播但没有地址：仍然是"在播"，标出限制种类（上游统一规则）。
       restriction: status == LiveStatus.live ? room.restriction : null,
       totalViewers: total,
       audienceMetricType: total == null ? AudienceMetricType.unknown : AudienceMetricType.totalViewers,
       notice: room.appOnly ? i18n('jdlive_restricted_notice') : i18n('jdlive_chat_notice'),
       httpHeaders: JdLiveApi.mediaHeaders(room.liveId),
+      danmakuData: status == LiveStatus.live ? JdLiveDanmakuArgs(liveId: room.liveId) : null,
       data: includeMedia ? room : null,
     );
   }
