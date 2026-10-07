@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/painting.dart' show Offset, Rect, Size;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:media_core/media_core.dart' show PresentationLifecycleHooks;
@@ -6,6 +8,7 @@ import 'package:pure_live/core/player/presentation/compact_source_orientation.da
 import 'package:pure_live/core/config/settings_service.dart';
 import 'package:pure_live/core/config/window_size_controller.dart';
 import 'package:pure_live/core/logging/core_log.dart';
+import 'package:pure_live/get/get.dart' show RxBool;
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -110,11 +113,26 @@ Future<List<PipWorkArea>> _readWorkAreas() async {
   return areas;
 }
 
+/// Whether the compact window is showing a taller-than-wide picture.
+///
+/// The PiP driver is what was told the video's shape (`onVideoSize`), so it
+/// answers for whichever player is inside it. The global
+/// [CompactSourceOrientation] reader is the live room's player — a recording
+/// that borrowed it would get the remembered bounds of whatever the last live
+/// stream's orientation was. Unknown size falls back to that reader, which is
+/// the behaviour the room has always had.
+bool get windowsPipShowsPortraitVideo {
+  final width = windowsPipDriver.videoWidth;
+  final height = windowsPipDriver.videoHeight;
+  if (width <= 0 || height <= 0) return CompactSourceOrientation.isPortrait;
+  return CompactSourceOrientation.isPortraitSize(width.toDouble(), height.toDouble());
+}
+
 PipSavedBounds? _readSavedBounds() {
   final windowSettings = SettingsService.to.window;
   final pip = windowSettings.windowsPip;
   if (!windowSettings.rememberPipPosition.value) return null;
-  if (CompactSourceOrientation.isPortrait) {
+  if (windowsPipShowsPortraitVideo) {
     if (!pip.portraitHasValidBounds) return null;
     return PipSavedBounds(
       displayId: pip.portraitDisplayId.value,
@@ -140,7 +158,7 @@ PipSavedBounds? _readSavedBounds() {
 
 void _writeSavedBounds(Size size, Offset position, String displayId) {
   final pip = SettingsService.to.window.windowsPip;
-  if (CompactSourceOrientation.isPortrait) {
+  if (windowsPipShowsPortraitVideo) {
     pip.updatePortrait(size, position, displayId);
     return;
   }
@@ -160,4 +178,27 @@ Future<void> captureWindowsWindowGeometry(void Function(Size size) writeNormal) 
     return;
   }
   writeNormal(await windowManager.getSize());
+}
+
+/// Whether the window is right now the compact picture-in-picture window.
+///
+/// The live room used to be the only PiP host, so the desktop chrome asked the
+/// live facade whether a PiP was up. A recording in PiP left that answer
+/// false, and the app's title bar stayed painted above the compact picture.
+/// The driver is the authority on the window's shape — it is the one that
+/// shrinks it, for whichever player is inside — so the chrome reads this
+/// mirror of the driver instead of any one player's state.
+final RxBool windowsPipActive = RxBool(false);
+
+StreamSubscription<bool>? _pipStateSub;
+
+/// Mirrors the driver's PiP transitions into [windowsPipActive].
+///
+/// Called once from the kernel bootstrap: a listener that starts after the
+/// first transition misses it, and the title bar then stays on the compact
+/// window for the rest of the session.
+void observeWindowsPipState() {
+  if (_pipStateSub != null) return;
+  windowsPipActive.value = windowsPipDriver.isPip;
+  _pipStateSub = windowsPipDriver.onPipChanged.listen((pip) => windowsPipActive.value = pip);
 }

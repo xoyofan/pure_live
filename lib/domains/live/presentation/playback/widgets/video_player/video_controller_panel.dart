@@ -1,37 +1,34 @@
-import 'package:pure_live/core/utils/live_quality_label.dart';
-
 import 'dart:io';
 import 'dart:async';
 
-import 'package:flutter_svg/svg.dart';
-import 'package:flutter/gestures.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:pure_live/core/index.dart';
 import 'package:pure_live/core/utils/event_bus.dart';
-import 'package:flame_barrage/flame_barrage.dart';
-import 'package:pure_live/domains/live/data/link/live_url_tool.dart';
 import 'package:pure_live/core/platform/platform_utils.dart';
-import 'package:pure_live/domains/live/presentation/playback/states/player_state.dart';
+import 'package:pure_live/core/utils/live_quality_label.dart';
+import 'package:pure_live/domains/live/data/platforms/sites.dart';
+import 'package:pure_live/core/player/core/portrait_stream_support.dart';
+import 'package:pure_live/domains/live/domain/global_player_service.dart';
+import 'package:pure_live/domains/live/data/favorite_room_controller.dart';
+import 'package:pure_live/core/player/presentation/player_ui_controller.dart';
 import 'package:pure_live/domains/live/presentation/playback/states/ui_state.dart';
 import 'package:pure_live/domains/live/presentation/playback/dialogs/play_other.dart';
+import 'package:pure_live/domains/live/presentation/playback/states/player_state.dart';
+import 'package:pure_live/core/player/presentation/danmaku/player_danmaku_actions.dart';
+import 'package:pure_live/core/player/presentation/danmaku/player_danmaku_surface.dart';
+import 'package:pure_live/core/player/presentation/danmaku/danmaku_surface_settings.dart';
 import 'package:pure_live/domains/live/presentation/playback/pages/danmaku_settings_page.dart';
+import 'package:pure_live/domains/live/presentation/playback/dialogs/known_room_link_dialog.dart';
 import 'package:pure_live/domains/live/presentation/playback/controllers/live_play_controller.dart';
 import 'package:pure_live/domains/live/presentation/playback/widgets/content_first_panel_layout.dart';
 import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/volume_control.dart';
-import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/video_controller.dart';
-import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/portrait_playback_picker_dialog.dart';
-import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/iptv_schedule_dialog.dart';
-import 'package:pure_live/domains/live/presentation/playback/widgets/danmaku/danmaku_settings_source.dart';
-import 'package:pure_live/domains/live/presentation/playback/widgets/danmaku/portrait_danmaku_policy.dart';
-import 'package:pure_live/domains/live/presentation/playback/widgets/local_interaction/local_danmaku_style_editor.dart';
-import 'package:pure_live/core/player/core/portrait_stream_support.dart';
-import 'package:pure_live/domains/live/presentation/playback/widgets/layout/portrait_fullscreen_interaction.dart';
-import 'package:pure_live/domains/live/presentation/playback/widgets/layout/bottom_control_surface.dart';
 import 'package:pure_live/domains/live/presentation/playback/widgets/layout/control_hover_region.dart';
-import 'package:pure_live/domains/live/domain/global_player_service.dart';
-import 'package:pure_live/domains/live/data/platforms/sites.dart';
-import 'package:pure_live/domains/live/data/favorite_room_controller.dart';
-import 'package:pure_live/domains/live/presentation/playback/dialogs/known_room_link_dialog.dart';
+import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/video_controller.dart';
+import 'package:pure_live/domains/live/presentation/playback/widgets/layout/bottom_control_surface.dart';
+import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/iptv_schedule_dialog.dart';
+import 'package:pure_live/domains/live/presentation/playback/widgets/layout/portrait_fullscreen_interaction.dart';
+import 'package:pure_live/domains/live/presentation/playback/widgets/video_player/portrait_playback_picker_dialog.dart';
+import 'package:pure_live/domains/live/presentation/playback/widgets/local_interaction/local_danmaku_style_editor.dart';
 
 @visibleForTesting
 enum TopActionLeadingSlot { back, datetime, battery }
@@ -210,7 +207,12 @@ class _VideoControllerPanelState extends State<VideoControllerPanel> {
                   );
                   return Offstage(
                     offstage: controller.hideDanmaku.value || hideForPortrait,
-                    child: DanmakuViewer(key: controller.danmuKey, controller: controller),
+                    child: PlayerDanmakuSurface(
+                      key: controller.danmuKey,
+                      controller: controller.danmakuController,
+                      settings: controller,
+                      isVerticalVideo: manager.isVerticalVideo.value,
+                    ),
                   );
                 }),
                 GestureDetector(
@@ -276,7 +278,13 @@ class _VideoControllerPanelState extends State<VideoControllerPanel> {
                           : controller.toggleFullScreenFromGesture();
                     }
                   },
-                  child: BrightnessVolumnDargArea(controller: controller),
+                  child: PlayerGestureLayer(
+                    controller: controller,
+                    // The portrait-panel restore swipe owns the vertical drag
+                    // while that transition is available; one drag must not
+                    // mean both "restore the panel" and "change brightness".
+                    enabled: screenMode != VideoMode.portraitFullscreen,
+                  ),
                 ),
                 LockButton(controller: controller),
                 const PortraitStreamDiagnosticsBadge(),
@@ -330,21 +338,25 @@ class TopActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 全屏时物理刘海/状态栏会压住贴顶的这条栏：栏高与内容一起让出内边距。
+    final topInset = GlobalPlayerService.instance.player.fullscreenUI && PlatformUtils.isMobile
+        ? MediaQuery.viewPaddingOf(context).top
+        : 0.0;
     return Obx(
       () => AnimatedPositioned(
         top: (controller.showController.value && !controller.showLocked.value) ? 0 : -barHeight,
         left: 0,
         right: 0,
-        height: barHeight,
+        height: barHeight + topInset,
         duration: const Duration(milliseconds: 300),
         child: ControlHoverRegion(
           enabled: controller.showController.value && !controller.showLocked.value,
           onEnter: controller.onMouseEnterController,
           onExit: controller.onMouseExitController,
           child: Container(
-            height: barHeight,
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            height: barHeight + topInset,
+            alignment: Alignment.bottomLeft,
+            padding: EdgeInsets.fromLTRB(8, topInset, 8, 0),
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.bottomCenter,
@@ -786,262 +798,6 @@ String _overrideLabel(PortraitOrientationOverride value) => switch (value) {
   PortraitOrientationOverride.landscape => i18n('portrait_override_landscape'),
 };
 
-// Center widgets
-class DanmakuViewer extends StatelessWidget {
-  const DanmakuViewer({super.key, required this.controller});
-
-  final VideoController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final settings = SettingsService.to.danmaku;
-      final playerSettings = SettingsService.to.player;
-      final portraitSource = GlobalPlayerService.instance.player.isVerticalVideo.value;
-      final effectiveArea = PortraitDanmakuPolicy.effectiveArea(
-        configuredArea: controller.danmakuArea.value,
-        isVerticalVideo: portraitSource,
-        mode: playerSettings.portraitDanmakuMode,
-      );
-      return FlameBarrageWidget(
-        controller: controller.danmakuController,
-        // Video gestures own the full surface and forward only hits on actual
-        // barrage bounds, so volume/brightness/double-tap remain responsive.
-        enablePointerEvents: false,
-        config: BarrageConfig(
-          emitInterval: 0.05,
-          fontSize: controller.danmakuFontSize.value,
-          topAreaDistance: controller.danmakuTopArea.value,
-          area: effectiveArea,
-          bottomAreaDistance: controller.danmakuBottomArea.value,
-          baseSpeed: controller.danmakuSpeed.value,
-          opacity: controller.danmakuOpacity.value,
-          fontWeight: FontWeight(controller.danmakuFontWeight.value),
-          letterSpacing: controller.danmakuLetterSpacing.value,
-          strokeWidth: controller.danmakuFontBorder.value,
-          showStroke: controller.enableDanmakuStroke.value,
-          noEmojiMode: controller.noEmojiMode.value,
-          realtimeMode: controller.danmakuMassMode.value,
-          // One GPU-resident bitmap per visible message — the single most
-          // effective switch on low-end GPUs re-rasterizing stroked CJK text
-          // every frame.
-          rasterizeItems: true,
-          fps: settings.danmakuAutoFps.v
-              ? settings.resolvedDanmakuFps(refreshRateMode: SettingsService.to.app.refreshRateMode)
-              : controller.danmakuFps.value.clamp(30, 240).toInt(),
-          maxVisibleCount: SettingsService.to.danmaku.effectiveMaxVisibleCount,
-          maxPendingCount: 120,
-          maxPendingAge: const Duration(seconds: 5),
-          fontFamily: controller.danmakuFontFamilyName.value,
-          trackHeight: (controller.danmakuFontSize.value * 1.55).clamp(24.0, 64.0).toDouble(),
-          emojiSize: (controller.danmakuFontSize.value * 1.3).clamp(16.0, 48.0).toDouble(),
-          pictureCacheMaxSize: 96,
-          barragePoolMaxSize: 72,
-          textCacheMaxSize: 320,
-        ),
-        emojiAtlas: EmojiAtlas.instance,
-      );
-    });
-  }
-}
-
-class BrightnessVolumnDargArea extends StatefulWidget {
-  const BrightnessVolumnDargArea({super.key, required this.controller});
-
-  final VideoController controller;
-
-  @override
-  State<BrightnessVolumnDargArea> createState() => BrightnessVolumnDargAreaState();
-}
-
-class BrightnessVolumnDargAreaState extends State<BrightnessVolumnDargArea> {
-  VideoController get controller => widget.controller;
-
-  Timer? _hideBVTimer;
-  bool _hideBVStuff = true;
-  bool _isDargLeft = true;
-  double _updateDargVarVal = 1.0;
-  bool _portraitRestoreGesture = false;
-  double _portraitRestoreDistance = 0;
-  bool _systemGestureDrag = false;
-
-  @override
-  void dispose() {
-    _hideBVTimer?.cancel();
-    super.dispose();
-  }
-
-  void _cancelAndRestartHideBVTimer() {
-    if (!mounted) return;
-    _hideBVTimer?.cancel();
-    _hideBVTimer = Timer(const Duration(seconds: 1), () {
-      if (mounted) setState(() => _hideBVStuff = true);
-    });
-    setState(() => _hideBVStuff = false);
-  }
-
-  Future<void> _onVerticalDragUpdate(Offset position, Offset delta) async {
-    if (controller.showLocked.value) return;
-
-    if (delta.distance < 0.5) return;
-
-    final size = MediaQuery.of(context).size;
-    final width = size.width;
-    final height = size.height;
-
-    final dargLeft = (position.dx > (width / 2)) ? false : true;
-
-    if (Platform.isWindows && dargLeft) return;
-
-    if (_hideBVStuff || _isDargLeft != dargLeft) {
-      _isDargLeft = dargLeft;
-      try {
-        if (_isDargLeft) {
-          if (PlatformUtils.isMobile) {
-            final v = await controller.brightness();
-            if (!mounted || _isDargLeft != dargLeft) return;
-            setState(() => _updateDargVarVal = v);
-          }
-        } else {
-          final v = await controller.volume();
-          if (!mounted || _isDargLeft != dargLeft) return;
-          setState(() => _updateDargVarVal = v ?? 1.0);
-        }
-      } catch (error) {
-        debugPrint('Read brightness/volume for drag failed: $error');
-        return;
-      }
-    }
-
-    if (!mounted || _isDargLeft != dargLeft) return;
-    _cancelAndRestartHideBVTimer();
-
-    double sensitivity = 0.25;
-    double deltaValue = -(delta.dy / (height / 2)) * sensitivity;
-
-    double dragRange = _updateDargVarVal + deltaValue;
-
-    dragRange = dragRange.clamp(0.0, 1.0);
-
-    if ((dragRange - _updateDargVarVal).abs() > 0.001) {
-      if (_isDargLeft) {
-        unawaited(controller.setBrightness(dragRange));
-      } else {
-        unawaited(controller.setVolume(dragRange));
-      }
-      setState(() => _updateDargVarVal = dragRange);
-    }
-  }
-
-  void _onVerticalDragStart(DragStartDetails details) {
-    final size = context.size ?? MediaQuery.sizeOf(context);
-    _systemGestureDrag = startsInSystemHomeGestureZone(localPosition: details.localPosition, surfaceSize: size);
-    _portraitRestoreGesture =
-        controller.livePlayController.state.value.ui.screenMode == VideoMode.portraitFullscreen &&
-        details.localPosition.dy >= size.height - portraitFullscreenRestoreGestureZone;
-    _portraitRestoreDistance = 0;
-  }
-
-  void _onVerticalDragDetails(DragUpdateDetails details) {
-    if (_portraitRestoreGesture) {
-      _portraitRestoreDistance = (_portraitRestoreDistance - details.delta.dy).clamp(0.0, double.infinity).toDouble();
-      return;
-    }
-    if (_systemGestureDrag) return;
-    unawaited(_onVerticalDragUpdate(details.localPosition, details.delta));
-  }
-
-  void _onVerticalDragEnd(DragEndDetails details) {
-    final shouldRestore =
-        _portraitRestoreGesture &&
-        shouldRestorePortraitPanelFromSwipe(
-          upwardDistance: _portraitRestoreDistance,
-          velocity: details.primaryVelocity ?? 0,
-        );
-    _portraitRestoreGesture = false;
-    _portraitRestoreDistance = 0;
-    _systemGestureDrag = false;
-    if (shouldRestore) unawaited(controller.exitPortraitFullScreen());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    IconData iconData;
-    if (_isDargLeft) {
-      iconData = _updateDargVarVal <= 0
-          ? Icons.brightness_low
-          : _updateDargVarVal < 0.5
-          ? Icons.brightness_medium
-          : Icons.brightness_high;
-    } else {
-      iconData = _updateDargVarVal <= 0
-          ? Icons.volume_mute
-          : _updateDargVarVal < 0.5
-          ? Icons.volume_down
-          : Icons.volume_up;
-    }
-
-    final int percentage = (_updateDargVarVal * 100).round();
-
-    return Listener(
-      onPointerSignal: (event) {
-        if (event is PointerScrollEvent) {
-          unawaited(_onVerticalDragUpdate(event.localPosition, event.scrollDelta));
-        }
-      },
-      child: GestureDetector(
-        onVerticalDragStart: _onVerticalDragStart,
-        onVerticalDragUpdate: _onVerticalDragDetails,
-        onVerticalDragEnd: _onVerticalDragEnd,
-        onVerticalDragCancel: () {
-          _portraitRestoreGesture = false;
-          _portraitRestoreDistance = 0;
-          _systemGestureDrag = false;
-        },
-        child: Container(
-          color: Colors.transparent,
-          alignment: Alignment.center,
-          child: AnimatedOpacity(
-            opacity: !_hideBVStuff ? 0.8 : 0.0,
-            duration: const Duration(milliseconds: 300),
-            child: Card(
-              color: Colors.black,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Icon(iconData, color: Colors.white),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: SizedBox(
-                          width: 100,
-                          height: 20,
-                          child: LinearProgressIndicator(
-                            value: _updateDargVarVal,
-                            backgroundColor: Colors.white38,
-                            valueColor: const AlwaysStoppedAnimation(Colors.white),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Text(
-                      "$percentage%",
-                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class LockButton extends StatelessWidget {
   const LockButton({super.key, required this.controller});
 
@@ -1442,12 +1198,15 @@ class BottomActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = GlobalPlayerService.instance.player.fullscreenUI && PlatformUtils.isMobile
+        ? MediaQuery.viewPaddingOf(context).bottom
+        : 0.0;
     return Obx(() {
       bool shouldShow =
           (controller.showController.value || controller.isMenuOpen.value) && !controller.showLocked.value;
       return BottomControlSurface(
         visible: shouldShow,
-        height: barHeight,
+        height: barHeight + bottomInset,
         child: ControlHoverRegion(
           enabled: shouldShow,
           onEnter: controller.onMouseEnterController,
@@ -1456,9 +1215,9 @@ class BottomActionBar extends StatelessWidget {
             enabled: portraitFullscreen,
             onRestore: () => unawaited(controller.exitPortraitFullScreen()),
             child: Container(
-              height: barHeight,
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              height: barHeight + bottomInset,
+              alignment: Alignment.bottomLeft,
+              padding: EdgeInsets.fromLTRB(8, 0, 8, bottomInset),
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
@@ -1587,8 +1346,17 @@ class BottomActionBar extends StatelessWidget {
         if (!compact) RefreshButton(controller: controller),
         if (!compact) FavoriteButton(controller: controller),
         if (!SettingsService.to.danmaku.hideDanmaku.value) ...[
-          DanmakuButton(controller: controller),
-          SettingsButton(controller: controller),
+          PlayerDanmakuButton(controller: controller),
+          PlayerDanmakuSettingsButton(
+            controller: controller,
+            // The room keeps its bar up while the panel is open, exactly as the
+            // private button did; the pinning is the caller's policy, not the
+            // shared button's.
+            onOpenChanged: (open) {
+              controller.isMenuOpen.value = open;
+              if (!open) controller.enableController();
+            },
+          ),
         ],
       ],
     );
@@ -1602,8 +1370,8 @@ class BottomActionBar extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (GlobalPlayerService.instance.player.isWindowFullscreen.value ||
-            GlobalPlayerService.instance.player.isSystemFullscreen.value) ...[
+        if (GlobalPlayerService.instance.player.isWindowFullscreen.value && !compact ||
+            GlobalPlayerService.instance.player.isSystemFullscreen.value && !compact) ...[
           FullscreenStreamSelectorButton(controller: controller),
         ],
         // These two belong to the PORTRAIT fullscreen bar. Rendering them in
@@ -1611,7 +1379,7 @@ class BottomActionBar extends StatelessWidget {
         // off-screen after the video-fit option landed (v3.15 report).
         if (PlatformUtils.isMobile && portraitPinned) PortraitFullscreenDisplayModeButton(controller: controller),
         if (PlatformUtils.isMobile && portraitPinned) PortraitOrientationButton(controller: controller),
-        if (!compact) VideoFitSetting(controller: controller),
+        const PlayerVideoFitButton(),
         if (Platform.isWindows) OverlayVolumeControl(controller: controller),
         if (Platform.isWindows &&
             controller.supportWindowFull &&
@@ -1841,39 +1609,6 @@ class RefreshButton extends StatelessWidget {
   }
 }
 
-class DanmakuButton extends StatelessWidget {
-  const DanmakuButton({super.key, required this.controller});
-
-  final VideoController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(
-      () => IconButton(
-        key: const ValueKey('player-danmaku-action'),
-        tooltip: i18n('danmaku'),
-        visualDensity: VisualDensity.standard,
-        constraints: const BoxConstraints(minWidth: kMinInteractiveDimension, minHeight: kMinInteractiveDimension),
-        onPressed: () => controller.hideDanmaku.toggle(),
-        icon: SizedBox.square(
-          dimension: 24,
-          child: controller.hideDanmaku.value
-              ? SvgPicture.asset(
-                  'assets/images/video/danmu_close.svg',
-                  // ignore: deprecated_member_use
-                  color: Colors.white,
-                )
-              : SvgPicture.asset(
-                  'assets/images/video/danmu_open.svg',
-                  // ignore: deprecated_member_use
-                  color: Colors.white,
-                ),
-        ),
-      ),
-    );
-  }
-}
-
 String _liveRoomTitle(LiveRoom liveroom) {
   for (final candidate in [liveroom.title, liveroom.nick, liveroom.roomId]) {
     final value = candidate?.trim() ?? '';
@@ -1885,45 +1620,6 @@ String _liveRoomTitle(LiveRoom liveroom) {
 String? _liveProgramme(LiveRoom liveroom) {
   final programme = liveroom.currentProgramme?.trim() ?? '';
   return programme.isEmpty ? null : programme;
-}
-
-class SettingsButton extends StatelessWidget {
-  const SettingsButton({super.key, required this.controller});
-
-  final VideoController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      key: const ValueKey('player-danmaku-settings-action'),
-      tooltip: i18n('settings_danmaku_title'),
-      visualDensity: VisualDensity.standard,
-      constraints: const BoxConstraints(minWidth: kMinInteractiveDimension, minHeight: kMinInteractiveDimension),
-      onPressed: () async {
-        if (controller.isMenuOpen.value) return;
-        controller.isMenuOpen.value = true;
-        try {
-          await showDialog<void>(
-            context: context,
-            barrierColor: Colors.black.withValues(alpha: 0.58),
-            useSafeArea: true,
-            builder: (_) => SettingsPanel(controller: controller),
-          );
-        } finally {
-          controller.isMenuOpen.value = false;
-          controller.enableController();
-        }
-      },
-      icon: SizedBox.square(
-        dimension: 24,
-        child: SvgPicture.asset(
-          'assets/images/video/danmu_setting.svg',
-          // ignore: deprecated_member_use
-          color: Colors.white,
-        ),
-      ),
-    );
-  }
 }
 
 class ExpandWindowButton extends StatelessWidget {
@@ -2110,58 +1806,6 @@ class _FavoriteButtonState extends State<FavoriteButton> {
 }
 
 // Settings panel widgets
-
-class VideoFitSetting extends StatefulWidget {
-  const VideoFitSetting({super.key, required this.controller});
-  final VideoController controller;
-  @override
-  State<VideoFitSetting> createState() => _VideoFitSettingState();
-}
-
-class _VideoFitSettingState extends State<VideoFitSetting> {
-  VideoController get controller => widget.controller;
-  @override
-  Widget build(BuildContext context) {
-    final player = SettingsService.to.player;
-
-    return Obx(() {
-      final descriptionKey = player.resolvedVideoFitDescriptionKey;
-      final label = descriptionKey.isEmpty ? '' : i18n(descriptionKey);
-      return Semantics(
-        button: true,
-        label: label,
-        child: Tooltip(
-          message: label,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              key: const ValueKey('video-fit-action'),
-              borderRadius: BorderRadius.circular(8),
-              onTap: () {
-                controller.enableController();
-                final currentIndex = player.advanceVideoFitIndex();
-                if (currentIndex == null) return;
-                controller.setVideoFit(currentIndex);
-              },
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  minWidth: kMinInteractiveDimension,
-                  minHeight: kMinInteractiveDimension,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Center(
-                    child: Text(label, style: AppTextStyles.t15.copyWith(color: Colors.white)),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    });
-  }
-}
 
 class SettingsPanel extends StatelessWidget {
   const SettingsPanel({super.key, required this.controller});

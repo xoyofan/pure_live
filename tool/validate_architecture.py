@@ -114,6 +114,7 @@ BASELINE: frozenset[str] = frozenset({
     'core -> shared/platforms/youtube/youtube_link.dart   [core/network/live_url_parser.dart]',
     'core -> shared/platforms/youtube/youtube_link.dart   [core/network/web_search_room_parser.dart]',
     'core -> domains/live/data/platforms/sites.dart   [core/navigation/app_navigator.dart]',
+    'domains/recorder -> domains/live/domain/global_player_service.dart   [domains/recorder/presentation/pages/local_player/local_video_player_controller.dart]',
     'core -> domains/live/domain/global_player_service.dart   [core/navigation/app_navigator.dart]',
     'core -> domains/live/domain/global_player_service.dart   [core/player/kernel/player_kernel_service.dart]',
     'core -> domains/live/domain/live_player_facade.dart   [core/player/kernel/floating_playback.dart]',
