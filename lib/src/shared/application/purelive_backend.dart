@@ -352,9 +352,27 @@ class PureLiveBrowseRepository implements BrowseRepository {
 
   LiveSite get _coreSite => _siteInstanceOf(site);
 
+  /// 分类目录里见过的原始 [LiveArea],按 `site|areaId` 记账(2026-10-07)。
+  ///
+  /// 上游适配器(missevan/showroom/twitcasting/niconico 等)把分类房间查询
+  /// 所需的载荷放在 LiveArea 扩展字段(shortName/areaType 等,yy 的
+  /// shortName 是 JSON 查询串、twitch 是 slug)——按 cid 重建骨架 LiveArea
+  /// 会丢载荷,分类房间列表整站 schema/identity 失败(用户实录"hover 分类
+  /// 点击都是房间列表加载失败")。fetchRooms 优先回放这里缓存的原始对象;
+  /// 冷路径(未加载过分类的直达 cid)回落骨架重建,行为同旧版。
+  /// 有界:超过上限清表(分类目录一次几十项,512 足够宽裕)。
+  static final Map<String, LiveArea> _areaByCid = <String, LiveArea>{};
+
   @override
   Future<CategoryResult> fetchCategories(String site) async {
     final categories = await _coreSite.getCategores(1, 100);
+    if (_areaByCid.length > 512) _areaByCid.clear();
+    for (final category in categories) {
+      for (final area in category.children) {
+        final key = '$site|${area.areaId ?? ''}';
+        if ((area.areaId ?? '').isNotEmpty) _areaByCid[key] = area;
+      }
+    }
     final groups = [
       for (final category in categories)
         CategoryGroup(
@@ -385,9 +403,10 @@ class PureLiveBrowseRepository implements BrowseRepository {
         summaries.add(pureliveBrowseSummary(room, site, cid: ''));
       }
     } else {
-      // 分类房间:cid 即 LiveArea.areaId(soop 分类号)。areaName 传占位,
-      // soop 房间分类名由解析层按条目 broad_cate_no 自查,不再沿用此值。
-      final area = LiveArea(platform: site, areaId: cid, areaName: cid);
+      // 分类房间:cid 即 LiveArea.areaId(soop 分类号)。优先回放目录里
+      // 缓存的原始 LiveArea(载荷完整);冷路径回落骨架重建(仅 areaId,
+      // areaName 占位——soop 房间分类名由解析层按条目 broad_cate_no 自查)。
+      final area = _areaByCid['$site|$cid'] ?? LiveArea(platform: site, areaId: cid, areaName: cid);
       final rooms = await coreSite.getCategoryRooms(area, page: request.page, pageSize: request.limit);
       for (final room in rooms) {
         summaries.add(pureliveBrowseSummary(room, site, cid: cid));
