@@ -36,6 +36,35 @@ Future<HttpServer> _startUpstream() async {
   return server;
 }
 
+/// TwitCasting 形态的伪上游:清单响应下发会话 Cookie(Set-Cookie),
+/// 分片请求不带该 Cookie 一律 401(上游 86dde8f16 台账的 curl 实测行为)。
+Future<HttpServer> _startCookieUpstream() async {
+  final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+  server.listen((request) async {
+    final path = request.uri.path;
+    if (path.endsWith('.m3u8')) {
+      request.response.headers.contentType = ContentType('application', 'vnd.apple.mpegurl');
+      request.response.headers.set(
+        HttpHeaders.setCookieHeader,
+        'lvhls_ssid_test=session123; Path=/hls/; Max-Age=600; HttpOnly',
+      );
+      request.response.write(_rootManifest);
+    } else if (path.endsWith('.mp4')) {
+      final cookie = request.headers.value(HttpHeaders.cookieHeader) ?? '';
+      if (!cookie.contains('lvhls_ssid_test=session123')) {
+        request.response.statusCode = HttpStatus.unauthorized;
+      } else {
+        request.response.headers.contentType = ContentType.binary;
+        request.response.add([1, 2, 3, 4]);
+      }
+    } else {
+      request.response.statusCode = HttpStatus.notFound;
+    }
+    await request.response.close();
+  });
+  return server;
+}
+
 void main() {
   late HttpServer upstream;
   late Uri upstreamRoot;
@@ -90,6 +119,34 @@ void main() {
         client.getUrl(Uri.parse('http://127.0.0.1:$port/root.m3u8')).then((request) => request.close()),
         throwsA(anything),
       );
+    } finally {
+      client.close(force: true);
+    }
+  });
+
+  test('sessionCookies: true —— 清单下发的会话 Cookie 续传给分片(TwitCasting 401 契约)', () async {
+    final cookieUpstream = await _startCookieUpstream();
+    addTearDown(() => cookieUpstream.close(force: true));
+    final root = Uri.parse('http://127.0.0.1:${cookieUpstream.port}');
+
+    // zishu 接入口径(2026-10-07 对齐上游 _createIngestRelay):sessionCookies
+    // 必开,且不预载 rootManifest——预载会跳过中继自己的清单请求,Set-Cookie
+    // 进不了 Cookie 罐。
+    final relay = await LoopbackIngestRelay.start(source: root.replace(path: '/hls/root.m3u8'), sessionCookies: true);
+    addTearDown(relay.close);
+
+    final client = HttpClient();
+    try {
+      final manifest = await client.getUrl(relay.inputUri).then((request) => request.close());
+      expect(manifest.statusCode, HttpStatus.ok);
+      final body = await manifest.fold<String>('', (text, chunk) => text + String.fromCharCodes(chunk));
+      // 改写后的清单给出回环绝对分片地址(与既有用例同口径解析)。
+      final childMatch = RegExp(r'https?://127\.0\.0\.1:\d+/[^\s]+\.mp4').firstMatch(body);
+      expect(childMatch, isNotNull, reason: '改写后的清单应携带回环分片地址');
+      final segment = await client.getUrl(Uri.parse(childMatch!.group(0)!)).then((request) => request.close());
+      expect(segment.statusCode, HttpStatus.ok, reason: '分片必须携带清单下发的会话 Cookie 回源');
+      final bytes = await segment.fold<int>(0, (sum, chunk) => sum + chunk.length);
+      expect(bytes, 4);
     } finally {
       client.close(force: true);
     }

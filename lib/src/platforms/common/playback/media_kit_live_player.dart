@@ -1728,7 +1728,6 @@ class MediaKitLivePlayer
       return item;
     }
     try {
-      String? rootManifest;
       if (item.declaredIngest != 'relay') {
         final probe = await probePlaybackManifest(item.url, headers: item.headers);
         if (probe == null) return item; // 清单读不到不是错误:直通原地址。
@@ -1736,9 +1735,18 @@ class MediaKitLivePlayer
           PlaybackLog.write('ingest_plan', {'strategy': 'direct', 'kind': probe.kind.describe()});
           return item;
         }
-        rootManifest = probe.body;
       }
-      final relay = await LoopbackIngestRelay.start(source: uri, headers: item.headers, rootManifest: rootManifest);
+      // sessionCookies/findProxy 对齐上游 _createIngestRelay(86dde8f16:
+      // 清单下发的会话 Cookie 必须续传给分片——TwitCasting 分片不带 Cookie
+      // 401、带 200 实证)。rootManifest 预载有意放弃:预载会让中继跳过自己
+      // 的清单请求,Set-Cookie 进不了 Cookie 罐,分片照样 401——探测体只用于
+      // 分类判定,清单由中继自取(代价一次读,换 Cookie 链正确)。
+      final relay = await LoopbackIngestRelay.start(
+        source: uri,
+        headers: item.headers,
+        sessionCookies: true,
+        findProxy: (url) => UpstreamProxy.needsProxy(url.host) ? 'PROXY ${UpstreamProxy.hostPort}' : 'DIRECT',
+      );
       _ingestRelays.add(relay);
       PlaybackLog.write('ingest_plan', {
         'strategy': item.declaredIngest == 'relay' ? 'declared-relay' : 'manifestRelay',
