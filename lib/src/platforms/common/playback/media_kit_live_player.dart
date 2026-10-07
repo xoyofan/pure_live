@@ -4,7 +4,6 @@
 library;
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart'
@@ -14,6 +13,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:live_parser/live_parser.dart' show StreamLine, UpstreamProxy;
 import 'package:pure_live/domains/live/data/stream/flv_splice_relay.dart';
+import 'package:pure_live/domains/live/data/stream/playback_manifest_probe.dart';
 import 'package:window_manager/window_manager.dart' show DragToResizeArea, WindowListener, windowManager;
 
 import 'buffering_stall_tracker.dart';
@@ -1711,39 +1711,40 @@ class MediaKitLivePlayer
   /// 已启动的 ingest 中继:随 stop/换源/销毁回收。
   final List<LoopbackIngestRelay> _ingestRelays = <LoopbackIngestRelay>[];
 
-  /// HLS manifest 改写判定:子行需要 base URL 时换 loopback 中继地址,
-  /// 其余(含任何判定失败)一律直通原地址。5s 超时、1MB 上限,失败不致命。
+  /// HLS manifest 改写判定,对齐上游"声明即被信 + 清单实测兜底"口径
+  /// (2026-10-06):
+  /// - 解析层声明 direct → 零探测直通;声明 relay → 零探测直接起中继
+  ///   (清单体由中继自取);
+  /// - 未声明 → 上游 [probePlaybackManifest]:共享连接池 + 3s 预算,读到的
+  ///   清单体顺手作 rootManifest 喂中继(不二次回源)。旧实现每次切房新建
+  ///   HttpClient 付全套 TCP+TLS 握手(TUN 出口下单次 2~3s),是切房慢主因。
+  /// 任何判定/中继失败都不致命:直通原地址。
   Future<StreamLine> _ingestRewritten(StreamLine item) async {
     if (item.format != 'hls') return item;
     final uri = Uri.tryParse(item.url);
     if (uri == null || uri.host == '127.0.0.1' || uri.host == 'localhost') return item;
+    if (item.declaredIngest == 'direct') {
+      PlaybackLog.write('ingest_plan', {'strategy': 'declared-direct'});
+      return item;
+    }
     try {
-      final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
-      try {
-        final request = await client.getUrl(uri);
-        item.headers.forEach(request.headers.set);
-        final response = await request.close().timeout(const Duration(seconds: 5));
-        if (response.statusCode != HttpStatus.ok) return item;
-        final body = await utf8
-            .decodeStream(response.cast<List<int>>())
-            .timeout(const Duration(seconds: 5), onTimeout: () => '');
-        if (body.length > 1 << 20) return item;
-        final kind = classifyHlsManifest(body);
-        if (!kind.requiresRewrite) {
-          PlaybackLog.write('ingest_plan', {'strategy': 'direct', 'kind': kind.describe()});
+      String? rootManifest;
+      if (item.declaredIngest != 'relay') {
+        final probe = await probePlaybackManifest(item.url, headers: item.headers);
+        if (probe == null) return item; // 清单读不到不是错误:直通原地址。
+        if (!probe.kind.requiresRewrite) {
+          PlaybackLog.write('ingest_plan', {'strategy': 'direct', 'kind': probe.kind.describe()});
           return item;
         }
-        final relay = await LoopbackIngestRelay.start(source: uri, headers: item.headers, rootManifest: body);
-        _ingestRelays.add(relay);
-        PlaybackLog.write('ingest_plan', {
-          'strategy': 'manifestRelay',
-          'kind': kind.describe(),
-          'port': relay.inputUri.port,
-        });
-        return StreamLine(name: item.name, url: relay.inputUri.toString(), format: item.format);
-      } finally {
-        client.close(force: true);
+        rootManifest = probe.body;
       }
+      final relay = await LoopbackIngestRelay.start(source: uri, headers: item.headers, rootManifest: rootManifest);
+      _ingestRelays.add(relay);
+      PlaybackLog.write('ingest_plan', {
+        'strategy': item.declaredIngest == 'relay' ? 'declared-relay' : 'manifestRelay',
+        'port': relay.inputUri.port,
+      });
+      return StreamLine(name: item.name, url: relay.inputUri.toString(), format: item.format);
     } catch (_) {
       return item; // 判定/中继失败不致命:直通原地址。
     }

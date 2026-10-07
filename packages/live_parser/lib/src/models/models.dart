@@ -72,6 +72,7 @@ class StreamLine {
     required this.url,
     required this.format,
     this.headers = const {},
+    this.declaredIngest,
   });
 
   final String name;
@@ -81,11 +82,19 @@ class StreamLine {
   final String url;
   final Map<String, String> headers;
 
+  /// 解析层声明的取流处置(上游 LiveStreamFacts 的桥接结论,2026-10-06
+  /// 对齐上游"声明即被信"口径):
+  /// - `direct`:声明无需改写,播放层零探测直通;
+  /// - `relay`:声明需回环清单改写,零探测直接起中继(清单体由中继自取);
+  /// - null:未声明,播放层按清单实测(上游 probePlaybackManifest)。
+  final String? declaredIngest;
+
   Map<String, dynamic> toJson() => {
     'name': name,
     'url': url,
     'format': format,
     if (headers.isNotEmpty) 'headers': headers,
+    if (declaredIngest != null) 'declaredIngest': declaredIngest,
   };
 
   factory StreamLine.fromJson(Map<String, dynamic> json) => StreamLine(
@@ -97,6 +106,7 @@ class StreamLine {
           (k, v) => MapEntry(k, v.toString()),
         ) ??
         const {},
+    declaredIngest: json['declaredIngest']?.toString(),
   );
 }
 

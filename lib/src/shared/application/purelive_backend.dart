@@ -20,6 +20,7 @@ import 'browse_source.dart';
 import 'package:pure_live/shared/platforms/live_input_recipe.dart';
 import 'package:pure_live/shared/platforms/live_site.dart';
 import 'package:pure_live/domains/live/data/playback_header_resolver.dart';
+import 'package:pure_live/domains/live/data/stream/live_stream_ingest.dart' show requiresManifestRelay;
 import 'package:pure_live/domains/live/data/platforms/sites.dart';
 import 'package:pure_live/shared/platforms/live_danmaku.dart';
 import 'package:pure_live/core/models/live_area.dart';
@@ -252,6 +253,12 @@ RoomPayload pureliveRoomToPayload(
 
 /// 房间解析器:resolve/refresh/recovery 共用同一个 LiveSite 调用。
 /// resolve 在开播时顺带解析默认档位(或 preferredQuality 命中档)的
+/// 上游 LiveStreamFacts 声明的桥接结论(2026-10-06 对齐上游"声明即被信"):
+/// `direct`/`relay` 写进 [StreamLine.declaredIngest],播放层零探测;
+/// null = 未声明,播放层按清单实测兜底。
+String? pureliveDeclaredIngest(LiveStreamFacts? facts) =>
+    facts == null ? null : (requiresManifestRelay(facts) ? 'relay' : 'direct');
+
 /// 全部线路,供 zishu 播放内核直接起播;线路切换经 preferredQuality 重解析。
 class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRecoveryResolver {
   PureLiveRoomResolver(this.site);
@@ -303,7 +310,13 @@ class PureLiveRoomResolver implements RoomResolver, RoomSummaryRefresher, RoomRe
           rate: (qualities.length - chosenIndex) * 100,
           lines: [
             for (var i = 0; i < urls.length; i++)
-              StreamLine(name: '线路${i + 1}', format: pureLiveLineFormat(urls[i]), url: urls[i], headers: headers),
+              StreamLine(
+                name: '线路${i + 1}',
+                format: pureLiveLineFormat(urls[i]),
+                url: urls[i],
+                headers: headers,
+                declaredIngest: pureliveDeclaredIngest(resolution.factsFor(urls[i])),
+              ),
           ],
         ),
       ],

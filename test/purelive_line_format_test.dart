@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pure_live/src/shared/application/purelive_line_format.dart';
+import 'package:pure_live/src/shared/application/purelive_backend.dart' show pureliveDeclaredIngest;
+import 'package:pure_live/shared/platforms/live_site.dart' show LiveStreamFacts, LiveStreamFormat;
 
 /// 线路格式判定契约:签名 query 不得吞掉 path 后缀(2026-10-02 猫耳全档
 /// 起播失败根因——HLS 带 `?sign=…` 被整串 endsWith 误判成 flv,进而被包进
@@ -37,6 +39,24 @@ void main() {
 
     test('大小写不敏感(上游大写扩展名)', () {
       expect(pureLiveLineFormat('https://cdn.example.com/live/INDEX.M3U8'), 'hls');
+    });
+  });
+
+  group('pureliveDeclaredIngest(上游 LiveStreamFacts 声明桥接)', () {
+    test('未声明 → null(播放层按清单实测兜底)', () {
+      expect(pureliveDeclaredIngest(null), isNull);
+    });
+
+    test('声明 HLS 且子行需解析 → relay(零探测直接起中继)', () {
+      const facts = (format: LiveStreamFormat.hls, codec: null, unresolvedChildren: true);
+      expect(pureliveDeclaredIngest(facts), 'relay');
+    });
+
+    test('声明 HLS 子行完整 / 声明 other → direct(零探测直通)', () {
+      const hls = (format: LiveStreamFormat.hls, codec: null, unresolvedChildren: false);
+      const other = (format: LiveStreamFormat.other, codec: null, unresolvedChildren: false);
+      expect(pureliveDeclaredIngest(hls), 'direct');
+      expect(pureliveDeclaredIngest(other), 'direct');
     });
   });
 }
