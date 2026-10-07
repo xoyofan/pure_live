@@ -14,8 +14,10 @@ import 'src/platforms/common/playback/window_presentation.dart';
 import 'src/platforms/common/proxy_setup.dart';
 import 'src/shared/presentation/tokens_override.dart';
 
+import 'package:pure_live/domains/live/data/platforms/sites.dart' show Sites;
 import 'package:pure_live/domains/live/domain/live_input_playback_binder.dart';
 import 'package:pure_live/domains/recorder/data/services/live_input_playback_binding.dart';
+import 'package:pure_live/domains/recorder/data/services/niconico_hls_input.dart' show readNiconicoMaster;
 
 /// 默认产品入口：全新的 Windows UI。
 /// 命令行参数(Flutter 桌面经 main args 注入,如 `--route /soop/category`)
@@ -57,5 +59,9 @@ Future<void> main(List<String> args) async {
   // zishu 不跑旧 UI bootstrap,这里装上游 bindSiteInputForPlayback
   // (Bigo/Fc2/Niconico 三配方→HLS 座位,录制域实现)。
   configureLiveInputPlaybackBinder(bindSiteInputForPlayback);
+  // niconico 画质目录的 master 读取器同为装配层注入制(实现在录制域 HLS
+  // 中继上):不绑则进房解析在画质目录处抛 StateError,被包成
+  // "Niconico transport"(2026-10-07 用户实录 niconico 房间解析失败)。
+  Sites.niconicoMasterReader = readNiconicoMaster;
   runApp(const ProviderScope(child: WindowsApp()));
 }
