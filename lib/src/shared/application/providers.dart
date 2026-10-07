@@ -39,11 +39,13 @@ SiteRegistry buildRegistryWithPureLive({String douyinCookie = '', String xhsCook
       final native = registry.byId(site.id);
       final nativeResolver = native?.resolver;
       final nativeStats = nativeResolver is RoomSummaryRefresher ? nativeResolver : null;
-      // YouTube:pure_live 适配层无公开目录/推荐(实测恒空),保留 native
-      // browse(zishu YoutubeBrowseRepository,抓 /live /gaming /music /news
-      // 页);播放/统计仍走 purelive。否则首页与全站聚合永久无 YouTube 数据
-      // (2026-10-03 用户口径「youtube liveme 首页无」)。
-      final nativeBrowse = site.id == Sites.youtubeSite ? native?.browse : null;
+      // native browse 保留名单:pure_live 适配层无该目录(YouTube 实测恒空)
+      // 或卡片信息密度远低于 zishu 原生实现(douyu/twitch——native browse
+      // 产出 RoomSummary.chips 特色标签行/identityLabel 榜单角标/promoTag,
+      // 上游适配器只有骨架字段)的站点,保留 native browse(2026-10-07 用户
+      // 口径「参考 zishu 原来的代码」);播放/统计/解析仍走 purelive。
+      const nativeBrowseSites = {Sites.youtubeSite, Sites.douyuSite, Sites.twitchSite};
+      final nativeBrowse = nativeBrowseSites.contains(site.id) ? native?.browse : null;
       registry.register(
         buildPureLiveRegistration(site.id, nativeStatsRefresher: nativeStats, browseOverride: nativeBrowse),
       );
