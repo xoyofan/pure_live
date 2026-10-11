@@ -30,11 +30,7 @@ import '../../windows/window_geometry_store.dart';
 
 /// 进入 PiP 前的窗口快照,退出时据此还原。
 class _WindowBounds {
-  const _WindowBounds({
-    required this.size,
-    required this.position,
-    required this.alwaysOnTop,
-  });
+  const _WindowBounds({required this.size, required this.position, required this.alwaysOnTop});
 
   final Size size;
   final Offset position;
@@ -85,25 +81,18 @@ Size resolvePipSize(double ratio) {
 /// 有存档且仍在屏内可见 → 用存档尺寸(钳制到屏内)与位置;无存档或越界 →
 /// 用默认尺寸并贴右下角 [_pipMargin] 内边距(底部另留 [_pipBottomMargin] 余量)。
 @visibleForTesting
-Rect resolvePipBounds({
-  required Size defaultSize,
-  required Size screen,
-  Rect? savedBounds,
-}) {
+Rect resolvePipBounds({required Size defaultSize, required Size screen, Rect? savedBounds}) {
   final area = screen.isFinite && !screen.isEmpty
       ? Rect.fromLTWH(0, 0, screen.width, screen.height)
       : const Rect.fromLTWH(0, 0, 1920, 1080);
   final minWidth = area.width < _pipMinWidth ? area.width : _pipMinWidth;
   final minHeight = area.height < _pipMinHeight ? area.height : _pipMinHeight;
-  final saved = savedBounds != null && savedBounds.isFinite && !savedBounds.isEmpty
-      ? savedBounds
-      : null;
+  final saved = savedBounds != null && savedBounds.isFinite && !savedBounds.isEmpty ? savedBounds : null;
   final requested = saved?.size ?? defaultSize;
   final width = requested.width.clamp(minWidth, area.width).toDouble();
   final height = requested.height.clamp(minHeight, area.height).toDouble();
 
-  final visibleSaved =
-      saved != null && _isVisibleOnScreen(saved, area) ? saved : null;
+  final visibleSaved = saved != null && _isVisibleOnScreen(saved, area) ? saved : null;
   final anchorLeft = visibleSaved?.left ?? (area.right - width - _pipMargin);
   final anchorTop = visibleSaved?.top ?? (area.bottom - height - _pipBottomMargin);
   final left = anchorLeft.clamp(area.left, area.right - width).toDouble();
@@ -114,14 +103,12 @@ Rect resolvePipBounds({
 /// 存档矩形是否在屏内留有足够可见面积(重叠不足视为越界,回退默认位置)。
 bool _isVisibleOnScreen(Rect rect, Rect area) {
   final overlap = rect.intersect(area);
-  return overlap.width >= _pipVisibleOverlap &&
-      overlap.height >= _pipVisibleOverlap;
+  return overlap.width >= _pipVisibleOverlap && overlap.height >= _pipVisibleOverlap;
 }
 
 /// 窗口表现控制器:全屏、PiP 与窗口几何记忆的唯一去处。
 class WindowPresentation {
-  WindowPresentation({WindowGeometryStore? geometryStore})
-    : _geometryStore = geometryStore ?? WindowGeometryStore();
+  WindowPresentation({WindowGeometryStore? geometryStore}) : _geometryStore = geometryStore ?? WindowGeometryStore();
 
   /// 默认单例:播放器实例与页面共用同一份窗口状态记忆。
   static final WindowPresentation instance = WindowPresentation();
@@ -136,6 +123,9 @@ class WindowPresentation {
   /// work-area bounds 抖动(参考实现里明确记录过该现象)。
   bool _fullscreenTransitioning = false;
 
+  /// 进全屏前窗口处于最大化态(Windows):退出全屏后补回最大化。
+  bool _wasMaximizedBeforeFullscreen = false;
+
   bool _pip = false;
 
   /// 当前 PiP 小窗归属的几何槽:竖屏(true)或横屏(false)。
@@ -147,8 +137,7 @@ class WindowPresentation {
   bool get isPip => _pip;
 
   /// 当前平台是否有原生窗口管理器可用;否则全部窗口操作静默空操作。
-  bool get _isDesktop =>
-      Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+  bool get _isDesktop => Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
   /// 幂等设置系统窗口全屏:目标态与当前窗口态一致时不发起原生调用。
   Future<void> setFullscreen(bool value) async {
@@ -157,14 +146,35 @@ class WindowPresentation {
     try {
       final current = await isSystemFullscreen();
       if (current == value) return;
-      // window_manager 的 setFullScreen 是多步非原子窗口变形(进:最大化动画帧
-      // → 去边框 → 铺满;退:PostMessage 异步恢复 → 重加边框闪一帧),中间帧会
-      // 露出桌面/背面窗口。包一层防闪窗窗口期压掉中间帧,机制与降级策略见
+      // window_manager 的 setFullScreen 是多步非原子窗口变形,中间帧会露出
+      // 桌面/背面窗口。包一层防闪窗窗口期压掉中间帧,机制与降级策略见
       // window_flash_guard.dart 库注释;插件仍是全屏态的唯一真源(不绕过)。
-      await flashFreeWindowTransition(
-        () => windowManager.setFullScreen(value),
-        waitForNativeSettle: !value,
-      );
+      //
+      // Windows + window_manager 0.5.x:进全屏时若窗口处于最大化态,插件的
+      // SetFullScreen 会跳过 SetAsFrameless(源码 `if (!g_maximized_before_fullscreen)`,
+      // pub cache window_manager-0.5.2 windows/window_manager.cpp:597),而样式剥离
+      // 只去 WS_THICKFRAME|WS_MAXIMIZEBOX 不去 WS_CAPTION——结果是窗口铺满显示器
+      // 但标题栏和外框保留(2026-10-11 用户实录)。规避:进全屏前先 restore 回
+      // 常规态让插件走剥边框路径,退出后按记忆补回最大化。
+      if (Platform.isWindows) {
+        if (value) {
+          _wasMaximizedBeforeFullscreen = await windowManager.isMaximized();
+        }
+      }
+      await flashFreeWindowTransition(() async {
+        if (value && _wasMaximizedBeforeFullscreen) {
+          await windowManager.restore();
+        }
+        await windowManager.setFullScreen(value);
+        if (!value && _wasMaximizedBeforeFullscreen) {
+          _wasMaximizedBeforeFullscreen = false;
+          try {
+            await windowManager.maximize();
+          } catch (_) {
+            // 补回最大化失败不改变全屏退出本身。
+          }
+        }
+      }, waitForNativeSettle: !value);
     } catch (_) {
       // 平台不支持 / 插件未就绪(VM、无窗口环境):静默降级。
     } finally {
@@ -207,15 +217,9 @@ class WindowPresentation {
       // 退出方向的恢复是插件 PostMessage 的异步消息,同样走防闪窗包装,
       // 并等异步恢复落定(settle)后再继续缩窗,避免恢复中间帧冒出来。
       if (await isSystemFullscreen()) {
-        await flashFreeWindowTransition(
-          () => windowManager.setFullScreen(false),
-          waitForNativeSettle: true,
-        );
+        await flashFreeWindowTransition(() => windowManager.setFullScreen(false), waitForNativeSettle: true);
       }
-      final ratio =
-          (aspectRatio != null && aspectRatio.isFinite && aspectRatio > 0)
-          ? aspectRatio
-          : 16 / 9;
+      final ratio = (aspectRatio != null && aspectRatio.isFinite && aspectRatio > 0) ? aspectRatio : 16 / 9;
       final portrait = ratio < 0.95;
       final saved = await _geometryStore.loadPip(portrait: portrait);
       final bounds = resolvePipBounds(
@@ -223,12 +227,7 @@ class WindowPresentation {
         screen: _primaryDisplayLogicalSize(),
         savedBounds: saved == null
             ? null
-            : Rect.fromLTWH(
-                saved.position.dx,
-                saved.position.dy,
-                saved.size.width,
-                saved.size.height,
-              ),
+            : Rect.fromLTWH(saved.position.dx, saved.position.dy, saved.size.width, saved.size.height),
       );
 
       await windowManager.setMinimumSize(Size.zero);
@@ -295,14 +294,8 @@ class WindowPresentation {
       }
       // 单屏优先:把存档位置钳回首屏,避免显示器变化后窗口落到屏外找不回。
       final screen = _primaryDisplayLogicalSize();
-      final maxLeft = (screen.width - saved.size.width).clamp(
-        0.0,
-        double.infinity,
-      );
-      final maxTop = (screen.height - saved.size.height).clamp(
-        0.0,
-        double.infinity,
-      );
+      final maxLeft = (screen.width - saved.size.width).clamp(0.0, double.infinity);
+      final maxTop = (screen.height - saved.size.height).clamp(0.0, double.infinity);
       final left = saved.position.dx.clamp(0.0, maxLeft).toDouble();
       final top = saved.position.dy.clamp(0.0, maxTop).toDouble();
       await windowManager.setSize(saved.size);
@@ -336,9 +329,7 @@ class WindowPresentation {
       final maximized = await windowManager.isMaximized();
       final size = await windowManager.getSize();
       final position = await windowManager.getPosition();
-      _geometryStore.saveMainWindowDebounced(
-        WindowGeometry(size: size, position: position, maximized: maximized),
-      );
+      _geometryStore.saveMainWindowDebounced(WindowGeometry(size: size, position: position, maximized: maximized));
     } catch (_) {
       // 无窗口环境:静默忽略。
     }
@@ -350,9 +341,7 @@ class WindowPresentation {
       final views = WidgetsBinding.instance.platformDispatcher.views;
       if (views.isEmpty) return const Size(1920, 1080);
       final display = views.first.display;
-      final dpr = display.devicePixelRatio == 0
-          ? 1.0
-          : display.devicePixelRatio;
+      final dpr = display.devicePixelRatio == 0 ? 1.0 : display.devicePixelRatio;
       final size = Size(display.size.width / dpr, display.size.height / dpr);
       if (!size.isFinite || size.isEmpty) return const Size(1920, 1080);
       return size;
