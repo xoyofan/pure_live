@@ -23,12 +23,9 @@ class AcfunSite extends LiveSite
         LiveSiteExternalRoomResolver {
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
-    // fork 修正(2026-10-03,合并 e1b5055bd 回植):上游用类字段 id(平台名)
-    // 拼路径——会得到 live.acfun.cn/live/acfun 式死链;改用房间号,空号返回
-    // null 不伪造。
-    final roomId = liveroom.roomId?.trim() ?? '';
-    if (roomId.isEmpty) return null;
-    final path = Uri.encodeComponent(roomId);
+    final id = sanitizedExternalRoomId(liveroom.roomId);
+    if (id == null) return null;
+    final path = Uri.encodeComponent(id);
     return RoomExternalTarget(web: 'https://live.acfun.cn/live/$path');
   }
 

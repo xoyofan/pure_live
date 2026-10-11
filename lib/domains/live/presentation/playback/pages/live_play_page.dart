@@ -1,11 +1,10 @@
-import 'package:pure_live/core/platform/platform_utils.dart';
 import 'package:pure_live/core/index.dart';
+import 'package:pure_live/domains/live/domain/global_player_service.dart';
+import 'package:pure_live/core/player/presentation/player_back_scope.dart';
+import 'package:pure_live/domains/live/presentation/playback/states/ui_state.dart';
 import 'package:pure_live/domains/live/presentation/playback/widgets/keyboard/video_keyboard.dart';
-import 'package:pure_live/domains/live/presentation/playback/widgets/layout/live_play_back_scope.dart';
 import 'package:pure_live/domains/live/presentation/playback/widgets/layout/live_play_content.dart';
 import 'package:pure_live/domains/live/presentation/playback/controllers/live_play_controller.dart';
-import 'package:pure_live/domains/live/presentation/playback/states/ui_state.dart';
-import 'package:pure_live/domains/live/domain/global_player_service.dart';
 
 class LivePlayPage extends GetView<LivePlayController> {
   const LivePlayPage({super.key});
@@ -45,30 +44,12 @@ class LivePlayPage extends GetView<LivePlayController> {
         child: Container(color: canvasColor, width: double.infinity, height: double.infinity, child: content),
       );
 
-      return LivePlayBackScope(
+      return PlayerBackScope(
         presentationActive: presentationActive,
         onExitPresentation: controller.exitPresentationForSystemBack,
-        onBackRequest: _enterSystemPipOnBack,
         child: page,
       );
     });
-  }
-
-  Future<bool> _enterSystemPipOnBack() async {
-    if (!PlatformUtils.isAndroid) return false;
-    final manager = GlobalPlayerService.instance.player;
-    if (!SettingsService.to.player.floatPlay.v) return false;
-    if (manager.isInPip.value || manager.isPipPreparing.value) return false;
-    if (!manager.isPlayingNow) return false;
-    try {
-      await controller.enterPipPresentation();
-      // enablePip completing without throwing means the presentation driver
-      // applied the pip request; isInPip itself flips on the driver's change
-      // stream one microtask later.
-      return true;
-    } catch (_) {
-      return false;
-    }
   }
 
   Widget _withLocalGiftEffect(Widget child) {

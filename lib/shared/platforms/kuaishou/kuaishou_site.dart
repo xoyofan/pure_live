@@ -24,11 +24,9 @@ class KuaishouSite
     implements LiveSite, LiveSiteRoomRefresher, LiveSiteRecordRoomResolver, LiveSiteExternalRoomResolver {
   @override
   RoomExternalTarget? externalRoomTarget(LiveRoom liveroom) {
-    // fork 修正(2026-10-03):上游用类字段 id(平台名)拼路径——所有站点
-    // 都会得到 douyu.com/douyu 式死链;改用房间号,空号返回 null 不伪造。
-    final roomId = liveroom.roomId?.trim() ?? '';
-    if (roomId.isEmpty) return null;
-    final path = Uri.encodeComponent(roomId);
+    final id = sanitizedExternalRoomId(liveroom.roomId);
+    if (id == null) return null;
+    final path = Uri.encodeComponent(id);
     final stream = liveroom.link?.trim() ?? '';
     final encoded = Uri.encodeQueryComponent(stream);
     return RoomExternalTarget(

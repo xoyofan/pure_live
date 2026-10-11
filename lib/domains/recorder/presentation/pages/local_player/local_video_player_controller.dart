@@ -1,29 +1,29 @@
+import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:flame_barrage/flame_barrage.dart';
-import 'package:media_core/media_core.dart' hide PlatformUtils;
-import 'package:media_core_feed/media_core_feed.dart';
-import 'package:media_core_list_playback/media_core_list_playback.dart';
 import 'package:pure_live/core/index.dart';
-import 'package:pure_live/domains/live/domain/global_player_service.dart';
-import 'package:pure_live/core/config/danmaku_settings_controller.dart';
+import 'package:flame_barrage/flame_barrage.dart';
+import 'package:media_core_feed/media_core_feed.dart';
 import 'package:pure_live/core/platform/file_utils.dart';
-import 'package:pure_live/core/platform/platform_utils.dart';
-import 'package:screen_brightness_platform_interface/screen_brightness_platform_interface.dart';
-import 'package:pure_live/core/player/kernel/floating_handle_keeper.dart';
-import 'package:pure_live/core/player/kernel/player_kernel_service.dart';
-import 'package:pure_live/core/player/presentation/danmaku/danmaku_surface_settings.dart';
-import 'package:pure_live/core/player/presentation/danmaku/player_danmaku_surface.dart';
-import 'package:pure_live/core/player/presentation/fullscreen_window.dart' show WindowService, fullscreenDriver;
-import 'package:pure_live/core/player/presentation/player_presentation_actions.dart';
-import 'package:pure_live/core/player/presentation/compact_source_orientation.dart';
-import 'package:pure_live/core/player/presentation/player_ui_controller.dart';
-import 'package:pure_live/core/player/presentation/windows_pip_driver.dart';
 import 'package:pure_live/core/storage/hive_pref_util.dart';
-import 'package:pure_live/domains/recorder/presentation/pages/local_player/recording_danmaku_track.dart';
+import 'package:pure_live/core/platform/platform_utils.dart';
+import 'package:media_core/media_core.dart' hide PlatformUtils;
+import 'package:media_core_list_playback/media_core_list_playback.dart';
+import 'package:pure_live/core/config/danmaku_settings_controller.dart';
+import 'package:pure_live/core/player/kernel/player_kernel_service.dart';
+import 'package:pure_live/domains/live/domain/global_player_service.dart';
+import 'package:pure_live/core/player/kernel/floating_handle_keeper.dart';
+import 'package:pure_live/core/player/presentation/windows_pip_driver.dart';
+import 'package:pure_live/core/player/presentation/player_ui_controller.dart';
+import 'package:pure_live/core/player/presentation/compact_source_orientation.dart';
+import 'package:pure_live/core/player/presentation/player_presentation_actions.dart';
+import 'package:pure_live/core/player/presentation/danmaku/player_danmaku_surface.dart';
+import 'package:pure_live/core/player/presentation/danmaku/danmaku_surface_settings.dart';
+import 'package:screen_brightness_platform_interface/screen_brightness_platform_interface.dart';
 import 'package:pure_live/domains/recorder/presentation/pages/local_player/recording_resume.dart';
+import 'package:pure_live/domains/recorder/presentation/pages/local_player/recording_danmaku_track.dart';
+import 'package:pure_live/core/player/presentation/fullscreen_window.dart' show WindowService, fullscreenDriver;
 
 /// Persistent [PlaybackProgressStore] backed by Hive.
 ///
@@ -288,11 +288,15 @@ final class LocalVideoPlayerController extends GetxController implements PlayerU
   /// 所以 enter/exit 两个闭包都必须是“按当前状态翻转”的切换器。
   final fullscreenActive = false.obs;
 
-  /// 桌面的全屏形状由驱动说了算：镜像过来，页面和切换按钮都读同一份真值。
-  /// 移动端的全屏是方向锁，不在这条链上，保持原来的本地语义。
+  /// 全屏的真值是驱动，不是这里乐观翻转的 Rx。
+  ///
+  /// 桌面端窗口被缩成小窗、或系统/手势退出全屏时，驱动先变、页面后知；移动端
+  /// 同样如此 —— 之前这里对移动端直接 return，手机上全屏状态只有 enterFullscreen
+  /// 里的乐观赋值，驱动把它收掉之后页面还以为在全屏，于是"物理返回先退全屏"
+  /// 这一步永远看到 false，直接就把页面弹掉了。
   void _syncFullscreenFromDriver() {
-    if (PlatformUtils.isMobile) return;
     final active = fullscreenDriver.isSystemFullscreen;
+    if (fullscreenActive.value == active && isFullscreen.value == active) return;
     fullscreenActive.value = active;
     isFullscreen.value = active;
     if (!active) portraitFullscreen.value = false;
@@ -647,7 +651,7 @@ final class LocalVideoPlayerController extends GetxController implements PlayerU
       },
     );
     await _kernel.enterFloating(handle.id);
-    if (Get.currentRoute == RoutePath.kLocalVideoPlayer) Get.back();
+    if (Get.currentRoute == RoutePath.kLocalVideoPlayer) Navigator.of(Get.context!).pop();
   }
 
   /// The system picture-in-picture window, the same presentation the live room
@@ -829,22 +833,21 @@ final class LocalVideoPlayerController extends GetxController implements PlayerU
   /// Whether the feed now belongs to the small window rather than this page.
   bool _handedToFloating = false;
 
-  /// 返回的统一语义（与直播间一致）：设置里开了"小窗播放"且正在播放时，
-  /// 退出页面转交小窗。返回 true 表示真的离开页面。
+  /// 返回的两段语义，仅此两条：
+  ///
+  /// - 全屏中 → 退出全屏，留在页面；
+  /// - 不是全屏 → 离开当前页面。
+  ///
+  /// 返回 true 表示调用方应当离开路由。小窗播放是**独立入口**（页面上的小窗按钮，
+  /// 以及 [uiRequestExit] 那条库内退出），返回键不做转交：把两件事混在一条返回键上，
+  /// 会出现"按了返回却没离开页面"这种和需求不符的结果。
   Future<bool> handleBackRequest() async {
-    if (isClosed || _handedToFloating) return true;
-    // Fullscreen first, page second: back leaves the fullscreen shape and
-    // stays on the page, exactly like the live room. Only a page that is not
-    // fullscreen is allowed to be left.
+    if (isClosed) return true;
     if (fullscreenActive.value) {
       await exitFullscreen();
       return false;
     }
-    final floatPlayEnabled = SettingsService.to.player.floatPlay.v;
-    if (!floatPlayEnabled || !isPlaying.value) return true;
-    _handedToFloating = true;
-    await enterFloating();
-    return false;
+    return true;
   }
 
   @override

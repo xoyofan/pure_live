@@ -92,9 +92,8 @@ class FloatingPlayback {
               // Every edge and corner resizes, freely: the viewer picks the
               // width and the height, and the window keeps what they chose.
               resizableByDrag: true,
-              // fork adapt(合并 e1b5055bd):resizeHandles/resizeKeepsAspectRatio
-              // 依赖上游作者本机未发布的 media_core_floating API,公开克隆无此
-              // 符号;去掉后用包默认把手(旧 UI 运行时绕过,编译级适配)。
+              resizeHandles: FloatingResizeHandle.all,
+              resizeKeepsAspectRatio: false,
             ),
           ),
           initialRect: _rememberedFloatRect(isPortraitSurface),
@@ -241,7 +240,7 @@ class _FloatingSurfaceState extends State<_FloatingSurface> {
                     final isPlay = snapshot.data ?? true;
                     return IconButton.filledTonal(
                       iconSize: 44,
-                      tooltip: isPlay ? '暂停' : '播放',
+                      tooltip: i18n(isPlay ? 'player_pause' : 'player_play'),
                       style: IconButton.styleFrom(backgroundColor: Colors.black54, foregroundColor: Colors.white),
                       icon: Icon(isPlay ? Icons.pause_rounded : Icons.play_arrow_rounded),
                       onPressed: () {
@@ -265,9 +264,13 @@ class _FloatingSurfaceState extends State<_FloatingSurface> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _cornerButton(icon: Icons.open_in_full_rounded, semanticLabel: '回到直播间', onTap: widget.onExit),
+                    _cornerButton(
+                      icon: Icons.open_in_full_rounded,
+                      semanticLabel: i18n('player_back_to_room'),
+                      onTap: widget.onExit,
+                    ),
                     const SizedBox(width: 4),
-                    _cornerButton(icon: Icons.close_rounded, semanticLabel: '关闭', onTap: widget.onClose),
+                    _cornerButton(icon: Icons.close_rounded, semanticLabel: i18n('close'), onTap: widget.onClose),
                   ],
                 ),
               ),

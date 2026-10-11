@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'dart:async';
 
 import 'package:remixicon/remixicon.dart';
@@ -7,11 +8,13 @@ import 'package:media_core_ui/media_core_ui.dart';
 import 'package:pure_live/core/consts/app_consts.dart';
 import 'package:media_core/media_core.dart' show MediaPlayerView;
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
-import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey;
+import 'package:pure_live/core/player/presentation/player_back_scope.dart';
 import 'package:pure_live/core/player/presentation/windows_pip_driver.dart';
+import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey;
 import 'package:pure_live/core/player/presentation/player_ui_controller.dart';
 import 'package:pure_live/core/player/presentation/compact_playback_progress.dart';
 import 'package:pure_live/core/player/presentation/danmaku/player_danmaku_actions.dart';
+import 'package:pure_live/core/player/presentation/fullscreen_window.dart' show fullscreenDriver;
 import 'package:pure_live/domains/recorder/presentation/pages/local_player/local_video_player_controller.dart';
 
 /// One recording, played.
@@ -28,8 +31,124 @@ class LocalVideoPlayerPage extends GetView<LocalVideoPlayerController> {
 
   @override
   Widget build(BuildContext context) {
-    if (Get.width <= 680) return _MobileLayout(controller: controller);
-    return _DesktopLayout(controller: controller);
+    // The keyboard owner sits above the layout switch: a resize that flips
+    // narrow/wide, or a presentation change that replaces the page's shape,
+    // must not take the focus node with it.
+    return RecordingKeyboardShortcuts(
+      controller: controller,
+      child: _RecordingBackBoundary(
+        controller: controller,
+        child: Get.width <= 680 ? _MobileLayout(controller: controller) : _DesktopLayout(controller: controller),
+      ),
+    );
+  }
+}
+
+/// The recording player's system-Back owner.
+///
+/// It exists because Back here is not a Flutter-level event. Android 13+ hands
+/// the gesture and the button to the Activity, where Flutter registers its own
+/// callback at **DEFAULT** priority — so the route can be popped before any
+/// `PopScope` runs. The host keeps a **PRIORITY_OVERLAY** callback instead and
+/// forwards it over `pure_live/predictive_back`, which is what makes "Back leaves
+/// fullscreen first" possible at all.
+///
+/// Two mechanisms are therefore wired, and both apply the same rule:
+///
+/// - `PopScope.canPop` — Flutter's own pipeline. `canPop: false` while fullscreen
+///   means the route *cannot* be popped, so Back can only be answered by leaving
+///   fullscreen. This one works even when the host callback never reaches Dart;
+/// - [PlayerBackScope.onBackRequest] — the host path, for the deliveries Flutter
+///   never sees.
+///
+/// `canPop` reads the **driver**, not the controller's cached flag: the driver is
+/// the thing that actually owns fullscreen, and its stream reports the settled
+/// value. A stale `false` here is exactly what let one press pop the page out of
+/// fullscreen.
+class _RecordingBackBoundary extends StatefulWidget {
+  const _RecordingBackBoundary({required this.controller, required this.child});
+
+  final LocalVideoPlayerController controller;
+  final Widget child;
+
+  @override
+  State<_RecordingBackBoundary> createState() => _RecordingBackBoundaryState();
+}
+
+class _RecordingBackBoundaryState extends State<_RecordingBackBoundary> {
+  LocalVideoPlayerController get controller => widget.controller;
+
+  /// Fullscreen state as a `Listenable`, so `PopScope.canPop` follows it without
+  /// this widget — and therefore the native interception's owner — remounting.
+  late final ValueNotifier<bool> _fullscreenListenable = ValueNotifier<bool>(fullscreenDriver.isAnyFullscreen);
+
+  StreamSubscription<bool>? _fullscreenSub;
+  StreamSubscription<bool>? _controllerFullscreenSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Both sources are watched, and the value is the OR of them: the driver is
+    // the authority, the controller's flag is the second opinion that covers the
+    // instant between a request and the driver's settled report. While either
+    // says "fullscreen", `canPop` stays false, so Back cannot pop the page.
+    _fullscreenSub = fullscreenDriver.onFullscreenChanged.listen((_) => _syncFullscreen());
+    _controllerFullscreenSub = controller.fullscreenActive.listen((_) => _syncFullscreen());
+    _syncFullscreen();
+  }
+
+  void _syncFullscreen() {
+    final value = fullscreenDriver.isAnyFullscreen || controller.fullscreenActive.value;
+    if (_fullscreenListenable.value != value) _fullscreenListenable.value = value;
+  }
+
+  @override
+  void dispose() {
+    _fullscreenSub?.cancel();
+    _controllerFullscreenSub?.cancel();
+    _fullscreenListenable.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // The scope widget itself never remounts (the native interception is a single
+    // slot), but its `canPop` has to follow fullscreen, so the state reaches it
+    // through a notifier rather than by rebuilding this widget.
+    return ValueListenableBuilder<bool>(
+      valueListenable: _fullscreenListenable,
+      builder: (context, isFullscreen, child) => PlayerBackScope(
+        // This is the load-bearing line, and it is deliberately *not*
+        // `presentationActive: false`. `canPop` is what Flutter's own back
+        // pipeline consults, and it is the only mechanism that works even when
+        // the host's overlay callback never reaches Dart:
+        //
+        // - fullscreen → `canPop` false, so the route cannot be popped at all;
+        //   Back only exits fullscreen and the page stays;
+        // - not fullscreen → `canPop` true, so Back leaves the page.
+        presentationActive: isFullscreen,
+        onExitPresentation: () async {
+          await controller.exitFullscreen();
+        },
+        // Still answered, for the host path that delivers Back to Dart before
+        // Flutter sees it. `handleBackRequest` applies the same rule, so the two
+        // paths cannot disagree.
+        onBackRequest: () async {
+          if (await controller.handleBackRequest()) {
+            // The controller said "leave the page", and the page leaves it
+            // itself. Leaving this to Flutter's default pop is what failed
+            // before: with `canPop` true the platform is allowed to resolve the
+            // back on its own, and on this device it did not — the page simply
+            // stayed. An explicit pop is deterministic.
+            await Navigator.of(Get.context!).maybePop();
+          }
+          // The route is never left by the platform here; this scope owns it.
+          return true;
+        },
+        child: child!,
+      ),
+      child: widget.child,
+    );
   }
 }
 
@@ -57,6 +176,47 @@ String _modifiedOf(File file) {
   } catch (_) {
     return '';
   }
+}
+
+/// The system safe area the page's own chrome has to add.
+///
+/// `viewPadding` is the raw inset the system reports — nothing above this page
+/// consumes it, so it is exactly what a positioned control adds itself. The
+/// picture underneath stays full-bleed; only the bars move in.
+EdgeInsets _edgeInsets(BuildContext context) {
+  final mediaQuery = MediaQuery.of(context);
+  final viewPadding = mediaQuery.viewPadding;
+
+  double left = viewPadding.left;
+  double top = viewPadding.top;
+  double right = viewPadding.right;
+  double bottom = viewPadding.bottom;
+
+  for (final feature in mediaQuery.displayFeatures) {
+    if (feature.type != DisplayFeatureType.cutout) {
+      continue;
+    }
+
+    final bounds = feature.bounds;
+
+    if (bounds.left <= 0) {
+      left = left > bounds.width ? left : bounds.width;
+    }
+
+    if (bounds.top <= 0) {
+      top = top > bounds.height ? top : bounds.height;
+    }
+
+    if (bounds.right >= mediaQuery.size.width) {
+      right = right > bounds.width ? right : bounds.width;
+    }
+
+    if (bounds.bottom >= mediaQuery.size.height) {
+      bottom = bottom > bounds.height ? bottom : bounds.height;
+    }
+  }
+
+  return EdgeInsets.fromLTRB(left, top, right, bottom);
 }
 
 /// The video surface: the shared gesture layer over the library's own player.
@@ -123,6 +283,131 @@ class _RecordingPlayerAreaState extends State<_PlayerArea> {
 
   void _onSurfaceDoubleTap() => unawaited(controller.toggleFullscreen());
 
+  @override
+  Widget build(BuildContext context) {
+    return GetBuilder<LocalVideoPlayerController>(
+      builder: (_) {
+        final handle = controller.handle;
+        if (handle == null) return const ColoredBox(color: Colors.black);
+        return Obx(() {
+          if (controller.isInPip.value) {
+            return _RecordingPipOverlay(controller: controller);
+          }
+          final visible = controller.controlsVisible.value;
+          return MouseRegion(
+            onEnter: (_) => controller.setControlsHovering(true),
+            onExit: (_) => controller.setControlsHovering(false),
+            cursor: visible ? MouseCursor.defer : SystemMouseCursors.none,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onDoubleTap: _onSurfaceDoubleTap,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _RecordingVideoFace(
+                    controller: controller,
+                    keyboardShortcuts: widget.keyboardShortcuts,
+                    onSurfaceTap: _onSurfaceTap,
+                  ),
+                  // The picture's own entries — audio-only, screenshot, small
+                  // window — float at the top-right. Desktop fullscreen needs
+                  // them too: it has no app bar and no other row to carry them,
+                  // which is why they used to vanish exactly when the window went
+                  // fullscreen. (The control bar at the bottom only holds the
+                  // transport, volume, rate, fit and fullscreen controls.)
+                  //
+                  // On a phone the fullscreen shape draws its own top bar, so the
+                  // row is skipped there to avoid two copies of the same buttons
+                  // landing on top of each other.
+                  if (Get.width > 680 && !(controller.fullscreenActive.value && _isTouchDevice))
+                    Positioned(
+                      top: 8 + _edgeInsets(context).top,
+                      right: 8 + _edgeInsets(context).right,
+                      child: _RecordingCornerActions(controller: controller),
+                    ),
+                  // The bar rides above the picture, revealed by the rules above.
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: IgnorePointer(
+                      ignoring: !visible,
+                      child: AnimatedOpacity(
+                        opacity: visible ? 1 : 0,
+                        duration: const Duration(milliseconds: 200),
+                        child: _RecordingControlBar(controller: controller),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        });
+      },
+    );
+  }
+}
+
+/// Page-level keyboard owner, the shape the live room uses.
+///
+/// The recorder used to carry its key handler on a Focus inside the player
+/// area. Every presentation change rebuilds that subtree — fullscreen and PiP
+/// replace the page's shape — and the focus node went away with it, so the
+/// keys stopped answering exactly when the viewer is fullscreen and wants them
+/// most. Living above the shape switch keeps one node alive, and the node is
+/// re-asserted after a transition because the desktop window's fullscreen
+/// change can drop the OS-level focus along with it.
+class RecordingKeyboardShortcuts extends StatefulWidget {
+  const RecordingKeyboardShortcuts({super.key, required this.controller, required this.child});
+
+  final LocalVideoPlayerController controller;
+  final Widget child;
+
+  @override
+  State<RecordingKeyboardShortcuts> createState() => _RecordingKeyboardShortcutsState();
+}
+
+class _RecordingKeyboardShortcutsState extends State<RecordingKeyboardShortcuts> {
+  final FocusNode _node = FocusNode(debugLabel: 'LocalVideoPlayerKeys');
+
+  final List<StreamSubscription<bool>> _presentationSubs = <StreamSubscription<bool>>[];
+
+  LocalVideoPlayerController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final presentation in <RxBool>[
+      controller.fullscreenActive,
+      controller.portraitFullscreen,
+      controller.isFullscreen,
+      controller.isInPip,
+    ]) {
+      _presentationSubs.add(presentation.listen((_) => _reassertFocus()));
+    }
+    _reassertFocus();
+  }
+
+  @override
+  void dispose() {
+    for (final subscription in _presentationSubs) {
+      subscription.cancel();
+    }
+    _node.dispose();
+    super.dispose();
+  }
+
+  /// Takes focus back after a transition, and only when nothing else holds it:
+  /// a dialog, menu or text field the viewer opened keeps the keyboard.
+  void _reassertFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _node.hasFocus) return;
+      if (FocusManager.instance.primaryFocus != null) return;
+      _node.requestFocus();
+    });
+  }
+
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
@@ -147,11 +432,16 @@ class _RecordingPlayerAreaState extends State<_PlayerArea> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.escape) {
-      // Escape only ever leaves a mode: while fullscreen it drops back to the
-      // page, and outside fullscreen it must not open one.
-      if (!controller.fullscreenActive.value) return KeyEventResult.ignored;
-      unawaited(controller.exitFullscreen());
-      controller.revealControls();
+      // Escape only ever leaves a mode: fullscreen drops back to the page, and
+      // outside it pops the route — desktop Flutter does not turn an unhandled
+      // Escape into a Navigator pop, and PopScope still decides whether that
+      // leaves the page or hands the feed to the small window.
+      if (controller.fullscreenActive.value) {
+        unawaited(controller.exitFullscreen());
+        controller.revealControls();
+        return KeyEventResult.handled;
+      }
+      unawaited(Navigator.of(context).maybePop());
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.arrowDown) {
@@ -168,72 +458,26 @@ class _RecordingPlayerAreaState extends State<_PlayerArea> {
 
   @override
   Widget build(BuildContext context) {
-    return GetBuilder<LocalVideoPlayerController>(
-      builder: (_) {
-        final handle = controller.handle;
-        if (handle == null) return const ColoredBox(color: Colors.black);
-        return Focus(
-          autofocus: true,
-          onKeyEvent: _handleKey,
-          child: Obx(() {
-            if (controller.isInPip.value) {
-              return _RecordingPipOverlay(controller: controller);
-            }
-            final visible = controller.controlsVisible.value;
-            return MouseRegion(
-              onEnter: (_) => controller.setControlsHovering(true),
-              onExit: (_) => controller.setControlsHovering(false),
-              cursor: visible ? MouseCursor.defer : SystemMouseCursors.none,
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onDoubleTap: _onSurfaceDoubleTap,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _RecordingVideoFace(
-                      controller: controller,
-                      keyboardShortcuts: widget.keyboardShortcuts,
-                      onSurfaceTap: _onSurfaceTap,
-                    ),
-                    if (Get.width > 680)
-                      Positioned(top: 8, right: 8, child: _RecordingCornerActions(controller: controller)),
-                    // The bar rides above the picture, revealed by the rules above.
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: IgnorePointer(
-                        ignoring: !visible,
-                        child: AnimatedOpacity(
-                          opacity: visible ? 1 : 0,
-                          duration: const Duration(milliseconds: 200),
-                          child: _RecordingControlBar(controller: controller),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }),
-        );
-      },
-    );
+    return Focus(focusNode: _node, autofocus: true, onKeyEvent: _handleKey, child: widget.child);
   }
 }
 
-/// The picture's top-right cluster: back (while fullscreen), audio-only,
-/// screenshot and picture-in-picture. Shown on wide windows; on narrow ones
-/// the same entries live in the settings sheet.
+/// The picture's top-right cluster: back, audio-only, screenshot and
+/// picture-in-picture.
+///
+/// It floats over a roomy window's picture, and the fullscreen chrome reuses the
+/// same row inside its top bar — there [includeBack] is false, because that bar
+/// already has the page's back button and two back arrows in one row is a coin
+/// toss for the viewer.
 class _RecordingCornerActions extends StatelessWidget {
-  const _RecordingCornerActions({required this.controller});
+  const _RecordingCornerActions({required this.controller, this.includeBack = true});
 
   final LocalVideoPlayerController controller;
+  final bool includeBack;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -242,44 +486,57 @@ class _RecordingCornerActions extends StatelessWidget {
           // the fullscreen shape first, and only a page that is not fullscreen
           // is allowed to be left (the room's rule, same handler as the
           // physical back button).
+          if (includeBack)
+            Obx(
+              () => !controller.fullscreenActive.value
+                  ? const SizedBox.shrink()
+                  : SizedBox(
+                      width: 32,
+                      child: IconButton(
+                        color: Colors.white,
+                        iconSize: 20,
+                        tooltip: i18n('local_player_back'),
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        onPressed: () async {
+                          if (await controller.handleBackRequest()) Navigator.of(Get.context!).pop();
+                        },
+                      ),
+                    ),
+            ),
           Obx(
-            () => !controller.fullscreenActive.value
-                ? const SizedBox.shrink()
-                : IconButton(
-                    color: Colors.white,
-                    iconSize: 20,
-                    tooltip: i18n('local_player_back'),
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    onPressed: () async {
-                      if (await controller.handleBackRequest()) Get.back<void>();
-                    },
-                  ),
-          ),
-          Obx(
-            () => IconButton(
-              color: controller.isAudioOnly.value ? const Color(0xFFFFD166) : Colors.white,
-              iconSize: 20,
-              tooltip: controller.isAudioOnly.value ? i18n('restore_video_mode') : i18n('switch_audio_only_mode'),
-              icon: Icon(controller.isAudioOnly.value ? Remix.headphone_fill : Remix.headphone_line),
-              onPressed: () => controller.isAudioOnly.toggle(),
+            () => SizedBox(
+              width: 32,
+              child: IconButton(
+                color: controller.isAudioOnly.value ? const Color(0xFFFFD166) : Colors.white,
+                iconSize: 20,
+                tooltip: controller.isAudioOnly.value ? i18n('restore_video_mode') : i18n('switch_audio_only_mode'),
+                icon: Icon(controller.isAudioOnly.value ? Remix.headphone_fill : Remix.headphone_line),
+                onPressed: () => controller.isAudioOnly.toggle(),
+              ),
             ),
           ),
-          IconButton(
-            color: Colors.white,
-            iconSize: 20,
-            tooltip: i18n('local_player_screenshot'),
-            icon: const Icon(Icons.photo_camera_rounded),
-            onPressed: () async {
-              final name = await controller.saveScreenshot();
-              ToastUtil.show(name ?? i18n('path_or_permission_error'));
-            },
+          SizedBox(
+            width: 32,
+            child: IconButton(
+              color: Colors.white,
+              iconSize: 20,
+              tooltip: i18n('local_player_screenshot'),
+              icon: const Icon(Icons.photo_camera_rounded),
+              onPressed: () async {
+                final name = await controller.saveScreenshot();
+                ToastUtil.show(name ?? i18n('path_or_permission_error'));
+              },
+            ),
           ),
-          IconButton(
-            color: Colors.white,
-            iconSize: 20,
-            tooltip: i18n('pip_window_play'),
-            icon: const Icon(Remix.picture_in_picture_line),
-            onPressed: () => unawaited(_enterRecordingPip(controller)),
+          SizedBox(
+            width: 32,
+            child: IconButton(
+              color: Colors.white,
+              iconSize: 20,
+              tooltip: i18n('pip_window_play'),
+              icon: const Icon(Remix.picture_in_picture_line),
+              onPressed: () => unawaited(_enterRecordingPip(controller)),
+            ),
           ),
         ],
       ),
@@ -411,21 +668,38 @@ class _RecordingPipOverlayState extends State<_RecordingPipOverlay> {
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: Scaffold(
-        backgroundColor: Colors.black,
+        // Transparent, not black: the compact window is the whole Composition
+        // surface on a phone, and any opaque page background shows as a frame
+        // around the picture. The live room's compact face does the same.
+        backgroundColor: Colors.transparent,
         body: Stack(
           fit: StackFit.expand,
           children: [
+            // No clip while the system draws the window. Android's and iOS's
+            // PiP windows own their own shape, and a 12 px clip here cut the
+            // picture's corners off and let the page behind show through them —
+            // which is exactly what "the window still has a background" was.
+            // The desktop compact window has no such system rounding, so it
+            // keeps its soft corners.
             ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: _isTouchDevice ? BorderRadius.zero : BorderRadius.circular(12),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  GestureDetector(
-                    onDoubleTap: () => unawaited(_exitPip()),
-                    onTap: widget.controller.togglePlayPause,
-                    onPanStart: (_) => unawaited(windowsPipWindow.startDragging()),
-                    child: MediaPlayerView(handle: handle, fit: BoxFit.contain),
-                  ),
+                  // A touch device hands the window to the system: consuming a
+                  // drag or a tap here stops the native PiP window from being
+                  // dragged and from opening its own play/close menu. The
+                  // desktop compact window has no system gestures, so there the
+                  // surface is the only way to move or pause it.
+                  if (_isTouchDevice)
+                    MediaPlayerView(handle: handle, fit: BoxFit.contain)
+                  else
+                    GestureDetector(
+                      onDoubleTap: () => unawaited(_exitPip()),
+                      onTap: widget.controller.togglePlayPause,
+                      onPanStart: (_) => unawaited(windowsPipWindow.startDragging()),
+                      child: MediaPlayerView(handle: handle, fit: BoxFit.contain),
+                    ),
                   Obx(
                     () => Positioned.fill(
                       child: widget.controller.buildDanmakuSurface(context) ?? const SizedBox.shrink(),
@@ -495,7 +769,7 @@ class _RecordingPipOverlayState extends State<_RecordingPipOverlay> {
                         semanticLabel: i18n('close'),
                         onTap: () async {
                           await _exitPip();
-                          if (Get.currentRoute == RoutePath.kLocalVideoPlayer) Get.back<void>();
+                          if (Get.currentRoute == RoutePath.kLocalVideoPlayer) Navigator.of(Get.context!).pop();
                         },
                       ),
                     ],
@@ -546,6 +820,11 @@ class _RecordingControlBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
+    // The bar is pinned to the bottom of the picture, and the picture reaches the
+    // bottom of the screen in every shape this page has: on a phone with gesture
+    // navigation the seek bar and the transport row sat under the system bar.
+    // The inset goes into the padding so the gradient still covers the edge.
+    final padding = _edgeInsets(context);
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -554,7 +833,7 @@ class _RecordingControlBar extends StatelessWidget {
           colors: [Colors.transparent, Colors.black87],
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 22, 12, 4),
+      padding: EdgeInsets.fromLTRB(12 + padding.left, 22, 12 + padding.right, 4 + padding.bottom),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final showVolumeSlider = constraints.maxWidth >= recordingVolumeSliderMinWidth;
@@ -1081,6 +1360,8 @@ class _PlaylistPanel extends StatelessWidget {
               padding: EdgeInsets.zero,
               itemCount: controller.videoFiles.length,
               itemBuilder: (_, i) => _FileRow(controller: controller, index: i, dense: dense, onPicked: onPicked),
+
+              physics: const PureLiveScrollPhysics(),
             ),
           ),
         ),
@@ -1128,8 +1409,7 @@ class _MobileLayout extends StatefulWidget {
 class _MobileLayoutState extends State<_MobileLayout> {
   LocalVideoPlayerController get controller => widget.controller;
 
-  /// Landscape flips to the fullscreen shape: the picture owns the screen and
-  /// the chrome floats over it, exactly like a live room in fullscreen.
+  /// Whether the phone is currently held sideways.
   bool get isLandscape {
     final size = MediaQuery.sizeOf(context);
     return size.width > size.height;
@@ -1138,73 +1418,80 @@ class _MobileLayoutState extends State<_MobileLayout> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        final shouldLeave = await controller.handleBackRequest();
-        if (shouldLeave && context.mounted) Get.back<void>();
-      },
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: Obx(() {
-          // Picture-in-picture owns the whole body, exactly like the live room:
-          // only the compact picture and its chat are visible — no page chrome.
-          if (controller.isInPip.value) {
-            return _RecordingPipOverlay(controller: controller);
-          }
-          // Scanning the folder is the only true "nothing to show yet" state; once
-          // a file is open the player surface itself carries its own loading.
-          if (controller.isLoading.value && controller.videoFiles.isEmpty) {
-            // Folder scan: a small themed indicator on the video's own black, not
-            // a full-screen white spinner page.
-            return Center(
-              child: SizedBox.square(
-                dimension: 28,
-                child: CircularProgressIndicator(strokeWidth: 2.5, color: theme.colorScheme.primary),
-              ),
-            );
-          }
-          if (controller.videoFiles.isEmpty) {
-            return SafeArea(child: _emptyState(context, controller, onDark: true));
-          }
-          if (isLandscape) {
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                _PlayerArea(controller: controller, keyboardShortcuts: true),
-                _LandscapeTopBar(controller: controller),
-              ],
-            );
-          }
-          return SafeArea(
-            top: false,
-            child: Column(
-              children: [
-                Expanded(
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ColoredBox(
-                        color: Colors.black,
-                        child: _PlayerArea(controller: controller),
-                      ),
-                      _PortraitTopBar(controller: controller),
-                    ],
-                  ),
-                ),
-                _ContextPanel(controller: controller),
-              ],
+    // Back belongs to the page's [PlayerBackScope] above this layout: a bare
+    // `PopScope` here never received Android's back at all, and a second handler
+    // would answer the same gesture twice on the platforms where it does.
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Obx(() {
+        // Picture-in-picture owns the whole body, exactly like the live room:
+        // only the compact picture and its chat are visible — no page chrome.
+        if (controller.isInPip.value) {
+          return _RecordingPipOverlay(controller: controller);
+        }
+        // Scanning the folder is the only true "nothing to show yet" state; once
+        // a file is open the player surface itself carries its own loading.
+        if (controller.isLoading.value && controller.videoFiles.isEmpty) {
+          // Folder scan: a small themed indicator on the video's own black, not
+          // a full-screen white spinner page.
+          return Center(
+            child: SizedBox.square(
+              dimension: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.5, color: theme.colorScheme.primary),
             ),
           );
-        }),
-      ),
+        }
+        if (controller.videoFiles.isEmpty) {
+          return SafeArea(child: _emptyState(context, controller, onDark: true));
+        }
+        // The page's SHAPE follows the fullscreen state, not the device's
+        // orientation. Rotating the phone used to be enough to be "fullscreen"
+        // — which is how the page ended up in a fullscreen-looking shape with
+        // the episode panel still under it, and how leaving fullscreen changed
+        // nothing on screen: the shape was already the rotated one.
+        final fullscreen = controller.fullscreenActive.value;
+        final landscapeShape = fullscreen || isLandscape;
+        if (landscapeShape) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              _PlayerArea(controller: controller, keyboardShortcuts: true),
+              _LandscapeTopBar(controller: controller, showCornerActions: fullscreen),
+            ],
+          );
+        }
+        // No `SafeArea` around this shape on purpose. A `SafeArea` here consumes
+        // the insets for everything below it, so the bars inside — which add
+        // `viewPadding` themselves — would read zero and slide back under the
+        // status bar and the gesture bar. Each bar owns its own inset instead:
+        // the top bar its top/side inset, the context panel its bottom one.
+        return Column(
+          children: [
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ColoredBox(
+                    color: Colors.black,
+                    child: _PlayerArea(controller: controller),
+                  ),
+                  _PortraitTopBar(controller: controller),
+                ],
+              ),
+            ),
+            _ContextPanel(controller: controller),
+          ],
+        );
+      }),
     );
   }
 }
 
-/// Portrait chrome over the picture: back, the title, the speed chip and the
-/// ⋮ overflow — the same three the reference app shows.
+/// Portrait chrome over the picture: back, the title, and the same picture
+/// actions the landscape bar carries while the page is fullscreen.
+///
+/// Outside fullscreen the portrait page keeps its normal app chrome: the back
+/// button and the ⋮ overflow, with the same entries one sheet deeper.
 class _PortraitTopBar extends StatelessWidget {
   const _PortraitTopBar({required this.controller});
 
@@ -1212,6 +1499,11 @@ class _PortraitTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The picture fills the page; this row is what has to stay out of the notch.
+    // `viewPadding` is the raw system inset — nothing above consumes it — so the
+    // bar adds it to its own padding. The gradient stays on the container so it
+    // still reaches the top edge behind the status bar.
+    final padding = _edgeInsets(context);
     return Align(
       alignment: Alignment.topCenter,
       child: Container(
@@ -1223,14 +1515,16 @@ class _PortraitTopBar extends StatelessWidget {
           ),
         ),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(4, 4 + MediaQuery.paddingOf(context).top, 8, 12),
+          padding: EdgeInsets.fromLTRB(4 + padding.left, 4 + padding.top, 8 + padding.right, 12),
           child: Row(
             children: [
               IconButton(
                 color: Colors.white,
                 icon: const Icon(Icons.arrow_back_rounded),
                 onPressed: () async {
-                  if (await controller.handleBackRequest()) Get.back<void>();
+                  if (await controller.handleBackRequest()) {
+                    Navigator.of(Get.context!).pop();
+                  }
                 },
               ),
               Expanded(
@@ -1244,11 +1538,18 @@ class _PortraitTopBar extends StatelessWidget {
                   ),
                 ),
               ),
-              IconButton(
-                color: Colors.white,
-                tooltip: i18n('settings_more'),
-                icon: const Icon(Icons.more_vert_rounded),
-                onPressed: () => _showSettingsSheet(context, controller),
+              // A portrait fullscreen hides the page's own chrome, so the
+              // picture's actions move here instead of disappearing with the
+              // sheet that normally holds them.
+              Obx(
+                () => controller.fullscreenActive.value
+                    ? _RecordingCornerActions(controller: controller, includeBack: false)
+                    : IconButton(
+                        color: Colors.white,
+                        tooltip: i18n('settings_more'),
+                        icon: const Icon(Icons.more_vert_rounded),
+                        onPressed: () => _showSettingsSheet(context, controller),
+                      ),
               ),
             ],
           ),
@@ -1664,7 +1965,10 @@ class _ContextPanel extends StatelessWidget {
             final positionMs = controller.position.value.inMilliseconds;
             final progress = durationMs <= 0 ? 0.0 : (positionMs / durationMs).clamp(0.0, 1.0);
             return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+              // The panel is the last thing on the page, so it takes the
+              // home-indicator inset itself: on a phone held upright the
+              // progress line used to sit under the system gesture bar.
+              padding: EdgeInsets.fromLTRB(16, 2, 16, 12 + _edgeInsets(context).bottom),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(2),
                 child: LinearProgressIndicator(
@@ -1684,13 +1988,25 @@ class _ContextPanel extends StatelessWidget {
 
 /// Landscape keeps floating chrome: the picture is the screen and the actions
 /// sit in the top gradient row.
+///
+/// [showCornerActions] adds the picture's own entries — audio-only, screenshot
+/// and picture-in-picture — while the page is fullscreen. They used to live in a
+/// separate overlay gated on `width > 680`, which a phone in landscape does not
+/// reach: the three buttons existed on a tablet and were simply absent on a
+/// phone, so "the top-right buttons do not respond" was them never being there.
 class _LandscapeTopBar extends StatelessWidget {
-  const _LandscapeTopBar({required this.controller});
+  const _LandscapeTopBar({required this.controller, this.showCornerActions = false});
 
   final LocalVideoPlayerController controller;
+  final bool showCornerActions;
 
   @override
   Widget build(BuildContext context) {
+    // Same rule as the portrait bar: the picture stays full-bleed and this row
+    // adds the raw system inset itself, so a sideways cutout and the status bar
+    // are both cleared without shrinking the picture.
+    final padding = _edgeInsets(context);
+
     return Align(
       alignment: Alignment.topCenter,
       child: Container(
@@ -1701,32 +2017,40 @@ class _LandscapeTopBar extends StatelessWidget {
             colors: [Colors.black87, Colors.transparent],
           ),
         ),
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 8, 12),
-            child: Row(
-              children: [
-                IconButton(
-                  color: Colors.white,
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  onPressed: () async {
-                    if (await controller.handleBackRequest()) Get.back<void>();
-                  },
-                ),
-                Expanded(
-                  child: Obx(
-                    () => Text(
-                      '${controller.roomTitle ?? i18n('recorder_local_player_title')}  '
-                      '${controller.currentIndex.value + 1}/${controller.videoFiles.length}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
-                    ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(4 + padding.left, 4 + padding.top, 8 + padding.right, 12),
+          child: Row(
+            children: [
+              IconButton(
+                color: Colors.white,
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () async {
+                  if (await controller.handleBackRequest()) Navigator.of(Get.context!).pop();
+                },
+              ),
+              Expanded(
+                child: Obx(
+                  () => Text(
+                    '${controller.roomTitle ?? i18n('recorder_local_player_title')}  '
+                    '${controller.currentIndex.value + 1}/${controller.videoFiles.length}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ),
-              ],
-            ),
+              ),
+              if (showCornerActions) _RecordingCornerActions(controller: controller, includeBack: false),
+              // The portrait layout reaches the episode list through the panel
+              // under the picture; the landscape shape has no panel, so the
+              // list needs its own entry here or a rotated phone cannot change
+              // recording at all.
+              IconButton(
+                color: Colors.white,
+                tooltip: i18n('recorder_local_player_title'),
+                icon: const Icon(Remix.list_view),
+                onPressed: () => unawaited(_openPlaylistSheet(context, controller)),
+              ),
+            ],
           ),
         ),
       ),
@@ -1763,130 +2087,110 @@ class _DesktopLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        // Same rule as the room: back leaves the fullscreen shape first, and
-        // only a page that is not fullscreen is allowed to be left.
-        if (await controller.handleBackRequest() && context.mounted) Get.back<void>();
-      },
-      child: Obx(() {
-        //
-        if (controller.isInPip.value) {
-          return _RecordingPipOverlay(controller: controller);
-        }
-        if (controller.isFullscreen.value) {
-          // A portrait recording keeps its vertical shape in fullscreen: the
-          // picture is contained at full height with the list under it, instead
-          // of being stretched into a landscape frame.
-          if (controller.portraitFullscreen.value) {
-            return Scaffold(
-              backgroundColor: Colors.black,
-              body: SafeArea(
-                child: Column(
-                  children: [
-                    Expanded(child: _PlayerArea(controller: controller, keyboardShortcuts: true)),
-                    const Divider(height: 1),
-                    SizedBox(
-                      height: (MediaQuery.sizeOf(context).height * 0.3).clamp(120.0, 260.0),
-                      child: _PlaylistPanel(controller: controller),
-                    ),
-                  ],
+    // Back is the page's [PlayerBackScope] above this layout: same rule as the
+    // room — it leaves the fullscreen shape first and only lets a page that is
+    // not fullscreen be left — but exactly one handler owns it.
+    return Obx(() {
+      //
+      if (controller.isInPip.value) {
+        return _RecordingPipOverlay(controller: controller);
+      }
+      if (controller.isFullscreen.value) {
+        // Fullscreen is fullscreen on every platform: the picture and nothing
+        // else. This branch used to keep a playlist panel under a portrait
+        // recording, which is the black band with the file row that showed up
+        // along the bottom on a desktop monitor — the same chrome the phone's
+        // fullscreen already dropped. A portrait picture is simply contained in
+        // the frame, which is what the mobile landscape shape does too.
+        return Scaffold(
+          backgroundColor: Colors.black,
+          body: _PlayerArea(controller: controller, keyboardShortcuts: true),
+        );
+      }
+      return Scaffold(
+        appBar: AppBar(
+          titleSpacing: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () async {
+              if (await controller.handleBackRequest()) Navigator.of(Get.context!).pop();
+            },
+          ),
+          title: Obx(
+            () => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  controller.roomTitle ?? i18n('recorder_local_player_title'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
+                Text(
+                  controller.videoFiles.isEmpty
+                      ? i18n('recorder_local_player_playlist_empty')
+                      : '${controller.currentFileName}   ${controller.currentIndex.value + 1}/${controller.videoFiles.length}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          actions: const [SizedBox(width: 8)],
+        ),
+        body: Obx(() {
+          // The PiP branch above already owns the whole page, so no second
+          // check here. Scanning the folder is the only true "nothing to show
+          // yet" state: a reload that still has files on screen keeps showing
+          // the player instead of swapping it for a spinner, like the mobile
+          // layout does.
+          if (controller.isLoading.value && controller.videoFiles.isEmpty) {
+            return Center(
+              child: SizedBox.square(
+                dimension: 28,
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: theme.colorScheme.primary),
               ),
             );
           }
-          return Scaffold(
-            backgroundColor: Colors.black,
-            body: _PlayerArea(controller: controller, keyboardShortcuts: true),
+          if (controller.videoFiles.isEmpty) {
+            return _emptyState(context, controller);
+          }
+          final videoPane = Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: ColoredBox(
+                  color: Colors.black,
+                  child: _PlayerArea(controller: controller, keyboardShortcuts: true),
+                ),
+              ),
+            ),
           );
-        }
-        return Scaffold(
-          appBar: AppBar(
-            titleSpacing: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_rounded),
-              onPressed: () async {
-                if (await controller.handleBackRequest()) Get.back<void>();
-              },
-            ),
-            title: Obx(
-              () => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    controller.roomTitle ?? i18n('recorder_local_player_title'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                  Text(
-                    controller.videoFiles.isEmpty
-                        ? i18n('recorder_local_player_playlist_empty')
-                        : '${controller.currentFileName}   ${controller.currentIndex.value + 1}/${controller.videoFiles.length}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            ),
-            actions: const [SizedBox(width: 8)],
-          ),
-          body: Obx(() {
-            // The PiP branch above already owns the whole page, so no second
-            // check here. Scanning the folder is the only true "nothing to show
-            // yet" state: a reload that still has files on screen keeps showing
-            // the player instead of swapping it for a spinner, like the mobile
-            // layout does.
-            if (controller.isLoading.value && controller.videoFiles.isEmpty) {
-              return Center(
-                child: SizedBox.square(
-                  dimension: 28,
-                  child: CircularProgressIndicator(strokeWidth: 2.5, color: theme.colorScheme.primary),
-                ),
-              );
-            }
-            if (controller.videoFiles.isEmpty) {
-              return _emptyState(context, controller);
-            }
-            final videoPane = Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: ColoredBox(
-                    color: Colors.black,
-                    child: _PlayerArea(controller: controller, keyboardShortcuts: true),
-                  ),
-                ),
-              ),
-            );
-            if (!localPlayerShowsSideBySide(MediaQuery.sizeOf(context).width)) {
-              final panelHeight = (MediaQuery.sizeOf(context).height * 0.4).clamp(150.0, 320.0);
-              return Column(
-                children: [
-                  videoPane,
-                  const Divider(height: 1),
-                  SizedBox(
-                    height: panelHeight,
-                    child: _PlaylistPanel(controller: controller),
-                  ),
-                ],
-              );
-            }
-            return Row(
+          if (!localPlayerShowsSideBySide(MediaQuery.sizeOf(context).width)) {
+            final panelHeight = (MediaQuery.sizeOf(context).height * 0.4).clamp(150.0, 320.0);
+            return Column(
               children: [
                 videoPane,
-                const VerticalDivider(width: 1),
-                SizedBox(width: 320, child: _PlaylistPanel(controller: controller)),
+                const Divider(height: 1),
+                SizedBox(
+                  height: panelHeight,
+                  child: _PlaylistPanel(controller: controller),
+                ),
               ],
             );
-          }),
-        );
-      }),
-    );
+          }
+          return Row(
+            children: [
+              videoPane,
+              const VerticalDivider(width: 1),
+              SizedBox(width: 320, child: _PlaylistPanel(controller: controller)),
+            ],
+          );
+        }),
+      );
+    });
   }
 }

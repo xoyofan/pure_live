@@ -101,6 +101,40 @@ bool startsInSystemHomeGestureZone({required Offset localPosition, required Size
 
 const double portraitFullscreenBottomBarHeight = portraitFullscreenControlsHeight;
 
+/// The minimum a fullscreen control bar keeps clear of the top edge.
+///
+/// A device whose panel physically reserves the notch can report a zero top
+/// inset once the status bar hides (immersive fullscreen) — the notch does not
+/// go away with the status bar. This is the floor the bar falls back to in that
+/// case only: the height of a phone status bar, which is what the cutout occupies
+/// and what the bar cleared a moment earlier.
+const double fullscreenBlindTopInset = 28;
+
+/// The top inset a player's control bar adds, with the immersive fallback.
+@visibleForTesting
+double playerBarTopInset({required double viewPaddingTop, required bool portraitFullscreen}) {
+  if (viewPaddingTop > 0) return viewPaddingTop;
+  return portraitFullscreen ? fullscreenBlindTopInset : 0;
+}
+
+/// The system safe area a control bar adds to its own position.
+///
+/// The picture is full-bleed — nobody wraps it in a `SafeArea`, because that
+/// would shrink the video — so every bar has to place itself. `viewPadding` is
+/// the raw system inset and is deliberately used instead of `padding`: a
+/// `SafeArea` anywhere above a bar *consumes* the padding, and a bar that reads
+/// zero slides back under the status bar or the gesture bar. That is exactly how
+/// the portrait fullscreen bar ended up under the notch.
+EdgeInsets playerBarInsets(BuildContext context, {bool portraitFullscreen = false}) {
+  final view = MediaQuery.viewPaddingOf(context);
+  return EdgeInsets.fromLTRB(
+    view.left,
+    playerBarTopInset(viewPaddingTop: view.top, portraitFullscreen: portraitFullscreen),
+    view.right,
+    view.bottom,
+  );
+}
+
 @visibleForTesting
 String fullscreenActionLabelKey(bool expanded) => expanded ? 'exit_fullscreen' : 'enter_fullscreen';
 
@@ -216,6 +250,13 @@ class _VideoControllerPanelState extends State<VideoControllerPanel> {
                   );
                 }),
                 GestureDetector(
+                  // Opaque on purpose: this detector is what reveals and hides
+                  // the bars, and its only child is the shared gesture layer,
+                  // which paints nothing and declares itself translucent. With
+                  // the default `deferToChild` the whole tap surface stopped
+                  // hit-testing and tapping the video no longer showed the
+                  // controls at all.
+                  behavior: HitTestBehavior.opaque,
                   onTapDown: (details) {
                     _lastTapGlobalPosition = details.globalPosition;
                     _lastTapLocalPosition = details.localPosition;
@@ -288,7 +329,13 @@ class _VideoControllerPanelState extends State<VideoControllerPanel> {
                 ),
                 LockButton(controller: controller),
                 const PortraitStreamDiagnosticsBadge(),
-                TopActionBar(controller: controller, barHeight: barHeight),
+                TopActionBar(
+                  controller: controller,
+                  barHeight: barHeight,
+                  // A portrait fullscreen owns the whole screen, so its top bar is
+                  // the one that has to clear the notch on its own.
+                  portraitFullscreen: screenMode == VideoMode.portraitFullscreen,
+                ),
                 BottomActionBar(
                   controller: controller,
                   barHeight: bottomBarHeight,
@@ -331,32 +378,34 @@ class ErrorWidget extends StatelessWidget {
 
 // Top action bar widgets
 class TopActionBar extends StatelessWidget {
-  const TopActionBar({super.key, required this.controller, required this.barHeight});
+  const TopActionBar({super.key, required this.controller, required this.barHeight, this.portraitFullscreen = false});
 
   final VideoController controller;
   final double barHeight;
 
+  /// Whether this bar is the whole screen's top chrome, which is what makes the
+  /// immersive-notch fallback apply.
+  final bool portraitFullscreen;
+
   @override
   Widget build(BuildContext context) {
-    // 全屏时物理刘海/状态栏会压住贴顶的这条栏：栏高与内容一起让出内边距。
-    final topInset = GlobalPlayerService.instance.player.fullscreenUI && PlatformUtils.isMobile
-        ? MediaQuery.viewPaddingOf(context).top
-        : 0.0;
+    // The picture fills the panel; only this bar has to stay out of the notch.
+    // The inset is the raw system one, so this works whether the bar is over a
+    // windowed video or a portrait fullscreen that owns the whole screen.
+    final padding = playerBarInsets(context, portraitFullscreen: portraitFullscreen);
     return Obx(
       () => AnimatedPositioned(
-        top: (controller.showController.value && !controller.showLocked.value) ? 0 : -barHeight,
+        top: controller.showController.value && !controller.showLocked.value ? 0 : -(barHeight + padding.top),
         left: 0,
         right: 0,
-        height: barHeight + topInset,
+        height: barHeight + padding.top,
         duration: const Duration(milliseconds: 300),
         child: ControlHoverRegion(
           enabled: controller.showController.value && !controller.showLocked.value,
           onEnter: controller.onMouseEnterController,
           onExit: controller.onMouseExitController,
           child: Container(
-            height: barHeight + topInset,
-            alignment: Alignment.bottomLeft,
-            padding: EdgeInsets.fromLTRB(8, topInset, 8, 0),
+            height: barHeight + padding.top,
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.bottomCenter,
@@ -364,108 +413,116 @@ class TopActionBar extends StatelessWidget {
                 colors: [Colors.transparent, Colors.black45],
               ),
             ),
-            child: Row(
-              children: [
-                for (final slot in resolveTopActionLeadingSlots(
-                  fullscreen: GlobalPlayerService.instance.player.fullscreenUI,
-                  android: PlatformUtils.isAndroid,
-                ))
-                  switch (slot) {
-                    TopActionLeadingSlot.back => BackButton(controller: controller),
-                    TopActionLeadingSlot.datetime => const DatetimeInfo(key: ValueKey('fullscreen-leading-time')),
-                    TopActionLeadingSlot.battery => BatteryInfo(
-                      key: const ValueKey('fullscreen-leading-battery'),
-                      controller: controller,
-                    ),
-                  },
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _liveRoomTitle(controller.room),
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.t16.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            decoration: TextDecoration.none,
-                          ),
+            child: Padding(
+              padding: EdgeInsets.only(top: padding.top, left: 8 + padding.left, right: 8 + padding.right),
+              child: SizedBox(
+                height: barHeight,
+                child: Row(
+                  children: [
+                    for (final slot in resolveTopActionLeadingSlots(
+                      fullscreen: GlobalPlayerService.instance.player.fullscreenUI,
+                      android: PlatformUtils.isAndroid,
+                    ))
+                      switch (slot) {
+                        TopActionLeadingSlot.back => BackButton(controller: controller),
+                        TopActionLeadingSlot.datetime => const DatetimeInfo(key: ValueKey('fullscreen-leading-time')),
+                        TopActionLeadingSlot.battery => BatteryInfo(
+                          key: const ValueKey('fullscreen-leading-battery'),
+                          controller: controller,
                         ),
-                        if (_liveProgramme(controller.room) case final programme?) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            "${i18n('now_playing')}: $programme",
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.85),
-                              decoration: TextDecoration.none,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-
-                if (controller.room.platform == Sites.iptvSite)
-                  IconButton(
-                    icon: const Icon(Icons.assignment_outlined),
-                    tooltip: i18n('view_schedule'),
-                    visualDensity: VisualDensity.standard,
-                    constraints: const BoxConstraints(
-                      minWidth: kMinInteractiveDimension,
-                      minHeight: kMinInteractiveDimension,
-                    ),
-                    color: Colors.white,
-                    onPressed: () => _showSchedule(context),
-                  ),
-                for (final slot in resolveTopActionTrailingSlots(
-                  fullscreen: GlobalPlayerService.instance.player.fullscreenUI,
-                  android: PlatformUtils.isAndroid,
-                  windows: PlatformUtils.isWindows,
-                ))
-                  switch (slot) {
-                    TopActionTrailingSlot.roomHistory => IconButton(
-                      key: const ValueKey('fullscreen-room-history'),
-                      icon: const Icon(Icons.swap_horiz_outlined),
-                      tooltip: i18n('switch_live_room'),
-                      visualDensity: VisualDensity.standard,
-                      constraints: const BoxConstraints(
-                        minWidth: kMinInteractiveDimension,
-                        minHeight: kMinInteractiveDimension,
-                      ),
-                      color: Colors.white,
-                      onPressed: () {
-                        unawaited(
-                          showDialog<void>(
-                            context: context,
-                            builder: (_) => PlayOther(controller: controller.livePlayController),
-                          ),
-                        );
                       },
-                      style: IconButton.styleFrom(backgroundColor: Colors.black26),
+
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _liveRoomTitle(controller.room),
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.t16.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                decoration: TextDecoration.none,
+                              ),
+                            ),
+                            if (_liveProgramme(controller.room) case final programme?) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                "${i18n('now_playing')}: $programme",
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.85),
+                                  decoration: TextDecoration.none,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
-                    TopActionTrailingSlot.datetime => const DatetimeInfo(),
-                    TopActionTrailingSlot.battery => BatteryInfo(controller: controller),
-                    TopActionTrailingSlot.audioOnly => AudioOnlyButton(
-                      key: const ValueKey('playback-action-audio-only'),
-                      controller: controller,
-                    ),
-                    TopActionTrailingSlot.cast => CastButton(
-                      key: const ValueKey('playback-action-cast'),
-                      controller: controller,
-                    ),
-                    TopActionTrailingSlot.pip => PIPButton(
-                      key: GlobalPlayerService.instance.player.fullscreenUI
-                          ? const ValueKey('fullscreen-pip-shortcut')
-                          : const ValueKey('playback-action-pip'),
-                      controller: controller,
-                    ),
-                  },
-              ],
+
+                    if (controller.room.platform == Sites.iptvSite)
+                      IconButton(
+                        icon: const Icon(Icons.assignment_outlined),
+                        tooltip: i18n('view_schedule'),
+                        visualDensity: VisualDensity.standard,
+                        constraints: const BoxConstraints(
+                          minWidth: kMinInteractiveDimension,
+                          minHeight: kMinInteractiveDimension,
+                        ),
+                        color: Colors.white,
+                        onPressed: () => _showSchedule(context),
+                      ),
+
+                    for (final slot in resolveTopActionTrailingSlots(
+                      fullscreen: GlobalPlayerService.instance.player.fullscreenUI,
+                      android: PlatformUtils.isAndroid,
+                      windows: PlatformUtils.isWindows,
+                    ))
+                      switch (slot) {
+                        TopActionTrailingSlot.roomHistory => IconButton(
+                          key: const ValueKey('fullscreen-room-history'),
+                          icon: const Icon(Icons.swap_horiz_outlined),
+                          tooltip: i18n('switch_live_room'),
+                          visualDensity: VisualDensity.standard,
+                          constraints: const BoxConstraints(
+                            minWidth: kMinInteractiveDimension,
+                            minHeight: kMinInteractiveDimension,
+                          ),
+                          color: Colors.white,
+                          onPressed: () {
+                            unawaited(
+                              showDialog<void>(
+                                context: context,
+                                builder: (_) => PlayOther(controller: controller.livePlayController),
+                              ),
+                            );
+                          },
+                          style: IconButton.styleFrom(backgroundColor: Colors.black26),
+                        ),
+                        TopActionTrailingSlot.datetime => const DatetimeInfo(),
+                        TopActionTrailingSlot.battery => BatteryInfo(controller: controller),
+                        TopActionTrailingSlot.audioOnly => AudioOnlyButton(
+                          key: const ValueKey('playback-action-audio-only'),
+                          controller: controller,
+                        ),
+                        TopActionTrailingSlot.cast => CastButton(
+                          key: const ValueKey('playback-action-cast'),
+                          controller: controller,
+                        ),
+                        TopActionTrailingSlot.pip => PIPButton(
+                          key: GlobalPlayerService.instance.player.fullscreenUI
+                              ? const ValueKey('fullscreen-pip-shortcut')
+                              : const ValueKey('playback-action-pip'),
+                          controller: controller,
+                        ),
+                      },
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -1198,15 +1255,16 @@ class BottomActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = GlobalPlayerService.instance.player.fullscreenUI && PlatformUtils.isMobile
-        ? MediaQuery.viewPaddingOf(context).bottom
-        : 0.0;
+    // Same rule as the top bar, at the other edge: the picture stays full-bleed
+    // and this bar adds the raw system inset itself so it clears the gesture bar
+    // (and a sideways cutout) instead of sitting under them.
+    final padding = playerBarInsets(context);
     return Obx(() {
       bool shouldShow =
           (controller.showController.value || controller.isMenuOpen.value) && !controller.showLocked.value;
       return BottomControlSurface(
         visible: shouldShow,
-        height: barHeight + bottomInset,
+        height: barHeight,
         child: ControlHoverRegion(
           enabled: shouldShow,
           onEnter: controller.onMouseEnterController,
@@ -1215,9 +1273,9 @@ class BottomActionBar extends StatelessWidget {
             enabled: portraitFullscreen,
             onRestore: () => unawaited(controller.exitPortraitFullScreen()),
             child: Container(
-              height: barHeight + bottomInset,
+              height: barHeight,
               alignment: Alignment.bottomLeft,
-              padding: EdgeInsets.fromLTRB(8, 0, 8, bottomInset),
+              padding: EdgeInsets.fromLTRB(8 + padding.left, 0, 8 + padding.right, padding.bottom),
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
