@@ -294,12 +294,15 @@ def main() -> int:
     if not callback_values or any(value != "true" for value in callback_values):
         errors.append({"rule": "predictive_back_disabled", "path": relative(manifest_path)})
 
-    back_scope = ROOT / "lib/domains/live/presentation/playback/widgets/layout/live_play_back_scope.dart"
+    # 合并 e946e0d29:路由局部返回处理从 domains/layout/live_play_back_scope.dart
+    # 上移到 core 层 PlayerBackScope(live_play 与录像页/多画面共用);不变量
+    # 不变(展示层先退、路由局部持有),标记跟到新机制文件。
+    back_scope = ROOT / "lib/core/player/presentation/player_back_scope.dart"
     live_page = ROOT / "lib/domains/live/presentation/playback/pages/live_play_page.dart"
     controller = ROOT / "lib/domains/live/presentation/playback/controllers/live_play_controller.dart"
     required_back_markers = {
-        relative(back_scope): "PopScope<Object?>",
-        relative(live_page): "LivePlayBackScope(",
+        relative(back_scope): "PopScope",
+        relative(live_page): "PlayerBackScope(",
         relative(controller): "exitPresentationForSystemBack",
     }
     for rel, marker in required_back_markers.items():
